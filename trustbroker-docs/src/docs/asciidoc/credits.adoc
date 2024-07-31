@@ -46,7 +46,7 @@ All the license details of the Alpine and Java assembly you can find in the SBOM
 == License
 
 XTB itself is licensed under
-https://github.com/trustbroker-swiss/xtb-docs/blob/main/LICENSE[GNU AFFERO GENERAL PUBLIC LICENSE Version 3].
+https://github.com/trustbroker-swiss/trustbroker-swiss/blob/main/LICENSE.txt[GNU AFFERO GENERAL PUBLIC LICENSE Version 3].
 
 
 == Contributions
