@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelyingPartySetup>
+    <RelyingParty id="urn:trustbroker.swiss:sp:SSO-RP-1" base="ProfileRP_DemoDefaults.xml">
+        <ACWhitelist>
+            <ACUrl>http://localhost:7070/authn/consumer</ACUrl>
+        </ACWhitelist>
+        <SSO enabled="true" groupName="SSO-GROUP-1" sloUrl="http://localhost:7070/auth/saml/slo"/>
+        <ClaimsProviderMappings>
+            <ClaimsProvider id="urn:trustbroker.swiss:idp:SAML-MOCK-1" />
+            <ClaimsProvider id="urn:trustbroker.swiss:idp:SAML-MOCK-2" />
+            <ClaimsProvider id="urn:trustbroker.swiss:idp:SAML-MOCK-3" relyingPartyAlias="urn:trustbroker.swiss:sp:SSO-RP-3"/>
+        </ClaimsProviderMappings>
+    </RelyingParty>
+</RelyingPartySetup>

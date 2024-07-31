@@ -1,0 +1,613 @@
+/*
+ * Copyright (C) 2024 trustbroker.swiss team BIT
+ * 
+ * This program is free software.
+ * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
+ * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * 
+ * See the GNU Affero General Public License for more details.
+ * You should have received a copy of the GNU Affero General Public License along with this program.
+ * If not, see <https://www.gnu.org/licenses/>. 
+ */
+
+package swiss.trustbroker.oidc;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+import com.google.common.base.Functions;
+import com.google.common.collect.Lists;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
+import org.springframework.security.oauth2.core.oidc.OidcScopes;
+import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationServerMetadataClaimNames;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
+import org.springframework.security.oauth2.server.authorization.oidc.OidcProviderConfiguration;
+import org.springframework.security.oauth2.server.authorization.oidc.OidcProviderMetadataClaimNames;
+import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
+import org.springframework.security.oauth2.server.authorization.settings.OAuth2TokenFormat;
+import org.springframework.security.oauth2.server.authorization.settings.TokenSettings;
+import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
+import org.springframework.util.CollectionUtils;
+import swiss.trustbroker.api.sessioncache.dto.AttributeName;
+import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.saml.util.AttributeRegistry;
+import swiss.trustbroker.common.saml.util.CoreAttributeName;
+import swiss.trustbroker.common.util.OidcUtil;
+import swiss.trustbroker.common.util.UrlAcceptor;
+import swiss.trustbroker.config.dto.OidcProperties;
+import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
+import swiss.trustbroker.federation.xmlconfig.Definition;
+import swiss.trustbroker.federation.xmlconfig.IdmQuery;
+import swiss.trustbroker.federation.xmlconfig.Multivalued;
+import swiss.trustbroker.federation.xmlconfig.OidcClient;
+import swiss.trustbroker.federation.xmlconfig.OidcMapper;
+import swiss.trustbroker.federation.xmlconfig.OidcSecurityPolicies;
+import swiss.trustbroker.federation.xmlconfig.RelyingParty;
+import swiss.trustbroker.oidc.session.OidcSessionSupport;
+import swiss.trustbroker.script.service.ScriptService;
+
+@Slf4j
+public class OidcConfigurationUtil {
+
+	private OidcConfigurationUtil() {
+	}
+
+	// Method not synchronized because we do RegisterClient caching on startup and refresh only
+	// Per default we set up a mixed FE/BE case.
+	static RegisteredClient createRegisteredClient(OidcClient client, long defaultTokenTimeSec) {
+		// NOTE: Compiled in defaults, use templating instead by putting this into ProfileRP >> RelyingParty >> Oidc >> Client
+		var polices = client.getOidcSecurityPolicies() != null
+				? client.getOidcSecurityPolicies()
+				: defaultSecurityPolicies(defaultTokenTimeSec); // align on SAML assertion config
+		var clientAuthenticationMethods =
+				client.getClientAuthenticationMethods() != null && client.getClientAuthenticationMethods().getMethods() != null
+						? client.getClientAuthenticationMethods().getMethods()
+						: List.of(
+								ClientAuthenticationMethod.NONE.getValue(),
+								ClientAuthenticationMethod.CLIENT_SECRET_BASIC.getValue(),
+								ClientAuthenticationMethod.CLIENT_SECRET_POST.getValue()
+						);
+		var authorizationGrantTypes =
+				client.getAuthorizationGrantTypes() != null && client.getAuthorizationGrantTypes().getGrantTypes() != null
+						? client.getAuthorizationGrantTypes().getGrantTypes()
+						: List.of(
+								AuthorizationGrantType.AUTHORIZATION_CODE.getValue(),
+								AuthorizationGrantType.REFRESH_TOKEN.getValue()
+						);
+		var configuredScopes =
+				client.getScopes() != null && client.getScopes().getScopeList() != null
+						? client.getScopes().getScopeList()
+						: List.of(
+								OidcScopes.OPENID,
+								OidcScopes.EMAIL,
+								OidcScopes.PHONE,
+								OidcScopes.PROFILE,
+								OidcScopes.ADDRESS
+						);
+		var clientId = client.getId();
+		log.debug("Using Oidc Client with clientId={} authenticationMethods='{}', authorizationGrantTypes='{}' scopes='{}'",
+				clientId, clientAuthenticationMethods, authorizationGrantTypes, configuredScopes);
+
+		// spring security OIDC registry entry
+		var clientSettings = getClientSettings(polices);
+		var tokenSettings = getTokenSettings(polices, defaultTokenTimeSec);
+
+		// construct it
+		var registeredClient = RegisteredClient.withId(clientId)
+				.clientId(clientId)
+				// Must be unique/client
+				.clientSecret(client.getClientSecret())
+				.clientSettings(clientSettings)
+				.clientAuthenticationMethods(authenticationMethods ->
+						clientAuthenticationMethods.forEach(authenticationMethod ->
+								authenticationMethods.add(OidcConfigurationUtil.stringToAuthenticationMethod(authenticationMethod))))
+				.authorizationGrantTypes(grantTypes ->
+						authorizationGrantTypes.forEach(
+								grantType -> grantTypes.add(OidcConfigurationUtil.stringToAuthorizationGrantType(grantType))))
+				.scopes(scopes -> scopes.addAll(configuredScopes))
+				// RedirectUris is a mandatory field for a Registered client
+				.redirectUris(uris -> uris.addAll(client.getRedirectUris().getRedirectUrls()))
+				.tokenSettings(tokenSettings).build();
+
+		// validation and init/refresh logging
+		var clientAuth = registeredClient.getClientAuthenticationMethods();
+		var frontendClient = clientAuth.contains(ClientAuthenticationMethod.NONE);
+		var backendClient = (clientAuth.size() > 1 || !frontendClient) && registeredClient.getClientSecret() != null;
+		var broken = !(frontendClient || backendClient);
+		var fixHint1 = "HINT (FE): requireProofKey=true,ClientAuthenticationMethod=none";
+		var fixHint2 = "HINT (BE): requireProofKey=false,ClientSecret=***,ClientAuthenticationMethod=client_secret_basic";
+		var fixHint3 = "HINT (FE+BE): requireProofKey=false,ClientSecret=***,ClientAuthenticationMethod=none,client_secret_basic";
+		log.info("OIDC registry cached clientId={} clientFlows='{}{}{}' tokenTimeToLiveMin={} refreshSupport={}",
+				registeredClient.getClientId(),
+				frontendClient ? "frontend/PKCE" : "",
+				broken ? "N/A" : "",
+				backendClient ? "backend/secret" : "",
+				polices.getTokenTimeToLiveMin(),
+				backendClient);
+		client.setRegisteredClient(registeredClient);
+		if (broken) {
+			log.warn("Check OIDC clientId={} configuration ({}. {}. {}.)", clientId, fixHint1, fixHint2, fixHint3);
+		}
+
+		return registeredClient;
+	}
+
+	static AuthorizationGrantType stringToAuthorizationGrantType(String authorizationGrantType) {
+		if (AuthorizationGrantType.AUTHORIZATION_CODE.getValue().equals(authorizationGrantType)) {
+			return AuthorizationGrantType.AUTHORIZATION_CODE;
+		}
+		else if (AuthorizationGrantType.CLIENT_CREDENTIALS.getValue().equals(authorizationGrantType)) {
+			return AuthorizationGrantType.CLIENT_CREDENTIALS;
+		}
+		else if (AuthorizationGrantType.REFRESH_TOKEN.getValue().equals(authorizationGrantType)) {
+			return AuthorizationGrantType.REFRESH_TOKEN;
+		}
+		return new AuthorizationGrantType(authorizationGrantType);        // Custom authorization grant type
+	}
+
+	static ClientAuthenticationMethod stringToAuthenticationMethod(String authenticationMethod) {
+		if (ClientAuthenticationMethod.CLIENT_SECRET_BASIC.getValue().equals(authenticationMethod)) {
+			return ClientAuthenticationMethod.CLIENT_SECRET_BASIC;
+		}
+		else if (ClientAuthenticationMethod.CLIENT_SECRET_POST.getValue().equals(authenticationMethod)) {
+			return ClientAuthenticationMethod.CLIENT_SECRET_POST;
+		}
+		else if (ClientAuthenticationMethod.NONE.getValue().equals(authenticationMethod)) {
+			return ClientAuthenticationMethod.NONE;
+		}
+		return new ClientAuthenticationMethod(authenticationMethod);        // Custom client authentication method
+	}
+
+	static Map<String, List<Object>> extractSamlAttributesFromContext(JwtEncodingContext context) {
+		Map<String, List<Object>> attributes = new HashMap<>();
+		var samlAuthPrincipal = OidcSessionSupport.getSamlPrincipalFromAuthentication(context.getPrincipal(), null);
+		if (samlAuthPrincipal != null) {
+			attributes = samlAuthPrincipal.getAttributes();
+			// check on OriginalIssuer §duplicates and throw out same values
+			deduplicateOriginalIssuerDuplicates(attributes);
+			// populate nameidentifier as well, so we can address the subject NameID sow OIDC mapping can consume it as well
+			if (attributes != null && attributes.get(CoreAttributeName.NAME_ID.getNamespaceUri()) == null) {
+				var principalName = context.getPrincipal().getName();
+				log.debug("Populating nameIDAttr={} with principal={} from SAML subject",
+						CoreAttributeName.NAME_ID.getNamespaceUri(), principalName);
+				var nameId = new ArrayList<>();
+				nameId.add(principalName);
+				attributes.put(CoreAttributeName.NAME_ID.getNamespaceUri(), nameId);
+			}
+		}
+		return attributes;
+	}
+
+	static void deduplicateOriginalIssuerDuplicates(Map<String, List<Object>> attributes) {
+		if (attributes != null) {
+			attributes.forEach((k, v) -> {
+				if (v != null && v.size() > 1) {
+					// List must be mutable otherwise Jackson ObjectMapper can not deserialize
+					var setList = v.stream().distinct().collect(Collectors.toList()); // NOSONAR
+					if (setList.size() < v.size()) {
+						attributes.put(k, setList);
+					}
+				}
+			});
+		}
+	}
+
+	static ClientSettings getClientSettings(OidcSecurityPolicies oidcSecurityPolicies) {
+		var builder = ClientSettings.builder();
+		if (Boolean.TRUE.equals(oidcSecurityPolicies.getRequireProofKey())) {
+			builder.requireProofKey(true);
+		}
+		// unused
+		if (Boolean.TRUE.equals(oidcSecurityPolicies.getRequireAuthorizationConsent())) {
+			builder.requireAuthorizationConsent(true);
+		}
+		return builder.build();
+	}
+
+	static TokenSettings getTokenSettings(OidcSecurityPolicies oidcSecurityPolicies, long defaultTokenTimeSec) {
+		var builder = TokenSettings.builder();
+		var tokenTtlMinutes = defaultTokenTimeSec / 60;
+		var refreshTokenTtlMinutes = tokenTtlMinutes;
+		var codeTtlMinutes = tokenTtlMinutes;
+		var reuseRefreshToken = true; // resilience over security?
+		var idTokenSignature = SignatureAlgorithm.RS256;
+		if (oidcSecurityPolicies != null) {
+			if (oidcSecurityPolicies.getAccessTokenTimeToLiveMin() != null) {
+				tokenTtlMinutes = oidcSecurityPolicies.getAccessTokenTimeToLiveMin();
+			}
+			if (oidcSecurityPolicies.getRefreshTokenTimeToLiveMin() != null) {
+				refreshTokenTtlMinutes = oidcSecurityPolicies.getRefreshTokenTimeToLiveMin();
+			}
+			if (oidcSecurityPolicies.getReuseRefreshTokens() != null) {
+				reuseRefreshToken = oidcSecurityPolicies.getReuseRefreshTokens();
+			}
+			if (oidcSecurityPolicies.getAuthorizationCodeTimeToLiveMin() != null) {
+				codeTtlMinutes = oidcSecurityPolicies.getAuthorizationCodeTimeToLiveMin();
+			}
+			if (oidcSecurityPolicies.getIdTokenSignature() != null) {
+				idTokenSignature = SignatureAlgorithm.from(oidcSecurityPolicies.getIdTokenSignature());
+			}
+		}
+
+		// code
+		builder.authorizationCodeTimeToLive(Duration.ofMinutes(codeTtlMinutes));
+
+		// token/access_token (JWT token, with OPAQUE tokens we could prevent OIDC miss-use forcing applications to use id_token)
+		builder.accessTokenTimeToLive(Duration.ofMinutes(tokenTtlMinutes));
+		builder.accessTokenFormat(OAuth2TokenFormat.SELF_CONTAINED);
+
+		// id_token (lifecycle and content aligned with access_token)
+		builder.idTokenSignatureAlgorithm(idTokenSignature); // many adapters only support RS256
+
+		// refresh_token
+		builder.refreshTokenTimeToLive(Duration.ofMinutes(refreshTokenTtlMinutes));
+		builder.reuseRefreshTokens(reuseRefreshToken);
+
+		return builder.build();
+	}
+
+	static OidcSecurityPolicies defaultSecurityPolicies(long defaultTokenTimeSec) {
+		var defaultTokenTimeMin = (int) TimeUnit.SECONDS.toMinutes(defaultTokenTimeSec);
+		return OidcSecurityPolicies.builder()
+				.requireProofKey(true)
+				.requireAuthorizationConsent(false)
+				.tokenTimeToLiveMin(defaultTokenTimeMin)
+				.accessTokenTimeToLiveMin(defaultTokenTimeMin) // no id_token TTL in spring so also applies to id_token?
+				.refreshTokenTimeToLiveMin(defaultTokenTimeMin) // refresh aligned with 60min TTL
+				.build();
+	}
+
+	static String getClientIdFromRequestUri(HttpServletRequest httpServletRequest) {
+		String[] uriElements = httpServletRequest.getRequestURI().split("/");
+		int length = uriElements.length;
+		return uriElements[length - 1];
+	}
+
+	static String getClientIdFromRequest(HttpServletRequest httpServletRequest) {
+		var clientId = httpServletRequest.getParameter(OidcUtil.OIDC_CLIENT_ID);
+		if (clientId == null) {
+			clientId = getClientIdFromRequestUri(httpServletRequest);
+		}
+		return clientId;
+	}
+
+	static Map<Definition, List<String>> mapSamlNamesToDefs(Map<String, List<Object>> samlAttributes) {
+		var ret = new HashMap<Definition, List<String>>();
+		samlAttributes.forEach((k, v) -> {
+			var attr = AttributeRegistry.forName(k); // registered attribute with pre-defined names?
+			var shortName = attr != null ? attr.getName() : k;
+			var newKey = Definition.builder() // no details from attribute repository, use FQ name for mapping
+					.name(shortName)
+					.namespaceUri(k)
+					.build();
+			var sv = Lists.transform(v, Functions.toStringFunction()); // strings only in SAMl world
+			ret.put(newKey, sv);
+		});
+		return ret;
+	}
+
+	public static List<Definition> getAllOidcDefinitions(
+			RelyingParty relyingParty, OidcClient oidcClient, Set<String> authorizedScopes) {
+		var definitions = new ArrayList<Definition>();
+		if (relyingParty == null) {
+			log.info("OIDC claims are empty for oidcClient='{}' not having RP definitions", oidcClient);
+			return definitions; // no RP? filter removes everything
+		}
+
+		// attributes selection
+		filterDefinitions(relyingParty.getAttributesSelection(), definitions, authorizedScopes, relyingParty.getId());
+		var attrCount = definitions.size();
+
+		// userdetails selection
+		var idmLookup = relyingParty.getIdmLookup();
+		if (idmLookup != null) {
+			for (IdmQuery idmQuery : idmLookup.getQueries()) {
+				filterDefinitions(idmQuery.getUserDetailsSelection(), definitions, authorizedScopes, relyingParty.getId());
+			}
+		}
+		var userDetailsCount = definitions.size() - attrCount;
+
+		// properties selection (computed)
+		filterDefinitions(relyingParty.getPropertiesSelection(), definitions, authorizedScopes, relyingParty.getId());
+		var propsCount = definitions.size() - userDetailsCount;
+
+		// support const definitions with mappers as wee
+		if (relyingParty.getConstAttributes() != null) {
+			var constDefs = relyingParty.getConstAttributes().getAttributeDefinitions();
+			if (constDefs != null) {
+				filterDefinitionList(constDefs, definitions, authorizedScopes, relyingParty.getId());
+			}
+		}
+		var constCount = definitions.size() - propsCount;
+
+		// OIDC client
+		var clientClaimsCount = 0;
+		if (oidcClient != null && oidcClient.getClaimsSelection() != null) {
+			filterDefinitions(oidcClient.getClaimsSelection(), definitions, authorizedScopes, oidcClient.getId());
+			clientClaimsCount = definitions.size() - constCount;
+		}
+
+		// some statistics to debug configs
+		log.debug("OIDC claimsCount={} for relyingParty={} "
+						+ "attrCount={} userDetailsCount={} propsCount={} constDefsCount={} clientClaimsCount={}",
+				definitions.size(), relyingParty.getId(),
+				attrCount, userDetailsCount, propsCount, constCount, clientClaimsCount);
+		return definitions;
+	}
+
+	private static void filterDefinitions(AttributesSelection attributesSelection, List<Definition> definitions,
+			Set<String> authorizedScopes, String relyingPartyId) {
+		if (attributesSelection != null && authorizedScopes != null) {
+			filterDefinitionList(attributesSelection.getDefinitions(), definitions, authorizedScopes, relyingPartyId);
+		}
+		if (authorizedScopes == null) {
+			log.warn("Missing Scope from request. Tokens will have no claims");
+		}
+	}
+
+	private static void filterDefinitionList(List<Definition> attributeDefinitions, List<Definition> definitions,
+			Set<String> authorizedScopes, String relyingPartyId) {
+		attributeDefinitions.stream()
+				.filter(definition -> {
+					var scope = definition.getScope();
+					if (definition.getOidcNames() != null && scope == null) {
+						scope = OidcUtil.DEFAULT_SCOPE;
+						log.debug("No scope for definition={} for rp={} => using compatibility openid semantics with scope={}",
+								definition.getName(), relyingPartyId, scope);
+					}
+					return definition.getOidcNames() != null && authorizedScopes.contains(scope);
+				})
+				.forEachOrdered(definitions::add);
+	}
+
+	public static Map<String, Object> computeOidcClaims(
+			Map<String, List<Object>> attributesFromContext,
+			List<Definition> definitions,
+			ScriptService scriptService,
+			boolean addStandardClaims,
+			OidcClient oidcClient) {
+		// we allow this one to be manipulated in CpResponse.claims based on CpResponse.attributes
+		var map = new HashMap<String, Object>();
+		if (definitions.isEmpty()) {
+			return map;
+		}
+
+		// Map definitions to key/values map supporting String or List<String> etc.
+		// We support Definition with a value as ConstAttr without an incoming SAML attribute.
+		for (Definition definition : definitions) {
+			var values = getOidcMappableValues(attributesFromContext, definition);
+			if (values == null) {
+				continue;
+			}
+			// apply OIDC mappers on all OIDC marked values including constants
+			var mapper = definition.getOidcMapper();
+			if (mapper != null) {
+				values = mapper.map(values);
+				if (mapper.equals(OidcMapper.SCRIPT)) {
+					values = scriptService.processValueConversion(definition.getName(), values);
+				}
+			}
+			var clientId = oidcClient != null ? oidcClient.getId() : "NONE";
+			addClaimsToMap(map, definition, values, clientId, false);
+			// NOTE: The addStandardClaims flag is disabled per default to not have any implicit behavior
+			if (addStandardClaims) {
+				addStandardClaims(map, definition, values, clientId);
+			}
+		}
+		return map;
+	}
+
+	private static List<Object> getOidcMappableValues(Map<String, List<Object>> attributes, Definition definition) {
+		List<Object> ret = null;
+		if (definition.getOidcNames() != null) {
+			// SAML attribute input
+			var namespaceUri = definition.getNamespaceUri();
+			if (namespaceUri != null) {
+				ret = attributes.get(namespaceUri);
+			}
+			// ConstAttr value(s)
+			if (ret == null && !definition.getMultiValues().isEmpty()) {
+				ret = new ArrayList<>(definition.getMultiValues());
+			}
+		}
+		return ret;
+	}
+
+	private static void addStandardClaims(Map<String, Object> attributes, Definition definition, List<Object> values,
+			String clientId) {
+		// standard claim with OIDC mappings when no oidcNames is defined
+		var standardClaim = getOidcStandardClaimName(definition);
+		if (standardClaim != null && definition.getOidcNames() == null) {
+			for (var oidcName : standardClaim.getOidcNameList()) {
+				addClaimsToMap(attributes, new Definition(oidcName), values, clientId, true);
+			}
+		}
+	}
+
+	static void addClaimsToMap(Map<String, Object> claimMap, Definition definition, List<Object> values,
+			String oidcClientId, boolean isStandard) {
+		var allValues = values;
+		var oidcNames = definition.getOidcNameList();
+		var multiValued = definition.getMultiValued();
+		for (String oidcName : oidcNames) {
+			if (claimMap.containsKey(oidcName)) {
+				allValues = getOidcAttributeValues(claimMap, oidcName, values);
+				log.debug("Aggregating oidcName={} adding newValues={}", oidcName, values);
+			}
+			else {
+				log.debug("Adding oidcName={} values={}", oidcName, values);
+			}
+
+			if (isStandard) {
+				multiValued = Multivalued.ORIGINAL;
+			}
+
+			// Single value: We discard the array and make it a value directly (OIDC supports that)
+			switch (multiValued) {
+				case ORIGINAL:
+					claimMap.put(oidcName, allValues.size() != 1 ? allValues : allValues.get(0));
+					break;
+				case LIST:
+					claimMap.put(oidcName, allValues);
+					break;
+				case STRING:
+					claimMap.put(oidcName, getStringValueOfOidcClaim(allValues));
+					break;
+				case ERROR:
+					if (allValues.size() > 1) {
+						throw new TechnicalException(String.format(
+								"Invalid claim=%s in client config=%s Expected String but received List", oidcName,
+								oidcClientId));
+					}
+					claimMap.put(oidcName, getStringValueOfOidcClaim(allValues));
+					break;
+				default:
+					throw new TechnicalException(String.format(
+							"Invalid multiValuedConfig=%s for clientId=%s", multiValued, oidcClientId));
+			}
+		}
+	}
+
+	static Object getStringValueOfOidcClaim(List<Object> allValues) {
+		if (allValues.size() == 1) {
+			return allValues.get(0);
+		}
+		if (allValues.size() > 1) {
+			return StringUtils.join(allValues, " ");
+		}
+		return null;
+	}
+
+	static List<Object> getOidcAttributeValues(
+			Map<String, Object> attributes, String oidcName, List<Object> newValues) {
+		// new claim, use passed values as is, no copy, no aggregation, no de-deduplication
+		var claimValue = attributes.get(oidcName);
+		if (claimValue == null) {
+			return newValues;
+		}
+		// aggregate, de-duplicate
+		var allValues = new ArrayList<>();
+		if (claimValue instanceof List<?> oldValues) {
+			allValues.addAll(oldValues);
+		}
+		else {
+			allValues.add(claimValue);
+		}
+		for (var newValue : newValues) {
+			if (allValues.contains(newValue)) {
+				log.debug("Ignoring duplicate claim={} value={}", oidcName, newValue);
+			}
+			else {
+				allValues.add(newValue);
+			}
+		}
+		return allValues;
+	}
+
+	// check if AttributeRegistry provides a standard OIDC claim name
+	private static AttributeName getOidcStandardClaimName(Definition definition) {
+		var attributeName = definition.findAttributeName();
+		if (attributeName != null && !CollectionUtils.isEmpty(attributeName.getOidcNameList())) {
+			return attributeName;
+		}
+		return null;
+	}
+
+	public static void addListClaimToContext(JwtEncodingContext context, String name, List<?> values) {
+		if (values != null && !values.isEmpty()) {
+			context.getClaims().claim(name, values);
+		}
+	}
+
+	public static void addSingledValueListAsStringToClaim(JwtEncodingContext context, String name, List<?> values) {
+		if (values != null && !values.isEmpty()) {
+			if (values.size() > 1) {
+				log.warn("Cannot convert Claim={} with multiple values to String claim", name);
+			}
+			context.getClaims().claim(name, values.get(0));
+		}
+	}
+
+	static void removeDisabledEndpointFromMetadataClaim(OidcProperties oidcProperties, Map<String, Object> claimMap) {
+		if (!oidcProperties.isIntrospectionEnabled()) {
+			claimMap.remove(OAuth2AuthorizationServerMetadataClaimNames.INTROSPECTION_ENDPOINT);
+			claimMap.remove(
+					OAuth2AuthorizationServerMetadataClaimNames.INTROSPECTION_ENDPOINT_AUTH_METHODS_SUPPORTED);
+		}
+		if (!oidcProperties.isRevocationEnabled()) {
+			claimMap.remove(OAuth2AuthorizationServerMetadataClaimNames.REVOCATION_ENDPOINT);
+			claimMap.remove(OAuth2AuthorizationServerMetadataClaimNames.REVOCATION_ENDPOINT_AUTH_METHODS_SUPPORTED);
+		}
+		if (!oidcProperties.isUserInfoEnabled()) {
+			claimMap.remove(OidcProviderMetadataClaimNames.USER_INFO_ENDPOINT);
+		}
+	}
+
+	static String computeEndSessionEndpoint(OidcProperties oidcProperties) {
+		var endSessionEndpoint = oidcProperties.getEndSessionEndpoint();
+		if (endSessionEndpoint == null) {
+			var baseUrl = oidcProperties.getIssuer();
+			var sep = baseUrl.endsWith("/") ? "" : "/";
+			endSessionEndpoint = oidcProperties.getIssuer() + sep + "logout";
+		}
+
+		return endSessionEndpoint;
+	}
+
+	static void setEndSessionEndpoint(OidcProperties oidcProperties,
+			OidcProviderConfiguration.Builder providerConfiguration) {
+		String finalEndSessionEndpoint = computeEndSessionEndpoint(oidcProperties);
+		addClaimToProviderConfiguration(providerConfiguration,"end_session_endpoint", finalEndSessionEndpoint);
+	}
+
+	public static void addClaimToProviderConfiguration(OidcProviderConfiguration.Builder providerConfiguration,
+			String claimName, String claimValue) {
+		providerConfiguration
+				.claim(claimName, claimValue)
+				.build();
+	}
+
+	static boolean isRedirectUrlValid(String redirectUrl, String clientId, String redirectUrlParameterName,
+			RelyingPartyDefinitions relyingPartyDefinitions, ClientConfigInMemoryRepository registeredClientRepository) {
+		var ok = false;
+		Set<String> configuredRedirectUrls = null;
+
+		// Get XTB client configuration
+		// We use regexp matching on path here
+		if (clientId == null) {
+			var client = relyingPartyDefinitions.getOidcClientByPredicate(cl -> cl.isValidRedirectUri(redirectUrl));
+			clientId = client.map(OidcClient::getId).orElse(null);
+		}
+
+		// get spring-sec client information
+		var registeredClient = registeredClientRepository.findByClientId(clientId);
+		if (registeredClient != null) {
+			ok = UrlAcceptor.isRedirectUrlOkForAccess(redirectUrl, registeredClient.getRedirectUris());
+			configuredRedirectUrls = registeredClient.getRedirectUris();
+		}
+		if (ok) {
+			log.debug("{}={} for client_id={} is one of the allowed uris={}",
+					redirectUrlParameterName, redirectUrl, clientId, configuredRedirectUrls);
+		}
+		else {
+			log.error("{}={} for client_id={} is not one of the allowed uris={}",
+					redirectUrlParameterName, redirectUrl, clientId, configuredRedirectUrls);
+		}
+		return ok;
+	}
+}

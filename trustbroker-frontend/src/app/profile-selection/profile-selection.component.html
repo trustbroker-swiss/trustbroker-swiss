@@ -1,0 +1,33 @@
+<!--
+ Copyright (C) 2024 trustbroker.swiss team BIT
+ 
+ This program is free software.
+ You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
+ as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+ 
+ This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ 
+ See the GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License along with this program.
+ If not, see <https://www.gnu.org/licenses/>.
+-->
+<main class="profileContent">
+	<div class="title-container">
+		<div id="profileHeader" class="high-emphasis mb-2">{{ "trustbroker.profile.title" | translate }}</div>
+		<div class="body-1 medium-emphasis mb-2">
+			<div id="selectionText">
+				<p [innerHTML]="'trustbroker.profile.subtitle' | translate"></p>
+			</div>
+		</div>
+		<div *ngFor="let profile of profiles" class="card-container" role="listitem">
+			<app-profile-selection-card
+				[profileName]="profile.name"
+				[organization]="profile.unit"
+				[applications]="profile.applications"
+				(cardClick)="onClick(profile.id)"
+			>
+			</app-profile-selection-card>
+		</div>
+	</div>
+</main>

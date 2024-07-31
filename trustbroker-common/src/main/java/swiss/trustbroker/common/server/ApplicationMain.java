@@ -1,0 +1,190 @@
+/*
+ * Copyright (C) 2024 trustbroker.swiss team BIT
+ * 
+ * This program is free software.
+ * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
+ * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * 
+ * See the GNU Affero General Public License for more details.
+ * You should have received a copy of the GNU Affero General Public License along with this program.
+ * If not, see <https://www.gnu.org/licenses/>. 
+ */
+
+package swiss.trustbroker.common.server;
+
+import java.io.File;
+import java.security.Security;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.LoggerContext;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.LoggerFactory;
+import swiss.trustbroker.common.exception.TrustBrokerException;
+import swiss.trustbroker.common.saml.util.SamlInitializer;
+import swiss.trustbroker.common.setup.config.BootstrapProperties;
+import swiss.trustbroker.common.setup.service.GitService;
+
+/**
+ * Initialize everything before starting spring container, especially libraries using statics.
+ */
+@Slf4j
+public abstract class ApplicationMain {
+
+	protected final Class<?> starterClass;
+
+	protected String[] args;
+
+	protected ApplicationMain(Class<?> starterClass, String[] args) {
+		this.starterClass = starterClass;
+		try {
+			this.args = getCompleteDefaultArgs(args);
+		}
+		catch (TrustBrokerException ex) {
+			log.error("Failed to start application {}", starterClass, ex);
+		}
+	}
+
+	// using backends with un-official CAs we need custom engineered tls-truststore.p12 etc.
+	private static void checkTlsSetup() {
+		String trustStore = System.getProperty("javax.net.ssl.trustStore");
+		if (trustStore != null) {
+			File trustStoreFile = new File(System.getProperty("javax.net.ssl.trustStore"));
+			if (!trustStoreFile.exists()) {
+				throw new IllegalArgumentException("TLS setup broken, check " + trustStoreFile.getAbsolutePath());
+			}
+		}
+		else {
+			log.info("TLS setup: Running with JDK/JRE cacerts truststore");
+		}
+	}
+
+	// get rid of DEBUG before spring-boot kicks in
+	@SuppressWarnings("java:S4792") // injected boot log level from env or system properties, not user controlled
+	public static void configureLogback() {
+		// bootstrap defaults to DEBUG logging which is too much for us
+		String bootLevel = BootstrapProperties.getFromSysPropsOrEnv("logging.level.root", "INFO", false);
+		// assume SLF4J is bound to logback in the current environment
+		LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+		loggerContext.getLogger("root").setLevel(Level.toLevel(bootLevel));
+	}
+
+	public static void configureHome() {
+		var trustbrokerHome = BootstrapProperties.getWorkDirDefault();
+		var userHome = System.getProperty("user.home");
+		if (userHome == null || userHome.equals("/") || !userHome.equals(trustbrokerHome)) {
+			// K8S we get no HOME or HOME=/, on a real system the id_rsa is usually not mounted and id_rsa is encrypted
+			System.setProperty("user.home", trustbrokerHome);
+			log.info("Setting user.home to {}={}", BootstrapProperties.TRUSTBROKER_HOME, trustbrokerHome);
+		}
+		else {
+			log.info("Using user.home={} {}={}", userHome, BootstrapProperties.TRUSTBROKER_HOME, trustbrokerHome);
+		}
+	}
+
+	// Support bootRun, IDE run etc
+	// For our re-config support we always disable the automatic re-loading options to not spam the logs and remove overhead
+	private static String[] getCompleteDefaultArgs(String[] args) {
+		List<String> betterArgs = new ArrayList<>();
+		Collections.addAll(betterArgs, args);
+		// no args means DEV
+		if (args.length == 0) {
+			betterArgs.add("--spring.config.location=" + BootstrapProperties.getSpringConfigLocation());
+			betterArgs.add("--spring.profiles.active=" + BootstrapProperties.getSpringProfileActive());
+		}
+
+		//  The spring.cloud stuff is required because of our re-config support only
+		boolean skipSpringCloud = false;
+		for (String arg : betterArgs) {
+			if (arg.startsWith("--spring.cloud.bootstrap.enabled") || arg.startsWith("--spring.cloud.config.enabled")) {
+				skipSpringCloud = true;
+			}
+		}
+		if (!skipSpringCloud) {
+			betterArgs.add("--spring.cloud.bootstrap.enabled=false");
+			betterArgs.add("--spring.cloud.config.enabled=false");
+		}
+
+		// show what we use
+		for (String arg : betterArgs) {
+			log.info("Startup with arg: {}", arg);
+		}
+		return betterArgs.toArray(new String[0]);
+	}
+
+	private static void showJavaVersion() {
+		log.info("Running JVM: {}", Runtime.version());
+	}
+
+	private static void showSecurityProviders() {
+		log.info("Java security providers: count={}", Security.getProviders().length);
+		for (var provider : Security.getProviders()) {
+			log.info("* Java security provider name={} class={}", provider.getName(), provider.getClass().getName());
+		}
+	}
+
+	protected void initSamlSubSubsystem() {
+		SamlInitializer.initSamlSubSystem();
+	}
+
+	// simple version, no IPs and other context
+	protected void logException(Throwable ex) {
+		if (ex instanceof TrustBrokerException tex) {
+			log.error(tex.getInternalMessage(), ex);
+		}
+		else if (ex.getCause() != null && ex.getCause() instanceof TrustBrokerException cex) {
+			logException(cex); // handle exceptions in constructors, @PostConstruct etc unwrapped
+		}
+		else {
+			log.error(ex.getMessage(), ex);
+		}
+	}
+
+	protected abstract void runApplication();
+
+	// Application gets config from Git and runs a scheduler to keep it up-to-date
+	@SuppressWarnings("java:S1147") // called from main, may System.exit
+	public void runBootstrap() {
+		try {
+			// logback bootstrap to not DEBUG
+			configureLogback();
+			// make sure user.home does not interfere for SSH access
+			configureHome();
+			// get bootstrap config
+			GitService.bootConfiguration();
+			runServer();
+		}
+		catch (Exception e) {
+			logException(e);
+			System.exit(1);
+		}
+	}
+
+	// Application runs passive i.e. just consumes an available configuration
+	@SuppressWarnings("java:S1147") // called from main, may System.exit
+	public void runServer() {
+		try {
+			showJavaVersion();
+
+			BootstrapProperties.validateBootstrap();
+
+			checkTlsSetup();
+
+			initSamlSubSubsystem();
+
+			showSecurityProviders();
+
+			runApplication();
+		}
+		catch (Exception e) {
+			logException(e);
+			System.exit(1);
+		}
+	}
+
+}

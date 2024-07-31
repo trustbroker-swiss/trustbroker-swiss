@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Broken relying party showing service resilience and the need to monitor for ERRORs to not get failing relying parties -->
+<RelyingPartySetup>
+    <RelyingParty id="urn:trustbroker.swiss:sp:ERROR-BROKEN-CONFIG" base="ProfileRP_DemoDefaults.xml">
+        <ACWhitelist>
+            <ACUrl>http://localhost:7070/authn/consumer</ACUrl>
+        </ACWhitelist>
+        <Certificates>
+            <SignerTruststore>
+                <CertPath>rp-mock/keystore.pem</CertPath>
+                <Password>$PKI_PASSPHRASE</Password>
+            </SignerTruststore>
+        </Certificates>
+    </RelyingParty>
+</RelyingPartySetup>

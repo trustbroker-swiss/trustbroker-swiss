@@ -1,0 +1,10 @@
+<saml2p:LogoutRequest xmlns:saml2p="urn:oasis:names:tc:SAML:2.0:protocol"
+					  Destination="http://localhost:8090/api/v1/saml"
+					  ID="LogoutRequest_91ad133c-1cdf-4184-4954-101e7b8f5b41_48"
+					  IssueInstant="2022-03-16T14:24:24.914014702Z"
+					  Version="2.0"
+>
+	<saml2:Issuer xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion">urn:trustbroker.swiss:sp:DEMO-RP-1</saml2:Issuer>
+	<saml2:NameID xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion" Format="urn:oasis:names:tc:SAML:2.0:nameid-format:persistent">subject.nameidentifier</saml2:NameID>
+	<saml2p:SessionIndex>0</saml2p:SessionIndex>
+</saml2p:LogoutRequest>

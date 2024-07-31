@@ -1,0 +1,229 @@
+
+buildscript {
+	ext {
+		top = ''
+		buildVersion = '1.6.0'
+		buildTimestamp = null
+		// build promotion
+		buildName = System.env.BUILD_NAME
+		buildNumber = System.env.BUILD_NUMBER
+		// docker build
+		baseImage = System.env.BUILD_IMAGE ? System.env.BUILD_IMAGE : 'docker.io/azul/zulu-openjdk-alpine:17'
+		// repo publishing and promotion
+		repoBaseUrl = System.env.BUILD_REGISTRY
+		repoPublishBaseUrl = System.env.BUILD_REGISTRY
+		dockerRegistry = System.env.DOCKER_REGISTRY ? System.env.DOCKER_REGISTRY : 'ghcr.io'
+	}
+}
+
+plugins {
+	id 'base'
+	id 'org.springframework.boot'		version '3.3.1' apply false
+	id 'org.ajoberstar.grgit'			version '4.1.1'	apply true
+	id "org.unbroken-dome.test-sets"	version '4.1.0' apply false
+	id 'com.google.cloud.tools.jib'		version '3.4.3'	apply false
+	id "com.github.node-gradle.node"	version "7.0.2"	apply false
+	id 'com.jfrog.artifactory' 			version '4.33.1'
+}
+
+allprojects {
+	// project versioning
+	if (!rootProject.buildTimestamp) {
+		rootProject.buildTimestamp = grgit.head().date.format("yyyyMMdd'T'HHmmss'Z'", TimeZone.getTimeZone('GMT'))
+	}
+	version = "${rootProject.buildVersion}.${rootProject.buildTimestamp}"
+	group = 'swiss.trustbroker'
+}
+
+subprojects {
+	// dependencyResolutionManagement in settings.gradle somehow does not work for our sub-projects so repeat
+	repositories {
+		mavenCentral()
+		maven {
+			url 'https://build.shibboleth.net/maven/releases'
+		}
+	}
+
+	// Set JUnit 5 as default testing platform for all Java modules + AssertJ for assertions
+	pluginManager.withPlugin('java') {
+		// all modules use dpedency management
+		apply plugin: 'io.spring.dependency-management'
+
+		// all modules should test
+		apply plugin: "org.unbroken-dome.test-sets"
+
+		// some modules publish to maven registries
+		apply plugin: 'maven-publish'
+		apply plugin: 'com.jfrog.artifactory'
+
+		dependencyManagement {
+			imports {
+				// spring-boot: https://spring.io/projects/spring-boot (configured via plugin above)
+				// https://central.sonatype.com/artifact/org.springframework.boot/spring-boot/2.7.11/versions
+				mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+				// spring-cloud: https://spring.io/projects/spring-cloud
+				// https://central.sonatype.com/artifact/org.springframework.cloud/spring-cloud-dependencies/2021.0.7/versions
+				mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2023.0.1'
+			}
+			// dependency management for libraries used in multiple components
+			dependencies {
+				// opensaml
+				// https://build.shibboleth.net/maven/releases/org/opensaml/opensaml-core/
+				// https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3199500367/ReleaseNotes
+				dependencySet(group:'org.opensaml', version: '5.1.2') {
+					entry 'opensaml-messaging-impl'
+					entry 'opensaml-saml-impl'
+					entry 'opensaml-saml-api'
+					entry 'opensaml-core-impl'
+					entry 'opensaml-core-api'
+				}
+
+				// web-service and XMl processing
+				// https://central.sonatype.com/artifact/org.apache.cxf/apache-cxf/3.5.5/versions
+				// https://central.sonatype.com/artifact/com.sun.xml.messaging.saaj/saaj-impl/versions
+				// NOTE: WS-import from wsdl not managed here, see trustbroker-wstrust-service for that.
+				dependencySet(group:'org.apache.cxf', version: '4.0.5')	{
+					entry 'cxf-rt-transports-http'
+					entry 'cxf-rt-frontend-jaxws'
+				}
+
+				// git integration
+				// https://central.sonatype.com/artifact/org.eclipse.jgit/org.eclipse.jgit/6.8.0.202311291450-r/versions
+				dependency 'org.eclipse.jgit:org.eclipse.jgit:6.8.0.202311291450-r'
+				dependency 'org.eclipse.jgit:org.eclipse.jgit.ssh.apache:6.8.0.202311291450-r'
+
+				// apache baseline (opensaml mainly depends on these)
+				dependency 'org.apache.commons:commons-text:1.12.0'
+				dependency 'org.apache.commons:commons-lang3:3.14.0'
+				dependency 'commons-beanutils:commons-beanutils:1.9.4'
+				dependency 'commons-io:commons-io:2.16.1'
+
+				// state cache feature
+				// https://central.sonatype.com/artifact/org.mariadb.jdbc/mariadb-java-client/3.1.4/versions
+				dependency 'org.mariadb.jdbc:mariadb-java-client:3.3.3'
+
+				// script support
+				// dependency 'org.codehaus.groovy:groovy-all' is too much for security so reduce to the max
+				// https://central.sonatype.com/artifact/org.apache.groovy/groovy-jsr223/4.0.13/versions
+				dependencySet(group:'org.apache.groovy', version: '4.0.21') {
+					entry 'groovy-jsr223'
+					entry 'groovy'
+				}
+
+				// OIDC support (JSON parsing) - trustbroker-api needs the version
+				dependency 'com.nimbusds:nimbus-jose-jwt:9.37.3'
+
+				// indirect dependencies - version upgrade due to vulnerability, remove after Spring Boot upgrade
+				// CVE-2022-42004, CVE-2022-42003, CVE-2021-46877, CVE-2020-36518
+				dependency 'org.thymeleaf:thymeleaf-spring5:3.1.2.RELEASE'
+				dependency 'org.thymeleaf:thymeleaf:3.1.2.RELEASE'
+				// dito, but logback 3.1.14 without vulnerabilities depends on slf4j-api 2.x and breaks with 1.x
+				// CVE-2023-6481
+				dependency 'ch.qos.logback:logback-classic:1.5.6'
+				dependency 'ch.qos.logback:logback-core:1.5.6'
+
+				// JCE provider
+				// https://www.bouncycastle.org/latest_releases.html
+				// https://central.sonatype.com/artifact/org.bouncycastle/bcprov-jdk18on/1.77/versions
+				dependencySet (group: 'org.bouncycastle', version: '1.78.1') {
+					entry 'bcprov-jdk18on'
+					entry 'bcpkix-jdk18on'
+				}
+
+				// WSS4J compatibility issue with OpenSAML5
+				dependency('org.apache.wss4j:wss4j-ws-security-common:3.0.3') {
+					exclude group: 'org.opensaml', name: 'opensaml-core'
+				}
+				dependency 'org.apache.wss4j:wss4j-ws-security-web:3.0.3'
+				dependency 'org.apache.wss4j:wss4j-ws-security-dom:3.0.3'
+
+				// exclude old opensaml stuff from spring-security too
+				dependency('org.springframework.security:spring-security-saml2-service-provider:6.2.4') {
+					exclude group: 'org.opensaml', name: 'opensaml-core'
+				}
+
+				// xjb
+				dependencySet(group:'org.glassfish.jaxb', version: '4.0.5') {
+					entry 'jaxb-xjc'
+					entry 'jaxb-runtime'
+				}
+				dependency 'jakarta.xml.bind:jakarta.xml.bind-api:4.0.2'
+			}
+		}
+
+		dependencies {
+			// testing
+			testImplementation 'org.junit.jupiter:junit-jupiter-api'
+			testImplementation 'org.mockito:mockito-junit-jupiter'
+			testImplementation 'org.assertj:assertj-core'
+			testImplementation 'org.junit.jupiter:junit-jupiter-engine'
+
+			// boilerplate
+			compileOnly 'org.projectlombok:lombok:'
+			annotationProcessor 'org.projectlombok:lombok'
+		}
+
+		tasks.withType(Test) { Test task ->
+			task.useJUnitPlatform()
+		}
+
+		// NOTE: Do not use build timestamp based version here, otherwise you trigger a new docker image layereach time you build
+		// OK here as our timestamp reflects the git commit timestamp and that really reflects a change.
+		tasks.withType(Jar) { jar ->
+			jar.manifest {
+				attributes(
+						'Implementation-Title': project.name,
+						'Implementation-Version': project.version,
+						'Implementation-Vendor': 'trustbroker.swiss'
+				)
+			}
+		}
+
+		tasks.withType(JavaCompile) {
+			options.encoding = 'UTF-8'
+			options.warnings = true
+			options.deprecation = true
+			options.compilerArgs += ["-Xlint:unchecked"]
+		}
+	}
+
+	plugins.withId('org.unbroken-dome.test-sets') {
+		testSets {
+			integrationTest
+			systemTest
+		}
+		integrationTest {
+			group = LifecycleBasePlugin.VERIFICATION_GROUP
+			description 'Run self-contained integration tests.'
+		}
+		systemTest {
+			group = LifecycleBasePlugin.VERIFICATION_GROUP
+			description 'Run self-contained system tests.'
+			systemProperties = System.properties
+			outputs.upToDateWhen { false } // run every time task is executed
+		}
+		tasks.check.dependsOn integrationTest
+	}
+
+	plugins.withType(JacocoPlugin) {
+		tasks.withType(JacocoReport) { task ->
+			task.with {
+				reports.xml.required = true
+			}
+		}
+	}
+}
+
+task showProjectInfo() {
+	description 'Shows project configuration details for CI integration'
+	group 'Debug'
+	println("       project: ${rootProject.name}")
+	println("          root: ${rootProject.rootDir}")
+	println("         group: ${rootProject.group}")
+	println("       version: ${rootProject.version}")
+	println("     buildName: ${rootProject.buildName}")
+	println("   buildNumber: ${rootProject.buildNumber}")
+	println("     baseImage: ${rootProject.baseImage}")
+	println("dockerRegistry: ${rootProject.dockerRegistry}")
+
+}

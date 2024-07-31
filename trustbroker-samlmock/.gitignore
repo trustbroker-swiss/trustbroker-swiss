@@ -1,0 +1,9 @@
+home/.config/
+home/configCache/
+home/configuration/latest/
+home/configuration/previous/
+home/keys/config
+home/keys/id_rsa
+home/keys/git_token
+home/configuration/veto
+home/.ssh/

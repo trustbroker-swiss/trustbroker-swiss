@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- relying party setup showing the basics of non-SSO usage -->
+<RelyingPartySetup>
+    <RelyingParty id="urn:trustbroker.swiss:sp:DEMO-RP-1" base="ProfileRP_DemoDefaults.xml">
+        <ACWhitelist>
+            <ACUrl>http://localhost:7070/authn/consumer</ACUrl>
+        </ACWhitelist>
+        <Saml>
+            <ProtocolEndpoints>
+                <MetadataUrl>http://localhost:7070/saml/metadata</MetadataUrl>
+                <ArtifactResolutionUrl>http://localhost:7070/authn/arp</ArtifactResolutionUrl>
+                <ArtifactResolutionIndex>0</ArtifactResolutionIndex>
+            </ProtocolEndpoints>
+            <ArtifactBinding inboundMode="SUPPORTED" outboundMode="SUPPORTED"/>
+        </Saml>
+        <SSO enabled="false" sloUrl="http://localhost:7070/auth/saml/slo"/>
+        <ClaimsProviderMappings>
+            <ClaimsProvider id="urn:trustbroker.swiss:idp:SAML-MOCK-1" />
+            <ClaimsProvider id="urn:trustbroker.swiss:idp:SAML-MOCK-2" />
+            <ClaimsProvider id="urn:trustbroker.swiss:idp:SAML-MOCK-3" />
+            <!-- invisible but addressable CP, remove the previous entry to make SAML-MOCK-3 invisible on the HRD screen -->
+            <ClaimsProvider id="urn:trustbroker.swiss:idp:SAML-MOCK-3" relyingPartyAlias="urn:trustbroker.swiss:sp:DEMO-RP-3"/>
+        </ClaimsProviderMappings>
+        <Scripts>
+            <Script type="BeforeHrd">HrdAutoSelectClaimsProvider.groovy</Script>
+            <Script type="AfterIdm">ComputeDerivedAttributes.groovy</Script>
+        </Scripts>
+    </RelyingParty>
+</RelyingPartySetup>

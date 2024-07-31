@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A base profile defines defaults used by all RelyingParty setups referring to it -->
+<RelyingParty>
+	<Certificates>
+		<!-- Signer towards all RPs -->
+		<SignerKeystore>
+			<CertPath>token-signer/keystore.pem</CertPath>
+			<Password>$PKI_PASSPHRASE</Password>
+		</SignerKeystore>
+		<!-- Fallback: We only trust ourselves -->
+		<SignerTruststore>
+			<CertPath>token-signer/keystore.pem</CertPath>
+			<Password>$PKI_PASSPHRASE</Password>
+		</SignerTruststore>
+	</Certificates>
+	<SecurityPolicies
+			notOnOrAfterSeconds="3600"
+			requireSignedAuthnRequest="true"
+			requireSignedLogoutRequest="true"
+			validateXmlSchema="true"
+	/>
+	<Oidc>
+		<Client id="template">
+			<!-- Access restrictions (development only) -->
+			<RedirectUris>
+				<ACUrl>https://oidcdebugger.com/debug</ACUrl>
+				<ACUrl>http://localhost:0/.*</ACUrl>
+			</RedirectUris>
+			<!-- PKCE code flow with requireProofKey=true and client authentication none -->
+			<OidcSecurityPolicies
+					requireProofKey="true"
+					tokenTimeToLiveMin="60"
+					refreshTokenTimeToLiveMin="60"
+			/>
+			<!-- Supported subset of https://openid.net/specs/openid-connect-core-1_0.html#TokenRequest -->
+			<AuthorizationGrantTypes>
+				<GrantType>authorization_code</GrantType>
+				<GrantType>client_secret_post</GrantType>
+				<GrantType>refresh_token</GrantType>
+			</AuthorizationGrantTypes>
+			<!-- Supported subset of https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication -->
+			<ClientAuthenticationMethods>
+				<Method>none</Method>
+				<Method>client_secret_basic</Method>
+				<Method>client_secret_post</Method>
+			</ClientAuthenticationMethods>
+			<!-- Scopes see https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims -->
+			<Scopes>
+				<Scope>openid</Scope>
+				<Scope>profile</Scope>
+				<Scope>email</Scope>
+			</Scopes>
+			<!-- Claims see at https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims -->
+			<ClaimsSelection>
+				<Definition name="EMail" namespaceUri="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
+							oidcNames="email" multiValued="STRING" />
+				<Definition name="FirstName" namespaceUri="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname"
+							oidcNames="given_name" />
+				<Definition name="Name" namespaceUri="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname"
+							oidcNames="family_name" />
+				<Definition name="dateOfBirth" namespaceUri="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/dateofbirth"
+							oidcNames="birthdate" multiValued="STRING" oidcMapper="TIME_EPOCH" />
+				<Definition name="address" namespaceUri="address"
+							oidcNames="address" />
+				<Definition name="displayName" namespaceUri="2.16.840.1.113730.3.1.241"
+							oidcNames="name" multiValued="LIST" />
+				<Definition name="displayName" namespaceUri="2.16.840.1.113730.3.1.241"
+							oidcNames="name" multiValued="LIST" />
+			</ClaimsSelection>
+		</Client>
+	</Oidc>
+	<Saml>
+		<ArtifactBinding inboundMode="SUPPORTED" outboundMode="SUPPORTED" />
+		<!-- XML security defaults according to https://www.w3.org/TR/xmlsec-algorithms/ -->
+		<Signature>
+			<CanonicalizationAlgorithm>http://www.w3.org/2001/10/xml-exc-c14n#</CanonicalizationAlgorithm>
+			<SignatureMethodAlgorithm>http://www.w3.org/2001/04/xmldsig-more#rsa-sha256</SignatureMethodAlgorithm>
+			<DigestMethod>http://www.w3.org/2001/04/xmlenc#sha256</DigestMethod>
+		</Signature>
+	</Saml>
+	<!-- SSO also is used in disabled mode so XTB knows where to send the LogoutResponse to -->
+	<SSO enabled="false" sloUrl="please-define-if-rp-does-saml-logouts" />
+	<!-- Processing: Accepted incoming original issuer attributes -->
+	<AttributesSelection>
+		<Definition name="EMail" namespaceUri="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress" />
+		<Definition name="FirstName" namespaceUri="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname" />
+		<Definition name="FamilyName" namespaceUri="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname" />
+		<Definition name="dateOfBirth" namespaceUri="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/dateofbirth"/>
+		<Definition name="displayName" namespaceUri="2.16.840.1.113730.3.1.241"/>
+		<!-- CP is visible only in SAML OriginalIssuer in RP response. Make it visible as an OIDC claim. -->
+		<Definition name="HomeRealmHint" namespaceUri="HomeRealmHint" oidcNames="homerealmhint"/>
+	</AttributesSelection>
+	<!-- Processing: Attributes computed in groovy scripts. It's possible to use oidcNames declarations already on any selection definition. -->
+	<PropertiesSelection>
+		<!-- Computed birthdate can be picked exclusively (remove from AttributesSelection above, or in the groovy script. -->
+		<Definition name="displayName" namespaceUri="2.16.840.1.113730.3.1.241" oidcNames="name" multiValued="LIST" />
+		<!-- ssoSessionId is an XTB specific claim that allows to identify the federation session source -->
+		<Definition name="ssoSessionId" namespaceUri="http://trustbroker.swiss/claims/ssoSessionId" oidcNames="ssoSessionId" />
+	</PropertiesSelection>
+	<!-- Processing: All RP side hooks dumping provided request/response data -->
+	<Scripts>
+		<Script type="BeforeHrd">DebugRpRequest.groovy</Script>
+		<Script type="BeforeIdm">DebugCpResponse.groovy</Script>
+		<Script type="AfterIdm">DebugCpResponse.groovy</Script>
+		<Script type="OnToken">DebugCpResponse.groovy</Script>
+		<Script type="OnUserInfo">DebugCpResponse.groovy</Script>
+	</Scripts>
+</RelyingParty>

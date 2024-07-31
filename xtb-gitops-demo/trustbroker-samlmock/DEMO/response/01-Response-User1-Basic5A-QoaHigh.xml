@@ -1,0 +1,107 @@
+<saml2p:Response Destination="http://localhost:8090/api/v1/saml"
+				 ID="Response_65d6daa5356002f0afcbde6cc5d3185e2913aab8"
+				 InResponseTo="id-baea9479-3417-4f32-a8e3-b2ca2223e9aa"
+				 IssueInstant="2022-06-14T07:20:30.307Z"
+				 Version="2.0"
+				 xmlns:saml2p="urn:oasis:names:tc:SAML:2.0:protocol"
+				 xmlns:xs="http://www.w3.org/2001/XMLSchema"
+>
+	<saml2:Issuer xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion">urn:trustbroker.swiss:idp:SAML-MOCK-1</saml2:Issuer>
+	<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+		<ds:SignedInfo>
+			<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#" />
+			<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" />
+			<ds:Reference URI="#Response_65d6daa5356002f0afcbde6cc5d3185e2913aab8">
+				<ds:Transforms>
+					<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" />
+					<ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#">
+						<ec:InclusiveNamespaces PrefixList="xs" xmlns:ec="http://www.w3.org/2001/10/xml-exc-c14n#" />
+					</ds:Transform>
+				</ds:Transforms>
+				<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" />
+				<ds:DigestValue>QDlHeGXGg2F2mFAsgvwMo78lwez8xs+1q/tg9OKFhc0=</ds:DigestValue>
+			</ds:Reference>
+		</ds:SignedInfo>
+		<ds:SignatureValue>
+			mulk+5nf3XdgIjEuU0BenmG9U3QdB96He7sLBYdichxvKzjAq44T2cqehv5S3IpLn0uhpdyim2VyRh5qi09OBIXZBJCvMgp1ONyFywXUUJPMo9Id1LHN3h1F/0SGeC7Eockw3c71qJ93pgILWYlHcNnBCK8WA4cyoQQ8TV8IfWo/zNXtsC+yooeyA/nqns+vJSXDsI9AJV6eIxPC0Mo+A+BAVx3/GWbzo1PUYBfXPKcbjlSdU8avrsosMRX5POgwhqTwez2U70vM81FrcNJjyer+cNE6C44sK1hhjmsrf24Tf0uqpVtQyzvL2ZAk//Nzuv2USyOmAg+nAd/qp9rHfw==
+		</ds:SignatureValue>
+		<ds:KeyInfo>
+			<ds:X509Data>
+				<ds:X509Certificate>
+					MIIDhzCCAm+gAwIBAgIUb882mEjtpc5WpOsGmbpvZWbVFuIwDQYJKoZIhvcNAQELBQAwUzELMAkGA1UEBhMCY2gxGTAXBgNVBAoMEHN3aXNzdHJ1c3Ricm9rZXIxDTALBgNVBAsMBGRlbW8xGjAYBgNVBAMMEWRlbW8tdG9rZW4tc2lnbmVyMB4XDTI0MDMwODE2MzcyMFoXDTM0MDMwNjE2MzcyMFowUzELMAkGA1UEBhMCY2gxGTAXBgNVBAoMEHN3aXNzdHJ1c3Ricm9rZXIxDTALBgNVBAsMBGRlbW8xGjAYBgNVBAMMEWRlbW8tdG9rZW4tc2lnbmVyMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkzDVxZG/AbFwC5UxGs/Abb9Oxj3cgLyXSke9nebgz+PoiAqdmC7bkgC74vlrZDkeqVKQxSoZVhQlFG0Q61NChKg6/Ev6uzZw9W3NfuahXAxirUDpsD2Xg59tvT9FKBYLT0gzG/XsSzpbpVfL1ZlKGRrDcuclKF1aVPo3/ZqBS6+9rFmmNflvy7cs29IQilCNCkTux4x8MxvqLBRl8TWUyY6qPg8ceAzY/l/AfH6Iq3kIHFKN+qcThj1KCzQFb75QEpmv8bX8JYtUEjvEMPayL8DXUHHxwMib9vR+6d0fDAaxOiGmejmZnJeOYYJULxfzPttPbkVV6H4sy673Oqf56QIDAQABo1MwUTAdBgNVHQ4EFgQUApCv4BkymdDwZLgnEausr2IV6uwwHwYDVR0jBBgwFoAUApCv4BkymdDwZLgnEausr2IV6uwwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAPjoKNgqHCu1IuKBGWu+yvQqZA0UKBy4s3ELIIRaxveApo3hoDYOoqJYDh8ynmCPA7hiI1MtKvF381WMpSyLuu2fO6fvsHxRAjs11uOU3x9O4nFBFdSyurhSwazXp5iUu6eHzFAh31aQu6x+nrxpiGUWd/o9z578qedCQ2kIj2cMAu0gXYPAISYyxMP2/jIRAsPxGvyHtBLsrurMelXqZZVaMNGBCJ9AbEpjw4/fxtsWuuvTxQDy4Wn0c21qF7uTra5cQkvHWfS3HINW2gv+9MJiPq7Azzdfs9s7xaImQMMSyVfeYC0O846qF4bbJGrU4xwsJLdxdBYhq2duggp/MdQ==
+				</ds:X509Certificate>
+			</ds:X509Data>
+		</ds:KeyInfo>
+	</ds:Signature>
+	<saml2p:Status>
+		<saml2p:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success" />
+	</saml2p:Status>
+	<saml2:Assertion ID="Assertion_2411368c37cef217e87c0a98e6d22b7f16ff23e0"
+					 IssueInstant="2022-06-14T07:20:30.306Z"
+					 Version="2.0"
+					 xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion"
+					 xmlns:xs="http://www.w3.org/2001/XMLSchema"
+	>
+		<saml2:Issuer>urn:trustbroker.swiss:idp:SAML-MOCK-3</saml2:Issuer>
+		<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+			<ds:SignedInfo>
+				<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#" />
+				<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" />
+				<ds:Reference URI="#Assertion_2411368c37cef217e87c0a98e6d22b7f16ff23e0">
+					<ds:Transforms>
+						<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" />
+						<ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#">
+							<ec:InclusiveNamespaces PrefixList="xs" xmlns:ec="http://www.w3.org/2001/10/xml-exc-c14n#" />
+						</ds:Transform>
+					</ds:Transforms>
+					<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" />
+					<ds:DigestValue>S6WQoz6iFYbkadFuJX9KXHn/S1uOfYm9+ktNsCfdp38=</ds:DigestValue>
+				</ds:Reference>
+			</ds:SignedInfo>
+			<ds:SignatureValue>
+				VjwEJTd1y3IH5y4IiPLM7PaLPOy0ZyXOoQUfU7kXfDETFcDsotudZAKHuric2jugQn3usrveDoVylX4dhII8h2kJG/17W0V6EvA1ehzwMJskz2wm42pCWg/pHnysX9U9MVYvPmq/3rznEM6h02pjDz04FrR2639qPMzJ63ETo/Bhj2vnC7A1m9AcLutZg12DEXhFITsBPSU475xbwElbv7ifbbiFm+F34Txn+ZRub0ttxc8CIM76bpKACBg+BxrePXt+cn3ftRzuyWVo3xxIh2ynnpRx5kfYyQ/0YuAHSU6x6BZFeUAXzCREngD0/JZlFpGyjK//XpxY8LDbxcZ9aw==
+			</ds:SignatureValue>
+			<ds:KeyInfo>
+				<ds:X509Data>
+					<ds:X509Certificate>
+						MIIDhzCCAm+gAwIBAgIUb882mEjtpc5WpOsGmbpvZWbVFuIwDQYJKoZIhvcNAQELBQAwUzELMAkGA1UEBhMCY2gxGTAXBgNVBAoMEHN3aXNzdHJ1c3Ricm9rZXIxDTALBgNVBAsMBGRlbW8xGjAYBgNVBAMMEWRlbW8tdG9rZW4tc2lnbmVyMB4XDTI0MDMwODE2MzcyMFoXDTM0MDMwNjE2MzcyMFowUzELMAkGA1UEBhMCY2gxGTAXBgNVBAoMEHN3aXNzdHJ1c3Ricm9rZXIxDTALBgNVBAsMBGRlbW8xGjAYBgNVBAMMEWRlbW8tdG9rZW4tc2lnbmVyMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkzDVxZG/AbFwC5UxGs/Abb9Oxj3cgLyXSke9nebgz+PoiAqdmC7bkgC74vlrZDkeqVKQxSoZVhQlFG0Q61NChKg6/Ev6uzZw9W3NfuahXAxirUDpsD2Xg59tvT9FKBYLT0gzG/XsSzpbpVfL1ZlKGRrDcuclKF1aVPo3/ZqBS6+9rFmmNflvy7cs29IQilCNCkTux4x8MxvqLBRl8TWUyY6qPg8ceAzY/l/AfH6Iq3kIHFKN+qcThj1KCzQFb75QEpmv8bX8JYtUEjvEMPayL8DXUHHxwMib9vR+6d0fDAaxOiGmejmZnJeOYYJULxfzPttPbkVV6H4sy673Oqf56QIDAQABo1MwUTAdBgNVHQ4EFgQUApCv4BkymdDwZLgnEausr2IV6uwwHwYDVR0jBBgwFoAUApCv4BkymdDwZLgnEausr2IV6uwwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAPjoKNgqHCu1IuKBGWu+yvQqZA0UKBy4s3ELIIRaxveApo3hoDYOoqJYDh8ynmCPA7hiI1MtKvF381WMpSyLuu2fO6fvsHxRAjs11uOU3x9O4nFBFdSyurhSwazXp5iUu6eHzFAh31aQu6x+nrxpiGUWd/o9z578qedCQ2kIj2cMAu0gXYPAISYyxMP2/jIRAsPxGvyHtBLsrurMelXqZZVaMNGBCJ9AbEpjw4/fxtsWuuvTxQDy4Wn0c21qF7uTra5cQkvHWfS3HINW2gv+9MJiPq7Azzdfs9s7xaImQMMSyVfeYC0O846qF4bbJGrU4xwsJLdxdBYhq2duggp/MdQ==
+					</ds:X509Certificate>
+				</ds:X509Data>
+			</ds:KeyInfo>
+		</ds:Signature>
+		<saml2:Subject>
+			<saml2:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified">max1</saml2:NameID>
+			<saml2:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
+				<saml2:SubjectConfirmationData InResponseTo="id-baea9479-3417-4f32-a8e3-b2ca2223e9aa" NotOnOrAfter="2022-06-14T07:21:00.307Z" />
+			</saml2:SubjectConfirmation>
+		</saml2:Subject>
+		<saml2:Conditions NotBefore="2022-06-14T07:20:30.306Z" NotOnOrAfter="2022-06-14T07:21:00.306Z">
+			<saml2:AudienceRestriction>
+				<saml2:Audience>http://test.trustbroker.swiss</saml2:Audience>
+			</saml2:AudienceRestriction>
+		</saml2:Conditions>
+		<saml2:AuthnStatement AuthnInstant="2022-06-14T07:20:30.306Z">
+			<saml2:AuthnContext>
+				<saml2:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:MobileTwoFactorContract</saml2:AuthnContextClassRef>
+			</saml2:AuthnContext>
+		</saml2:AuthnStatement>
+		<saml2:AttributeStatement>
+			<saml2:Attribute Name="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress">
+				<saml2:AttributeValue xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">maxine.monde@trustbroker.swiss</saml2:AttributeValue>
+			</saml2:Attribute>
+			<saml2:Attribute Name="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname">
+				<saml2:AttributeValue xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">Maxine</saml2:AttributeValue>
+			</saml2:Attribute>
+			<saml2:Attribute Name="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname">
+				<saml2:AttributeValue xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">Monde</saml2:AttributeValue>
+			</saml2:Attribute>
+			<saml2:Attribute Name="HomeRealmHint">
+				<saml2:AttributeValue xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">SAML-MOCK-2</saml2:AttributeValue>
+			</saml2:Attribute>
+			<saml2:Attribute Name="UnknownAttributeBlocked">
+				<saml2:AttributeValue xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">Blocked by CP AttributesSelection</saml2:AttributeValue>
+			</saml2:Attribute>
+		</saml2:AttributeStatement>
+	</saml2:Assertion>
+</saml2p:Response>
+

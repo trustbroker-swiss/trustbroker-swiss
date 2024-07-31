@@ -1,0 +1,68 @@
+<!--
+ Copyright (C) 2024 trustbroker.swiss team BIT
+ 
+ This program is free software.
+ You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
+ as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+ 
+ This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ 
+ See the GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License along with this program.
+ If not, see <https://www.gnu.org/licenses/>.
+-->
+<main class="mainContent" *ngIf="showHrd">
+	<div class="title-container" id="titleContainer">
+		<h1 class="high-emphasis mb-2">{{ "trustbroker.hrd.main.title" | translate }}</h1>
+		<div class="body-1 medium-emphasis mb-2">
+			<div>
+				<p [innerHTML]="'trustbroker.hrd.main.subtitle' | translate"></p>
+			</div>
+		</div>
+	</div>
+
+	<div class="cards-padding">
+		<div class="cards-container" role="list" id="cardcontainer">
+			<div *ngFor="let idpObject of idpObjects" class="card-container" role="listitem">
+				<!--Normal cards -->
+				<mat-card
+					appearance="outlined"
+					class="{{ theme.name }} small"
+					id="{{ idpObject.urn }}"
+					*ngIf="!isButtonSize"
+					tabindex="1"
+					role="button"
+					[attr.aria-label]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate : { Default: idpObject.title }"
+					(keydown.enter)="onClickCard(idpObject)"
+					(keydown.space)="onClickCard(idpObject)"
+					(click)="onClickCard(idpObject)"
+					[ngClass]="{ mathover: !idpObject.disabled }"
+				>
+					<app-disabled-card
+						*ngIf="idpObject.disabled"
+						[cardText]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate : { Default: idpObject.title }"
+						[theme]="theme"
+					>
+					</app-disabled-card>
+					<img mat-card-image [src]="getImageUrl(idpObject.image)" alt="{{ idpObject.title }}" (click)="onClickCard(idpObject)" />
+					<mat-card-title class="high-emphasis">
+						<h2 [id]="idpObject.title" [innerHTML]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate : { Default: idpObject.title }"></h2>
+					</mat-card-title>
+				</mat-card>
+				<!--Buttons -->
+				<app-small-card
+					[id]="idpObject.urn"
+					[showSmallCards]="isButtonSize"
+					[inputColor]="idpObject.color"
+					[inputShortcut]="idpObject.shortcut"
+					[cardText]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate : { Default: idpObject.title }"
+					(cardClick)="onClickCard(idpObject)"
+					[disabled]="idpObject.disabled"
+					[theme]="theme"
+				>
+				</app-small-card>
+			</div>
+		</div>
+	</div>
+</main>

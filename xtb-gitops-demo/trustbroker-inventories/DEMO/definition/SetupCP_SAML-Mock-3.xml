@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ClaimsProviderSetup>
+    <ClaimsParty id="urn:trustbroker.swiss:idp:SAML-MOCK-3" >
+        <SSOUrl>http://localhost:7070/auth/saml2/idp/samples</SSOUrl>
+        <Certificates>
+            <SignerTruststore>
+                <CertPath>token-signer/keystore.pem</CertPath>
+                <Password>$PKI_PASSPHRASE</Password>
+            </SignerTruststore>
+        </Certificates>
+        <Saml>
+            <ArtifactBinding inboundMode="SUPPORTED" outboundMode="SUPPORTED"/>
+        </Saml>
+        <!-- CP attributes to be propagated -->
+        <AttributesSelection>
+            <Definition name="EMail" namespaceUri="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"/>
+            <Definition name="FirstName" namespaceUri="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname"/>
+            <Definition name="FamilyName" namespaceUri="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname"/>
+        </AttributesSelection>
+    </ClaimsParty>
+</ClaimsProviderSetup>

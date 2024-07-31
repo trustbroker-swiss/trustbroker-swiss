@@ -1,0 +1,9 @@
+<saml2p:AuthnRequest xmlns:saml2p="urn:oasis:names:tc:SAML:2.0:protocol"
+                     AssertionConsumerServiceURL="http://localhost:7070/authn/consumer"
+                     Destination="http://localhost:8090/api/v1/saml"
+                     ID="AuthnRequest_24542162e7a65118bd8cc4ba5a9e98e9d9a70640"
+                     IssueInstant="2021-08-25T09:48:56.640Z"
+                     Version="2.0"
+>
+    <saml2:Issuer xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion">urn:trustbroker.swiss:sp:DEMO-RP-1</saml2:Issuer>
+</saml2p:AuthnRequest>

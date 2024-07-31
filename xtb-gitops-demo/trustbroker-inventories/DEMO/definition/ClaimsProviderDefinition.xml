@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Define the HRD tiles for the claims parties defined in SetupCP_*.xml -->
+<ClaimsProviderDefinitions>
+	<ClaimsProvider name="SamlMock-1"
+					id="urn:trustbroker.swiss:idp:SAML-MOCK-1"
+					img="Tile_SAML-Mock.svg"
+					description="saml-mock-1"
+					shortcut="SM" color="#11AABB"
+	/>
+	<ClaimsProvider name="SamlMock-2"
+					id="urn:trustbroker.swiss:idp:SAML-MOCK-2"
+					img="Tile_SAML-Mock.svg"
+					description="saml-mock-2"
+					shortcut="SM2" color="#FFAA33"
+	/>
+	<ClaimsProvider name="SamlMock-2"
+					id="urn:trustbroker.swiss:idp:SAML-MOCK-3"
+					img="Tile_SAML-Mock-3.svg"
+					description="saml-mock-3"
+					shortcut="SM2" color="#FFAA33"
+	/>
+</ClaimsProviderDefinitions>
+

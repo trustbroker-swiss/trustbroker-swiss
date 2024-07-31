@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Define SSO groups and their lifecycle to join multiple relying parties into a single per CP login session:
+- name: SSO group name used in RelyingParty.SSO element
+- maxIdleTimeMinutes: Time until the SSO session expires without any interaction from any SSO participants
+- maxSessionTimeMinutes: Time until the SSO session expires unconditionally
+- maxCachingTimeMinutes: Set this one to the same value as maxSessionTimeMinutes (future feature may be)
+-->
+<SSOGroupSetup>
+	<SSOGroup name="SSO-GROUP-1"
+			  maxIdleTimeMinutes="120"
+			  maxSessionTimeMinutes="600"
+			  maxCachingTimeMinutes="600"
+	/>
+</SSOGroupSetup>

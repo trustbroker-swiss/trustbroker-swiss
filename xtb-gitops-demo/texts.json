@@ -1,0 +1,263 @@
+{
+  "i18n.oblique.footer.title": {
+    "*": ""
+  },
+  "i18n.oblique.header.title": {
+    "*": ""
+  },
+  "i18n.oblique.master-layout.accesskey.main-content": {
+    "*": ""
+  },
+  "i18n.oblique.master-layout.accesskey.navigation": {
+    "*": ""
+  },
+  "i18n.oblique.master-layout.accesskey.title": {
+    "*": ""
+  },
+  "trustbroker.app.page.title": {
+    "*": "trustbroker.swiss"
+  },
+  "trustbroker.app.title": {
+    "*": "trustbroker.swiss"
+  },
+  "trustbroker.error.main.button.continue": {
+    "de": "Weiter zur Applikation",
+    "en": "Continue to application",
+    "fr": "Continuer vers l'application",
+    "it": "Continua con l'applicazione"
+  },
+  "trustbroker.error.main.button.relogin": {
+    "de": "Erneut einloggen",
+    "en": "Login again",
+    "fr": "Connectez-vous à nouveau",
+    "it": "Riavvia il login"
+  },
+  "trustbroker.error.main.info": {
+    "de": "Sollte das Problem weiterhin bestehen, wenden Sie sich bitte an den Support.",
+    "en": "If the problem continues to persist, please contact the support.",
+    "fr": "Si le problème persiste, veuillez contacter le support.",
+    "it": "Se il problema persiste, vi preghiamo di rivolgervi al support."
+  },
+  "trustbroker.error.main.info.default": {
+    "de": "Sollte das Problem weiterhin bestehen, wenden Sie sich bitte an den Support.",
+    "en": "If the problem continues to persist, please contact the support.",
+    "fr": "Si le problème persiste, veuillez contacter le support.",
+    "it": "Se il problema persiste, vi preghiamo di rivolgervi al support."
+  },
+  "trustbroker.error.main.info.denied": {
+    "de": "Sollte das Problem weiterhin bestehen, wenden Sie sich bitte an den Support.",
+    "en": "If the problem continues to persist, please contact the support.",
+    "fr": "Si le problème persiste, veuillez contacter le support.",
+    "it": "Se il problema persiste, vi preghiamo di rivolgervi al support."
+  },
+  "trustbroker.error.main.info.pwresetfailed": {
+    "de": "Sollte das Problem weiterhin bestehen, wenden Sie sich bitte an den Support.",
+    "en": "If the problem continues to persist, please contact the support.",
+    "fr": "Si le problème persiste, veuillez contacter le support.",
+    "it": "Se il problema persiste, vi preghiamo di rivolgervi al support."
+  },
+  "trustbroker.error.main.info.pwresetsuccessful": {
+    "de": "Sollte das Problem weiterhin bestehen, wenden Sie sich bitte an den Support.",
+    "en": "If the problem continues to persist, please contact the support.",
+    "fr": "Si le problème persiste, veuillez contacter le support.",
+    "it": "Se il problema persiste, vi preghiamo di rivolgervi al support."
+  },
+  "trustbroker.error.main.info.pwresettmpblocked": {
+    "de": "Sollte das Problem weiterhin bestehen, wenden Sie sich bitte an den Support.",
+    "en": "If the problem continues to persist, please contact the support.",
+    "fr": "Si le problème persiste, veuillez contacter le support.",
+    "it": "Se il problema persiste, vi preghiamo di rivolgervi al support."
+  },
+  "trustbroker.error.main.info.rejected": {
+    "de": "Sollte das Problem weiterhin bestehen, wenden Sie sich bitte an den Support.",
+    "en": "If the problem continues to persist, please contact the support.",
+    "fr": "Si le problème persiste, veuillez contacter le support.",
+    "it": "Se il problema persiste, vi preghiamo di rivolgervi al support."
+  },
+  "trustbroker.error.main.info.unknownprincipal": {
+    "de": "Sollte das Problem weiterhin bestehen, wenden Sie sich bitte an den Support.",
+    "en": "If the problem continues to persist, please contact the support.",
+    "fr": "Si le problème persiste, veuillez contacter le support.",
+    "it": "Se il problema persiste, vi preghiamo di rivolgervi al support."
+  },
+  "trustbroker.error.main.reference": {
+    "de": "Fehlerreferenz: ",
+    "en": "Error reference: ",
+    "fr": "Référence d'erreur: ",
+    "it": "Riferimento all'errore: "
+  },
+  "trustbroker.error.main.support.documentation": {
+    "de": "Link zur Dokumentation",
+    "en": "Link to documentation",
+    "fr": "Lien vers la documentation",
+    "it": "Link alla documentazione"
+  },
+  "trustbroker.error.main.support.emailladdress": {
+    "de": "E-Mail Addresse",
+    "en": "Email address",
+    "fr": "Adresse e-mail",
+    "it": "Indirizzo e-mail"
+  },
+  "trustbroker.error.main.support.furtherinfo": {
+    "de": "Weitere Informationen",
+    "en": "Further information",
+    "fr": "Plus d'informations",
+    "it": "Ulteriori informazioni"
+  },
+  "trustbroker.error.main.support.info": {
+    "*": "Something went wrong. Please contact the XTB support."
+  },
+  "trustbroker.error.main.support.phonennumber": {
+    "de": "Telefonnummer",
+    "en": "Phone number",
+    "fr": "Numéro de téléphone",
+    "it": "Numero di telefono"
+  },
+  "trustbroker.error.main.support.servicedesk": {
+    "de": "Kontaktinformationen zum Service Desk",
+    "en": "Service Desk contact information",
+    "fr": "Coordonnées du service d'assistance",
+    "it": "Informazioni di contatto del Service Desk"
+  },
+  "trustbroker.error.main.text.default": {
+    "*": ""
+  },
+  "trustbroker.error.main.text.denied": {
+    "de": "Anfrage abgelehnt.",
+    "en": "Request denied.",
+    "fr": "Demande refusée.",
+    "it": "Richiesta negata."
+  },
+  "trustbroker.error.main.text.rejected": {
+    "de": "Anfrage zurückgewiesen.",
+    "en": "Request rejected.",
+    "fr": "Demande rejetée.",
+    "it": "Richiesta respinta."
+  },
+  "trustbroker.error.main.title": {
+    "de": "Beim Anmeldevorgang ist ein Fehler aufgetreten.",
+    "en": "An error occurred during the login process.",
+    "fr": "Une erreur s'est produite lors du processus de connexion.",
+    "it": "Si è verificato un errore durante il processo di login."
+  },
+  "trustbroker.error.main.title.default": {
+    "de": "Beim Anmeldevorgang ist ein Fehler aufgetreten.",
+    "en": "An error occurred during the login process.",
+    "fr": "Une erreur s'est produite lors du processus de connexion.",
+    "it": "Si è verificato un errore durante il processo di login."
+  },
+  "trustbroker.error.main.title.denied": {
+    "de": "Beim Anmeldevorgang ist ein Fehler aufgetreten.",
+    "en": "An error occurred during the login process.",
+    "fr": "Une erreur s'est produite lors du processus de connexion.",
+    "it": "Si è verificato un errore durante il processo di login."
+  },
+  "trustbroker.error.main.title.rejected": {
+    "de": "Beim Anmeldevorgang ist ein Fehler aufgetreten.",
+    "en": "An error occurred during the login process.",
+    "fr": "Une erreur s'est produite lors du processus de connexion.",
+    "it": "Si è verificato un errore durante il processo di login."
+  },
+  "trustbroker.footer.info.left": {
+    "de": "<a target=\"_blank\" href=\"https://trustbroker.swiss\">Dokumentation...</a>.",
+    "en": "<a target=\"_blank\" href=\"https://trustbroker.swiss\">Documentation...</a>.",
+    "fr": "<a target=\"_blank\" href=\"https://trustbroker.swiss\">Documentation...</a>.",
+    "it": "<a target=\"_blank\" href=\"https://trustbroker.swiss\">Documentazione...</a>."
+  },
+  "trustbroker.footer.info.right": {
+    "*": "XTB/VERSION@STAGE"
+  },
+  "trustbroker.header.help": {
+    "de": "Hilfe",
+    "en": "Help",
+    "fr": "Aide",
+    "it": "Guida"
+  },
+  "trustbroker.header.help.close": {
+    "de": "Hilfe Schliessen",
+    "en": "Close help",
+    "fr": "Fermer l'aide",
+    "it": "Chiudere la guida"
+  },
+  "trustbroker.header.help.link": {
+    "*": ""
+  },
+  "trustbroker.header.help.target": {
+    "*": ""
+  },
+  "trustbroker.header.languageselection": {
+    "de": "Sprachauswahl",
+    "en": "Language selection",
+    "fr": "Sélection de langue",
+    "it": "Selezione di lingua"
+  },
+  "trustbroker.header.languageselection.selected": {
+    "*": ""
+  },
+  "trustbroker.header.logo": {
+    "*": "Logo trustbroker.swiss"
+  },
+  "trustbroker.header.theme.dark": {
+    "*": ""
+  },
+  "trustbroker.header.theme.light": {
+    "*": ""
+  },
+  "trustbroker.header.themeseelection": {
+    "*": ""
+  },
+  "trustbroker.help.generic.text": {
+    "*": "Demo setup of trustbroker.swiss federation service to play around with the opensource deliverables."
+  },
+  "trustbroker.help.generic.title": {
+    "*": "The trustbroker.swiss DEMO federation setup"
+  },
+  "trustbroker.help.saml-mock-1.text": {
+    "*": "SamlMock-1 provides sample SAML responses from the trustbroker.swiss samlmock service, check content of the trustbroker-samlmock inventory. Documentation see <a href=\"https://trustbroker.swiss\">here</a>."
+  },
+  "trustbroker.help.saml-mock-1.title": {
+    "*": "SAML Mock IDP (Instance #1)"
+  },
+  "trustbroker.help.title": {
+    "de": "Hilfe",
+    "en": "Help",
+    "fr": "Aide",
+    "it": "Guida"
+  },
+  "trustbroker.hrd.cards.saml-mock-1.title": {
+    "*": "SAML Mock IDP (1)"
+  },
+  "trustbroker.hrd.cards.saml-mock-2.title": {
+    "*": "SAML Mock IDP (2)"
+  },
+  "trustbroker.hrd.cards.saml-mock-3.title": {
+    "*": "SAML Mock IDP (3)"
+  },
+  "trustbroker.hrd.main.subtitle": {
+    "*": "IDP Selection (HRD == Home Realm Discovery (HRD) is displayed only with multiple, not automatically dispatchable IDPs)."
+  },
+  "trustbroker.hrd.main.title": {
+    "*": "trustbroker.swiss (DEMO edition)"
+  },
+  "trustbroker.sso.main.created": {
+    "de": "Erstellt am",
+    "en": "Created at",
+    "fr": "Créé le",
+    "it": "Creato il"
+  },
+  "trustbroker.sso.main.expires": {
+    "de": "Gültig bis am",
+    "en": "Valid until",
+    "fr": "alable jusqu'au ",
+    "it": "Valido fino al"
+  },
+  "trustbroker.sso.main.subtitle": {
+    "de": "Melden Sie sich ab, indem Sie auf die Kachel klicken.",
+    "en": "Logout by clicking on the tile.",
+    "fr": "Déconnectez-vous en cliquant sur la tuile.",
+    "it": "Effettui il logout cliccando sulla piastrella."
+  },
+  "trustbroker.sso.main.title": {
+    "*": "XTB Active SSO Sessions"
+  }
+}

@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="155mm"
+   height="40mm"
+   viewBox="0 0 155 40"
+   version="1.1"
+   id="svg115650"
+   inkscape:version="1.1.1 (3bf5ae0d25, 2021-09-20)"
+   sodipodi:docname="logo.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview115652"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:document-units="mm"
+     showgrid="false"
+     width="155mm"
+     inkscape:zoom="0.77771465"
+     inkscape:cx="-9.6436399"
+     inkscape:cy="560.61693"
+     inkscape:window-width="2560"
+     inkscape:window-height="1339"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs115647">
+    <rect
+       x="183.16888"
+       y="58.474612"
+       width="23.154781"
+       height="108.00877"
+       id="rect23036" />
+    <rect
+       x="368.30668"
+       y="79.067801"
+       width="19.28728"
+       height="120.86193"
+       id="rect15668" />
+    <rect
+       x="180.60729"
+       y="55.902975"
+       width="8.9906851"
+       height="93.854716"
+       id="rect11258" />
+  </defs>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       style="fill:#d40000;stroke-width:0.264583"
+       id="rect115746"
+       width="155.13933"
+       height="40.487194"
+       x="-0.52625644"
+       y="-0.17541881" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:42.3333px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif Bold';fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583"
+       x="4.5901256"
+       y="34.525612"
+       id="text129060"><tspan
+         sodipodi:role="line"
+         id="tspan129058"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:42.3333px;font-family:sans-serif;-inkscape-font-specification:'sans-serif Bold';fill:#ffffff;stroke-width:0.264583"
+         x="4.5901256"
+         y="34.525612">+</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:14.1111px;line-height:1.25;font-family:sans-serif;white-space:pre;inline-size:90.9573;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583"
+       x="48.803638"
+       y="14.790996"
+       id="text158796"><tspan
+         x="48.803638"
+         y="14.790996"
+         id="tspan28064"><tspan
+           style="font-weight:bold;-inkscape-font-specification:'sans-serif Bold';fill:#ffffff"
+           id="tspan28062">trustbroker</tspan></tspan><tspan
+         x="48.803638"
+         y="32.429871"
+         id="tspan28068"><tspan
+           style="font-weight:bold;-inkscape-font-specification:'sans-serif Bold';fill:#ffffff"
+           id="tspan28066">.swiss</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       transform="scale(0.26458333)"
+       id="text11256"
+       style="fill:black;fill-opacity:1;line-height:1.25;stroke:none;font-family:sans-serif;font-style:normal;font-weight:normal;font-size:40px;white-space:pre;shape-inside:url(#rect11258)" />
+    <text
+       xml:space="preserve"
+       transform="scale(0.26458333)"
+       id="text15666"
+       style="fill:black;fill-opacity:1;line-height:1.25;stroke:none;font-family:sans-serif;font-style:normal;font-weight:normal;font-size:40px;white-space:pre;shape-inside:url(#rect15668)" />
+    <text
+       xml:space="preserve"
+       transform="scale(0.26458333)"
+       id="text23034"
+       style="fill:black;fill-opacity:1;line-height:1.25;stroke:none;font-family:sans-serif;font-style:normal;font-weight:normal;font-size:40px;white-space:pre;shape-inside:url(#rect23036)" />
+  </g>
+</svg>

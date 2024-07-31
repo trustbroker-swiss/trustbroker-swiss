@@ -1,0 +1,518 @@
+/*
+ * Copyright (C) 2024 trustbroker.swiss team BIT
+ *
+ * This program is free software.
+ * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
+ * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ *
+ * See the GNU Affero General Public License for more details.
+ * You should have received a copy of the GNU Affero General Public License along with this program.
+ * If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package swiss.trustbroker.oidc;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import com.nimbusds.jose.HeaderParameterNames;
+import com.nimbusds.jose.jwk.source.JWKSource;
+import com.nimbusds.jose.proc.SecurityContext;
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
+import org.opensaml.saml.saml2.core.AuthnStatement;
+import org.opensaml.saml.saml2.core.NameIDType;
+import org.opensaml.saml.saml2.core.Response;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
+import org.springframework.security.oauth2.core.oidc.IdTokenClaimNames;
+import org.springframework.security.oauth2.core.oidc.endpoint.OidcParameterNames;
+import org.springframework.security.oauth2.server.authorization.OAuth2Authorization;
+import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
+import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
+import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
+import org.springframework.security.saml2.provider.service.authentication.Saml2Authentication;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
+import swiss.trustbroker.api.qoa.service.QualityOfAuthenticationService;
+import swiss.trustbroker.audit.dto.AuditDto;
+import swiss.trustbroker.audit.dto.EventType;
+import swiss.trustbroker.audit.service.AuditService;
+import swiss.trustbroker.audit.service.OutboundAuditMapper;
+import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.saml.util.CoreAttributeName;
+import swiss.trustbroker.common.saml.util.SamlIoUtil;
+import swiss.trustbroker.common.util.OidcUtil;
+import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.federation.xmlconfig.OidcClient;
+import swiss.trustbroker.federation.xmlconfig.RelyingParty;
+import swiss.trustbroker.oidc.session.HttpExchangeSupport;
+import swiss.trustbroker.oidc.session.OidcSessionSupport;
+import swiss.trustbroker.saml.dto.CpResponse;
+import swiss.trustbroker.script.service.ScriptService;
+import swiss.trustbroker.util.ApiSupport;
+import swiss.trustbroker.util.WebSupport;
+
+@AllArgsConstructor
+@Slf4j
+class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
+
+	private final TrustBrokerProperties properties;
+
+	private final RelyingPartyDefinitions relyingPartyDefinitions;
+
+	private final ScriptService scriptService;
+
+	private final AuditService auditService;
+
+	private final QualityOfAuthenticationService qoaService;
+
+	private final JWKSource<SecurityContext> jwkSource;
+
+	@Override
+	public void customize(JwtEncodingContext context) {
+		if (context == null) {
+			return;
+		}
+
+		var authorization = context.getAuthorization();
+		if (authorization == null) {
+			throw new TechnicalException("Missing authorization, cannot set Token claims");
+		}
+
+		var relyingParty = relyingPartyDefinitions.getRelyingPartyByOidcClientId(
+				authorization.getRegisteredClientId(), null, properties, false);
+		var cpResponse = setCpResponseAttributes(context, authorization, relyingParty);
+		var client = relyingPartyDefinitions.getOidcClientConfigById(authorization.getRegisteredClientId(), properties);
+
+		addTokenClaims(cpResponse, context);
+		if (context.getPrincipal() instanceof Saml2Authentication saml2Authentication) {
+			var saml2Response = saml2Authentication.getSaml2Response();
+			var response = getResponse(saml2Response);
+			addAuthTimeClaim(cpResponse, response); // from original SAML Response Assertion
+			addAcrClaim(cpResponse, response, client); // from original SAML Response Assertion
+			addSidClaim(context.getPrincipal(), cpResponse);
+		}
+
+		// Note: id_token.nonce is handled by spring, refresh_token.nonce is handled by CustomRefreshTokenGenerator
+		if (context.getTokenType().equals(OAuth2TokenType.ACCESS_TOKEN)) {
+			addNonce(cpResponse, authorization);
+		}
+
+		// ID handling like in SAML possible
+		context.getClaims().id(UUID.randomUUID().toString());
+
+		// Set these claims for all tokens
+		addTypClaim(context, cpResponse);
+		addIssClaim(cpResponse, client.orElse(null));
+		addAudienceClaim(cpResponse);
+		addAuthorizedPartyClaim(cpResponse, authorization);
+		addScopeClaim(cpResponse);
+
+		// Set kid and get the maximum kid through
+		String kid = null;
+		if (OAuth2TokenType.ACCESS_TOKEN.equals(context.getTokenType()) ||
+				OidcParameterNames.ID_TOKEN.equals(context.getTokenType().getValue())) {
+			kid = addKeyIdFromJwkSource(jwkSource, context);
+		}
+
+		// last chance to manipulate the output
+		scriptService.processRpOnToken(cpResponse, relyingParty.getId(), null);
+
+		// computed expiration
+		if (OidcParameterNames.ID_TOKEN.equals(context.getTokenType()
+													  .getValue())) {
+			addExpiresClaim(cpResponse, client);
+		}
+
+		// filter the scopes if scope is defined along oidcName, otherwise apply them
+		var attributes = cpResponse.getClaims();
+		if (!attributes.isEmpty()) {
+			context.getClaims()
+				   .claims(attrMap -> attrMap.putAll(attributes));
+		}
+
+		// optional typ claim
+		setTypeHeader(context);
+
+		// audit
+		auditTokenClaims(context, kid, cpResponse);
+	}
+
+	private void addExpiresClaim(CpResponse cpResponse, Optional<OidcClient> client) {
+		if (client.isPresent()) {
+			var issuedAt = Instant.now();
+			var expiresAt = issuedAt.plus(properties.getSecurity()
+													.getTokenLifetimeSec(), ChronoUnit.SECONDS);
+			var oidcSecurityPolicies = client.get()
+											 .getOidcSecurityPolicies();
+			if (oidcSecurityPolicies != null && oidcSecurityPolicies.getIdTokenTimeToLiveMin() != null) {
+				expiresAt = issuedAt.plus(oidcSecurityPolicies.getIdTokenTimeToLiveMin(), ChronoUnit.MINUTES);
+			}
+			cpResponse.setClaims(IdTokenClaimNames.EXP, expiresAt);
+		}
+	}
+
+	private static void addScopeClaim(CpResponse cpResponse) {
+		var scope = cpResponse.getClaims()
+							  .get(OidcUtil.OIDC_SCOPE);
+		if (scope instanceof Collection<?> scopes) {
+			var scopeList = Arrays.stream(scopes.toArray())
+					.toList();
+			var scopeClaim = OidcConfigurationUtil.getStringValueOfOidcClaim(scopeList);
+			if (scopeClaim != null) {
+				cpResponse.setClaim(OidcUtil.OIDC_SCOPE, scopeClaim);
+			}
+		}
+	}
+
+	private static void addAudienceClaim(CpResponse cpResponse) {
+		// audience comes from spring-sec
+		var audienceClaim = cpResponse.getClaims()
+									  .get(OidcUtil.OIDC_AUDIENCE);
+		// transform audience into a single valued claim if we have a list with only one value (Keycloak behavior)
+		if (audienceClaim instanceof Collection<?> audiences) {
+			var audClaims = Arrays.stream(audiences.toArray())
+					.toList();
+			if (audClaims.size() == 1) {
+				cpResponse.setClaim(OidcUtil.OIDC_AUDIENCE, audClaims.get(0));
+			}
+		}
+	}
+
+	private static void addTokenClaims(CpResponse cpResponse, JwtEncodingContext context) {
+		context.getClaims()
+			   .claims(attrMap -> {
+				   for (var entry : attrMap.entrySet()) {
+					   if (cpResponse.getClaim(entry.getKey()) == null) {
+						   cpResponse.setClaim(entry.getKey(), entry.getValue());
+					   }
+				   }
+			   });
+	}
+
+	private void auditTokenClaims(JwtEncodingContext context, String kid, CpResponse cpResponse) {
+		// OIDC claims in data section
+		var auditDtoBuilder = new OutboundAuditMapper(properties);
+		context.getClaims()
+			   .claims(attrMap ->
+					   auditDtoBuilder.mapFromClaims(attrMap, AuditDto.AttributeSource.OIDC_RESPONSE)
+			   );
+
+		// add referer and other helpful stuff
+		auditDtoBuilder.mapFrom(HttpExchangeSupport.getRunningHttpRequest());
+
+		// kid header so we can track key rotation
+		var auditDto = auditDtoBuilder.build();
+		if (kid != null) {
+			auditDtoBuilder.mapFromClaims(Map.of(OidcUtil.OIDC_HEADER_KEYID, kid), AuditDto.AttributeSource.OIDC_RESPONSE);
+		}
+
+		// overwrite referer with the original caller, so we can better correlate the application
+		var session = HttpExchangeSupport.getRunningHttpSession();
+		if (session != null) {
+			auditDto.setReferrer(session.getStateData()
+										.getRpReferer());
+		}
+
+		// correlation with SAML side sending ssoSessionId usually
+		var ssoSessionId = cpResponse.getAttribute(CoreAttributeName.SSO_SESSION_ID.getNamespaceUri());
+		auditDto.setSsoSessionId(ssoSessionId);
+
+		// token type influences log level as access_token and id_token are mostly the same
+		var tokenType = context.getTokenType()
+							   .equals(OAuth2TokenType.ACCESS_TOKEN) ?
+				EventType.OIDC_TOKEN : EventType.OIDC_IDTOKEN;
+		auditDto.setEventType(tokenType);
+
+		auditService.logOutboundSamlFlow(auditDto);
+	}
+
+	private boolean isEnabledTokenClaim(String claim) {
+		return properties.getOidc()
+						 .getAddTokenClaims()
+						 .contains(claim);
+	}
+
+
+	private boolean isEnabledTokenHeader(String header) {
+		return properties.getOidc()
+						 .getAddTokenHeader()
+						 .contains(header);
+	}
+
+	private void addSidClaim(Authentication principal, CpResponse cpResponse) {
+		if (!isEnabledTokenClaim(OidcUtil.OIDC_SESSION_ID)) {
+			return;
+		}
+		var oidcSessionId = getSidClaim(principal);
+		if (oidcSessionId != null) {
+			cpResponse.setClaim(OidcUtil.OIDC_SESSION_ID, oidcSessionId);
+			if (isEnabledTokenClaim(OidcUtil.OIDC_SESSION_STATE)) {
+				cpResponse.setClaim(OidcUtil.OIDC_SESSION_STATE, oidcSessionId);
+			}
+		}
+		else {
+			log.error("Adding 'sid' claim ignored as principal does not contain at least 2 session indexes");
+		}
+	}
+
+	static String getSidClaim(Authentication principal) {
+		// by attaching to the SAML side we also get data when e.g. /token endpoint is not under session management
+		var sessionIds = OidcSessionSupport.getSessionIdsFromAuthentication(principal);
+		if (sessionIds != null && sessionIds.size() > 1) {
+			var ssoSessionId = sessionIds.get(0);
+			var oidcSessionId = sessionIds.get(1);
+			log.debug("Setting sid claim from ssoSessionId={} to sid={}", ssoSessionId, oidcSessionId);
+			return oidcSessionId;
+		}
+		else {
+			log.error("Adding 'sid' claim ignored as principal does not contain at least 2 session indexes");
+		}
+		return null;
+	}
+
+	private void addIssClaim(CpResponse cpResponse, OidcClient client) {
+		if (client == null || !isEnabledTokenClaim(OidcUtil.OIDC_ISSUER)) {
+			return;
+		}
+		if (client.getRealm() != null) {
+			// with or without slash
+			String oidcIssuer = properties.getOidc().getIssuer();
+			var iss = oidcIssuer + ApiSupport.KEYCLOAK_REALMS + "/" + client.getRealm();
+			cpResponse.setClaim(OidcUtil.OIDC_ISSUER, iss);
+		}
+	}
+
+	private void setTypeHeader(JwtEncodingContext context) {
+		if (!isEnabledTokenHeader(HeaderParameterNames.TYPE)) {
+			return;
+		}
+		if (OAuth2TokenType.ACCESS_TOKEN.equals(context.getTokenType()) ||
+				OidcParameterNames.ID_TOKEN.equals(context.getTokenType()
+														  .getValue())) {
+			context.getJwsHeader()
+				   .headers(headers -> headers.put(HeaderParameterNames.TYPE, OidcUtil.OIDC_HEADER_TYPE_JWT));
+		}
+	}
+
+	private void addTypClaim(JwtEncodingContext context, CpResponse cpResponse) {
+		if (!isEnabledTokenClaim(OidcUtil.OIDC_TOKEN_TYPE)) {
+			return;
+		}
+		// Keycloak always sets the 'typ' claim. We do it too to distinguish tokens in auditing.
+		// Spec https://datatracker.ietf.org/doc/html/rfc7519#section-5.1 defines it only for the header.
+		// We do not set typ=JWT in the header as it's the default anyway.
+		var tokenType = context.getTokenType()
+							   .getValue();
+		if (OAuth2TokenType.ACCESS_TOKEN.getValue()
+										.equals(tokenType)) {
+			tokenType = "Bearer"; // according to Keycloak
+		}
+		else if (OAuth2TokenType.REFRESH_TOKEN.getValue()
+											  .equals(tokenType)) {
+			tokenType = "Refresh"; // according to Keycloak
+		}
+		else if (OidcParameterNames.ID_TOKEN.equals(tokenType)) {
+			tokenType = "ID"; // according to Keycloak
+		}
+		else {
+			tokenType = "JWT"; // according to spec
+		}
+		cpResponse.setClaim(OidcUtil.OIDC_TOKEN_TYPE, tokenType);
+	}
+
+	// Optional claim representing the targeted client_id, We always set it.
+	// Keycloak always sets it because usually aud includes the account client as well.
+	private void addAuthorizedPartyClaim(CpResponse cpResponse, OAuth2Authorization authorization) {
+		if (!isEnabledTokenClaim(OidcUtil.OIDC_AUTHORIZED_PARTY)) {
+			return;
+		}
+		var clientId = authorization.getRegisteredClientId();
+		if (clientId != null) {
+			cpResponse.setClaim(OidcUtil.OIDC_AUTHORIZED_PARTY, clientId);
+		}
+	}
+
+	// cache parsed response in HttpServletRequest if available to avoid parsing for each token
+	private static Response getResponse(String saml2Response) {
+		var cacheKey = "XTB.parsed.response";
+		Response response = null;
+		Pair<String, Response> responseMap = WebSupport.getRequestAttribute(cacheKey, true);
+		if (responseMap != null && responseMap.getKey()
+											  .equals(saml2Response)) {
+			response = responseMap.getValue();
+			log.debug("Using cached parsed response from HttpServletRequest");
+		}
+		if (response == null) {
+			response = SamlIoUtil.getXmlObjectFromString(Response.class, saml2Response, "XTB-OIDC");
+			log.debug("Caching parsed response in HttpServletRequest");
+			WebSupport.setRequestAttribute(cacheKey, Pair.of(saml2Response, response), true);
+		}
+		return response;
+	}
+
+	private void addAcrClaim(CpResponse cpResponse, Response response, Optional<OidcClient> oidcClient) {
+		if (!isEnabledTokenClaim(IdTokenClaimNames.ACR)) {
+			return;
+		}
+		if (CollectionUtils.isEmpty(response.getAssertions())) {
+			return;
+		}
+
+		String useLegacyQoa = null; // pass through
+		if (oidcClient.isPresent()) {
+			useLegacyQoa = oidcClient.get()
+									 .getUsePepQoa();
+		}
+
+		var authnContextClassRefs = new ArrayList<String>();
+		for (var assertion : response.getAssertions()) {
+			for (var authnStatement : assertion.getAuthnStatements()) {
+				addContextCLassRef(useLegacyQoa, authnContextClassRefs, authnStatement);
+			}
+		}
+		if (authnContextClassRefs.size() == 1) {
+			cpResponse.setClaim(IdTokenClaimNames.ACR, authnContextClassRefs.get(0)); // STRING
+		}
+		else if (authnContextClassRefs.size() > 1) {
+			cpResponse.setClaim(IdTokenClaimNames.ACR, authnContextClassRefs); // LIST
+		}
+	}
+
+	private void addContextCLassRef(String legacyQoaPolicy, List<String> authnContextClassRefs,
+			AuthnStatement authnStatement) {
+		var authContext = authnStatement.getAuthnContext();
+		if (authContext == null || authContext.getAuthnContextClassRef() == null ||
+				authContext.getAuthnContextClassRef()
+						   .getURI() == null) {
+			return;
+		}
+		var contextQoa = authContext.getAuthnContextClassRef()
+									.getURI();
+		if (legacyQoaPolicy != null) {
+			if (legacyQoaPolicy.equalsIgnoreCase(Boolean.TRUE.toString())) {
+				contextQoa = qoaService.extractPepQoaFromAuthLevel(contextQoa, false)
+									   .getName();
+			}
+			//just in case: hack aligning to a PEP bug in case application would break otherwise
+			else if (legacyQoaPolicy.equalsIgnoreCase("qoa40-as-normal")) {
+				contextQoa = qoaService.extractPepQoaFromAuthLevel(contextQoa, true)
+									   .getName();
+			}
+		}
+		authnContextClassRefs.add(contextQoa);
+	}
+
+	// Spring JwtGenerator sets it for ID_TOKEN only
+	// Spec clarification:
+	// https://bitbucket.org/openid/connect/pull-requests/341/errata-clarified-nonce-during-id-token
+	// keycloak.js expects a nonce on other tokens though
+	private static void addNonce(CpResponse cpResponse, OAuth2Authorization authorization) {
+		var nonce = getNonce(authorization);
+		if (StringUtils.hasText(nonce)) {
+			cpResponse.setClaim(IdTokenClaimNames.NONCE, nonce);
+		}
+	}
+
+	static String getNonce(OAuth2Authorization authorization) {
+		if (authorization == null) {
+			return null;
+		}
+		OAuth2AuthorizationRequest authorizationRequest = authorization.getAttribute(OAuth2AuthorizationRequest.class.getName());
+		if (authorizationRequest == null) {
+			return null;
+		}
+		var nonce = (String) authorizationRequest.getAdditionalParameters().get(OidcParameterNames.NONCE);
+		if (StringUtils.hasText(nonce)) {
+			return nonce;
+		}
+		return null;
+	}
+
+	private void addAuthTimeClaim(CpResponse cpResponse, Response response) {
+		if (!isEnabledTokenClaim(IdTokenClaimNames.AUTH_TIME)) {
+			return;
+		}
+		var authTime = getAuthTimeFromResponse(response);
+		if (authTime != null) {
+			long epochSecond = authTime.getEpochSecond();
+			cpResponse.setClaim(IdTokenClaimNames.AUTH_TIME, epochSecond);
+		}
+	}
+
+	private static Instant getAuthTimeFromResponse(Response response) {
+		if (CollectionUtils.isEmpty(response.getAssertions())) {
+			return null;
+		}
+		for (var assertion : response.getAssertions()) {
+			for (var authnStatement : assertion.getAuthnStatements()) {
+				if (authnStatement.getAuthnInstant() != null) {
+					return authnStatement.getAuthnInstant();
+				}
+			}
+			if (assertion.getIssueInstant() != null) {
+				return response.getIssueInstant();
+			}
+		}
+		return null;
+	}
+
+	private static String addKeyIdFromJwkSource(JWKSource<SecurityContext> jwkSource, JwtEncodingContext context) {
+		var kid = JwkUtil.getKeyIdFromJwkSource(jwkSource);
+		if (kid != null) {
+			context.getJwsHeader().keyId(kid);
+		}
+		return kid;
+	}
+
+	private CpResponse setCpResponseAttributes(JwtEncodingContext context, OAuth2Authorization authorization,
+			RelyingParty relyingParty) {
+		var clientId = authorization.getRegisteredClientId();
+		var oidcClient = relyingPartyDefinitions.getOidcClientConfigById(clientId, properties);
+		var scopes = authorization.getAuthorizedScopes();
+
+		// transfer SAML attributes received by XTB on OIDC side from spring-sec
+		// Can contain duplicate values coming from IDP (OriginalIssuer) and XTB (without it)
+		var samlAttributesFromSpring = OidcConfigurationUtil.extractSamlAttributesFromContext(context);
+		var samlAttributesWithDefs = OidcConfigurationUtil.mapSamlNamesToDefs(samlAttributesFromSpring);
+
+		// get all definitions with oidcNames from all sources (attributes, userdetails, properties, constants)
+		var definitionsFromConfig = OidcConfigurationUtil.getAllOidcDefinitions(relyingParty, oidcClient.orElse(null), scopes);
+
+		// transform SAML to OIDC based on required definition (includes oidcMapper execution)
+		// Uses a Definition/Object map, so we can invoke script hooks to compute derived OIDC claims
+		var preComputedClaims = OidcConfigurationUtil.computeOidcClaims(samlAttributesFromSpring, definitionsFromConfig,
+				scriptService, properties.getOidc()
+										 .isAddEidStandardClaims(), oidcClient.orElse(null));
+
+		// allow manipulations before this goes out to clients, scripts can:
+		// - manipulate, add or remove claims
+		// - aggregate structured claims from existing claims and SAML attributes
+		// NOTE: token and id_token receive the same claims
+		var nameID = authorization.getPrincipalName();
+
+		return CpResponse.builder()
+						 .nameId(nameID) // subject nameid from XTB SAML
+						 .nameIdFormat(NameIDType.UNSPECIFIED) // lost in translation by spring-sec
+						 .oidcClientId(clientId)
+						 .oidcScopes(scopes)
+						 .attributes(samlAttributesWithDefs) // input from XTB SAML side
+						 // (no diff on userdetails, properties etc. anymore)
+						 .claims(preComputedClaims) // output towards OIDC clients
+						 .build();
+	}
+
+}

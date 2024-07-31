@@ -1,0 +1,181 @@
+/*
+ * Copyright (C) 2024 trustbroker.swiss team BIT
+ *
+ * This program is free software.
+ * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
+ * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ *
+ * See the GNU Affero General Public License for more details.
+ * You should have received a copy of the GNU Affero General Public License along with this program.
+ * If not, see <https://www.gnu.org/licenses/>.
+ */
+
+@import "/src/styles/variables";
+
+app-mat-frame {
+  mat-sidenav-container {
+    height: 100%;
+  }
+
+  // min-width to keep text readable at small screen sizes
+  mat-sidenav {
+    width: 40% !important;
+    min-width: 300px;
+  }
+
+  // avoid min-width that is wider than the screen
+  @media (max-width: 300px) {
+    mat-sidenav {
+      width: 100% !important;
+      min-width: inherit;
+    }
+  }
+
+  .portal-frame {
+
+    height: 100%;
+    // prevent scrollbar because of overflowing parent mat-sidenav-content:
+    overflow: hidden;
+
+    ob-master-layout-header {
+      overflow: visible;
+
+      .ob-header {
+        overflow: visible;
+        border-bottom: 5px solid $venetian-red;
+      }
+    }
+
+    @media (max-width: $ob-layout-collapse-max) {
+      .ob-header-expanded {
+        .ob-master-layout-header {
+          .ob-header {
+            height: $ob-header-height-md;
+          }
+
+          .ob-master-layout-navigation .ob-main-nav .ob-sub-menu {
+            top: $ob-header-height-md;
+          }
+        }
+
+        .application-content {
+          padding-top: $ob-header-height-md !important;
+        }
+      }
+
+    }
+
+    .ob-master-layout, .ob-master-layout.ob-master-layout-scrolling {
+      padding-bottom: $portal-footer-height;
+    }
+
+    // Layout issues after Oblique 11 update
+    .portal-master-layout {
+      .ob-master-layout-footer {
+        height: $portal-footer-height !important;
+        color: $gray-dark;
+        background-color: $smoke;
+        border-top: 1px solid $light-grey;
+        padding: 4px 16px;
+        position: relative;
+        display: flex;
+        flex-flow: column wrap;
+
+        .ob-footer-item {
+            padding: 0;
+        }
+
+        .ob-footer-item-links {
+          color: $gray-dark;
+          background-color: $smoke;
+          padding: 0;
+        }
+      }
+
+      a {
+        color: $focus-color;
+        margin-right: 0;
+        font-size: 0.85rem;
+		text-decoration: underline;
+      }
+    }
+
+    @media (max-width: $ob-layout-collapse-max) {
+      .portal-master-layout {
+        .ob-master-layout-content {
+          overflow-y: auto;
+        }
+
+        .ob-master-layout-footer {
+          height: $portal-footer-height-collapsed !important;
+        }
+      }
+
+      .ob-master-layout, .ob-master-layout.ob-master-layout-scrolling {
+        padding-bottom: $portal-footer-height-collapsed;
+      }
+
+      // In mobile view the footer is divided into two bars/rows separated by a divider and the footer-item-info row,
+      // that contains the long text (office name) can take up two rows within the upper side on narrow screens.
+      // If the space is enough, the office name is centered in that larger bar. That is necessary for the footer to always
+      // fit the reserved space (which is the bottom padding of the master-layout).
+      app-mat-footer {
+        height: 100%;
+
+        .portal-footer {
+          display: flex;
+          flex-grow: 1;
+          flex-direction: column;
+          height: 100%;
+        }
+
+        .ob-footer-item-info {
+          display: flex;
+          align-items: center;
+          flex-grow: 1;
+        }
+      }
+    }
+
+    @media (min-width: $ob-layout-collapse) {
+      .ob-master-layout-footer .ob-footer-item-info {
+        margin-right: 0;
+      }
+    }
+  }
+
+  .d-block {
+    display: block;
+  }
+
+  .w-100 {
+    width: 100%;
+  }
+
+  .ob-main-nav {
+    padding-left: 0 !important;
+  }
+
+  .ob-master-layout-scrolling .ob-top-control-btn {
+    visibility: hidden !important;
+  }
+
+  @media (max-width: 992px) {
+    .ob-master-layout .ob-master-layout-content {
+      padding-top:0 !important;
+    }
+  }
+}
+
+.ob-accessible{
+  visibility: hidden;
+}
+
+// Layout issues after Oblique 11 update
+.mat-drawer-container {
+    background-color: $fog !important;
+    color: $container-color !important;
+}

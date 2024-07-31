@@ -1,0 +1,47 @@
+/*
+ * Copyright (C) 2024 trustbroker.swiss team BIT
+ * 
+ * This program is free software.
+ * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
+ * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * 
+ * See the GNU Affero General Public License for more details.
+ * You should have received a copy of the GNU Affero General Public License along with this program.
+ * If not, see <https://www.gnu.org/licenses/>. 
+ */
+
+@import "/src/styles/variables.scss";
+@import "/src/styles/spacing.scss";
+@import "/src/styles/material/_mixins";
+
+.errorBoxContainer {
+	margin: 0 auto;
+
+	padding-top: 1rem;
+
+	@media(max-width: $small-page-size) {
+		width: 80%;
+	}
+
+	@media(min-width: $small-page-size) {
+		width: 80%;
+	}
+	@media(min-width: $medium-page-size) {
+		width: 80%;
+	}
+	@media(min-width: $large-page-size) {
+		width: 60%;
+	}
+
+	button {
+		margin: 0 0.5rem 0 0.5rem;
+	}
+}
+
+.errorBoxTitleContainer {
+	// longer text would not fit on one line
+	margin-top: 3rem;
+}
