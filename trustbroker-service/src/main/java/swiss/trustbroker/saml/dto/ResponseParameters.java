@@ -29,6 +29,8 @@ public class ResponseParameters {
 
 	// input parameters RP side
 
+	private String conversationId; // override message ID
+
 	private String rpIssuerId;
 
 	private String rpReferer;

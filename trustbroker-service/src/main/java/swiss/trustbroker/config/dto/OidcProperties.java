@@ -67,8 +67,10 @@ public class OidcProperties {
 
 	/**
 	 * Mode for Tomcat sessions.
+	 * <br/>
+	 * Default: IN_DB
 	 */
-	private TomcatSessionMode sessionMode;
+	private TomcatSessionMode sessionMode = TomcatSessionMode.IN_DB;
 
 	/**
 	 * OIDC identity provider configuration.
@@ -134,6 +136,11 @@ public class OidcProperties {
 	 * Global default QoA.
 	 */
 	private String defaultQoa;
+
+	/**
+	 * Global default for legacy Policy Enforcement Point (PEP) QOA mapping policy configured via <pre>OidcClient.usePepQoa</pre>.
+	 */
+	private String defaultUsePepQoaPolicy;
 
 	/**
 	 * Use Keycloak issuer ID. Support cors headers without preflight and handle Issuer.

@@ -16,6 +16,8 @@
 package swiss.trustbroker.common.server;
 
 import java.io.File;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.security.Security;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,6 +26,7 @@ import java.util.List;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.LoggerFactory;
 import swiss.trustbroker.common.exception.TrustBrokerException;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
@@ -35,6 +38,10 @@ import swiss.trustbroker.common.setup.service.GitService;
  */
 @Slf4j
 public abstract class ApplicationMain {
+
+	private static final String HTTPS_PROXY_HOST = "https.proxyHost";
+
+	private static final String HTTPS_PROXY_PORT = "https.proxyPort";
 
 	protected final Class<?> starterClass;
 
@@ -58,9 +65,32 @@ public abstract class ApplicationMain {
 			if (!trustStoreFile.exists()) {
 				throw new IllegalArgumentException("TLS setup broken, check " + trustStoreFile.getAbsolutePath());
 			}
+			log.info("TLS setup: Running with trustStore={} in javaHome={}",
+					trustStoreFile.getAbsolutePath(), System.getProperty("java.home"));
 		}
 		else {
-			log.info("TLS setup: Running with JDK/JRE cacerts truststore");
+			log.info("TLS setup: Running with JDK/JRE cacerts from javaHome={}", System.getProperty("java.home"));
+		}
+	}
+
+	// allow injecting http proxy from system ENV so we do not need to patch VM args into the startup command
+	private static void checkAndSetProxy() {
+		var proxyEnv = System.getenv("https_proxy");
+		var proxyVm = System.getProperty(HTTPS_PROXY_HOST);
+		if (!StringUtils.isEmpty(proxyEnv) && StringUtils.isEmpty(proxyVm)) {
+			try {
+				var proxyUri = new URI(proxyEnv);
+				System.setProperty(HTTPS_PROXY_HOST, proxyUri.getHost());
+				System.setProperty(HTTPS_PROXY_PORT, Integer.toString(proxyUri.getPort()));
+			}
+			catch (URISyntaxException e) {
+				log.warn("Ignoring system https_proxy={}: {}", proxyEnv, e.getMessage());
+			}
+		}
+		var proxyHost = System.getProperty(HTTPS_PROXY_HOST);
+		var proxyPort = System.getProperty(HTTPS_PROXY_PORT);
+		if (proxyHost == null) {
+			log.info("Proxy setup: Running HTTPS with proxyHost={} proxyPort={}", proxyHost, proxyPort);
 		}
 	}
 
@@ -174,6 +204,7 @@ public abstract class ApplicationMain {
 			BootstrapProperties.validateBootstrap();
 
 			checkTlsSetup();
+			checkAndSetProxy();
 
 			initSamlSubSubsystem();
 

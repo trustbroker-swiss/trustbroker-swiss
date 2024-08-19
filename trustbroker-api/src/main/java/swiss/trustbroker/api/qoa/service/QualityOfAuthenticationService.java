@@ -53,7 +53,7 @@ public interface QualityOfAuthenticationService {
 		return getUnspecifiedLevel();
 	}
 
-	default QualityOfAuthentication extractPepQoaFromAuthLevel(String authLevel, boolean kerberosLevelWorkaround) {
+	default QualityOfAuthentication extractPepQoaFromAuthLevel(String authLevel, String usePepQoaPolicy) {
 		return extractQoaLevelFromAuthLevel(authLevel);
 	}
 }

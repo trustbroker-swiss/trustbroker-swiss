@@ -31,8 +31,9 @@ import org.opensaml.core.xml.XMLObject;
 public class AuditDto {
 
 	public enum AttributeSource {
-		SAML_RESPONSE("r"),
-		IDP_RESPONSE("c"),
+		SAML_RESPONSE("r"), // SAML response
+		IDP_RESPONSE("c"), // CP response filtered
+		DROPPED_RESPONSE("x"), // CP response dropped
 		OIDC_RESPONSE(""); // no tagging
 
 		private final String shortName;

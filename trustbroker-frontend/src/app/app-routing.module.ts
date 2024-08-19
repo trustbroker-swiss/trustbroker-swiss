@@ -81,6 +81,10 @@ export const routes: Routes = [
 		component: ErrorPageComponent
 	},
 	{
+		path: 'failure/:textKey',
+		component: ErrorPageComponent
+	},
+	{
 		path: 'failure',
 		component: ErrorPageComponent
 	},

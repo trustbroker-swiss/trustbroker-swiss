@@ -736,6 +736,9 @@ public class SamlMockController {
 			cpResponse.setSamlEncryptedResponse(encodedEncryptedResponse);
 			sampleMap.put(fileName, cpResponse);
 		}
+		catch (TrustBrokerException e) {
+			log.error("Could not parse file={} message={}", fileName, e.getInternalMessage(), e);
+		}
 		catch (RuntimeException ex) {
 			log.error("Could not parse file={} message={}", fileName, ex.getMessage(), ex);
 		}

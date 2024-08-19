@@ -1320,14 +1320,20 @@ public class SsoService {
 			SloProtocol protocol) {
 		String sloDestinationUrl = oidcRedirectUrl;
 		if (sloDestinationUrl == null) {
+			// Client did not send a callback URL (SAML never sends one, OIDC in some cases does not send a redirect_uri)
 			// sloUrl config: Use configured value from RelyingParty setup xml
 			Optional<String> sloUrl = relyingParty.getSloUrl(protocol);
 			if (sloUrl.isPresent()) {
 				sloDestinationUrl = sloUrl.get();
 			}
-			else {
-				sloDestinationUrl = trustBrokerProperties.getSloDefaultDestinationPath(); // XTB knows PEPs
+			// default URLs must be relative paths or absolute URLs to known confirmation pages:
+			else if (protocol == SloProtocol.OIDC) {
+				sloDestinationUrl = trustBrokerProperties.getSloDefaultOidcDestinationPath();
 			}
+			else if (protocol == SloProtocol.SAML2) {
+				sloDestinationUrl = trustBrokerProperties.getSloDefaultSamlDestinationPath();
+			}
+			// SloProtocol.HTTP not possible here
 		}
 		if (requestReferrer != null) {
 			if (sloDestinationUrl == null) {

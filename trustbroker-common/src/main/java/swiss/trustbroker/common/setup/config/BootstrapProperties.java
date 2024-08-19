@@ -42,6 +42,10 @@ public class BootstrapProperties {
 
 	private static final String GIT_KEY_PASSPHRASE = "GIT_KEY_PASSPHRASE";
 
+	public static final String SSH_PROXY_HOST = "ssh.proxy.host"; // SSH_PROXY_HOST via env as well
+
+	public static final String SSH_PROXY_PORT= "ssh.proxy.port";  // SSH_PROXY_PORT via env as well
+
 	private BootstrapProperties() {}
 
 	public static String getFromSysPropsOrEnv(String name, String defaultValue, boolean required) {
@@ -158,6 +162,18 @@ public class BootstrapProperties {
 			log.debug("No passphrase was provided for SSH_KEY via ENV or system properties, assuming un-encrypted key");
 		}
 		return passphrase;
+	}
+
+	public static boolean isSshProxyDefined() {
+		return getSshProxyHost() != null && getSshProxyPort() != null;
+	}
+
+	public static String getSshProxyHost() {
+		return getFromSysPropsOrEnv(SSH_PROXY_HOST, null, false);
+	}
+
+	public static String getSshProxyPort() {
+		return getFromSysPropsOrEnv(SSH_PROXY_PORT, null, false);
 	}
 
 }

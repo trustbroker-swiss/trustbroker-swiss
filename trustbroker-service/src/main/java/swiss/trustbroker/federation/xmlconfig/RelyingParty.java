@@ -269,8 +269,8 @@ public class RelyingParty implements Serializable, RelyingPartyConfig {
 		if (sso == null) {
 			return Optional.empty();
 		}
-		// 1. use SLO URL attribute (we might get rid of that)
-		if (StringUtils.isNotEmpty(sso.getSloUrl())) {
+		// 1. use SLO URL attribute for SAML2 only (we might get rid of that attribute)
+		if (protocol == SloProtocol.SAML2 && StringUtils.isNotEmpty(sso.getSloUrl())) {
 			return Optional.of(sso.getSloUrl());
 		}
 		// 2. find a matching SloUrl element for RESPONSE for protocol

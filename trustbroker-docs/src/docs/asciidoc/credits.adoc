@@ -36,6 +36,10 @@ Migration use case only. We prefer you package this with your client ao we can r
 |Apache-2.0
 |https://ws.apache.org/wss4j/licenses.html
 
+|Eclipse JGit TM
+|Eclipse Distribution License - v 1.0
+|https://www.eclipse.org/jgit/
+
 |===
 
 _Derivative work_ is marked in the source as such, along with the original licenses.

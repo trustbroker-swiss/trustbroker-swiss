@@ -36,7 +36,6 @@ import org.apache.commons.lang3.SerializationUtils;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
 import swiss.trustbroker.common.exception.TechnicalException;
-import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.config.dto.TomcatSessionMode;
@@ -159,30 +158,27 @@ public class TomcatSessionManager extends ManagerBase {
 	}
 
 	@Override
-	public Session findSession(String id) {
-		// switch to sub-session if possible and otherwise ignore the session leading to a createSession if necessary
-		var oidcSessionId = OidcSessionSupport.getOidcSessionId(null, relyingPartyDefinitions, trustBrokerProperties.getNetwork());
-		return findSession(oidcSessionId, null);
-	}
-
-	private TomcatSession findSession(String id, String tokenType) {
+	public TomcatSession findSession(String id) {
 		// session check without a key? no way
+		if (id == null) {
+			id = OidcSessionSupport.getOidcSessionId(null, relyingPartyDefinitions, trustBrokerProperties.getNetwork());
+		}
 		if (id == null) {
 			return null;
 		}
 		if (!HttpExchangeSupport.isRunningOidcExchange()) {
-			log.trace("SESSMGR.findSession sessionId={} tokenType={} not yet ready assuming getSession(false)", id, tokenType);
+			log.trace("SESSMGR.findSession sessionId={} not yet ready assuming getSession(false)", id);
 			return null;
 		}
 
 		// cache for faster processing, update triggered by isValid()
 		var session = (TomcatSession) sessions.get(id);
 		if (session == null && mode != TomcatSessionMode.IN_MEMORY) {
-			session = findSessionState(id, tokenType);
+			session = findSessionState(id);
 			// pulled from DB created on other service instance and we cache
 			if (session != null) {
-				log.debug("SESSMGR.findSession sessionId={} tokenType={} clientId={} tokens={} attributes={} loaded into MEMORY",
-						id, tokenType, session.getOidcClientId(), session.getTokenCount(), session.getAttributeCount());
+				log.debug("SESSMGR.findSession sessionId={} clientId={} tokens={} attributes={} loaded into MEMORY",
+						id, session.getOidcClientId(), session.getTokenCount(), session.getAttributeCount());
 				// check if session shall be ignored
 				session = checkOidcSubSession(session);
 			}
@@ -198,7 +194,7 @@ public class TomcatSessionManager extends ManagerBase {
 
 	// Session not cached yet on sessions so try to load it from DB.
 	// We only do that for OIDC related sessions knowing the client_id derived from various requests data in getOidcClientId.
-	private TomcatSession findSessionState(String sessionId, String tokenType) {
+	private TomcatSession findSessionState(String sessionId) {
 		try {
 			if (mode == TomcatSessionMode.IN_MEMORY) {
 				log.error("Unexpected call to {}.findSessionState() for IN_MEMORY mode", NAME);
@@ -206,19 +202,7 @@ public class TomcatSessionManager extends ManagerBase {
 			// Fetch from DB because request could run in another POD
 			// WARN: All the request.getSession(false) could trigger this, so we have a bit of a DB query overhead
 			// NOTE: Finding web session by token is deprecated as we use the oauth2_authorization table after login too.
-			Optional<StateData> stateData = Optional.empty();
-			if (tokenType == null) { // sid, id_token, access_token
-				stateData = stateCacheService.findOptional(sessionId, NAME);
-			}
-			else if (tokenType.equals(OidcUtil.OIDC_CODE)) {
-				stateData = stateCacheService.findByOidcSessionId(sessionId, NAME);
-			}
-			else if (tokenType.equals(OidcUtil.OIDC_REFRESH_TOKEN)) {
-				stateData = stateCacheService.findBySpId(sessionId, NAME);
-			}
-			else {
-				log.error("Unknown tokenType={} encountered in findSessionState", tokenType); // not happening
-			}
+			Optional<StateData> stateData = stateCacheService.findOptional(sessionId, NAME);
 			if (stateData.isEmpty()) {
 				return null;
 			}
@@ -369,30 +353,14 @@ public class TomcatSessionManager extends ManagerBase {
 		HttpExchangeSupport.getRunningHttpExchange().setOidcRequest(true);
 
 		// /authorize code interchange
-		TomcatSession session = null;
-		var codeToken = OidcSessionSupport.getOidcCodeTokenValue(request);
-		if (codeToken != null) {
-			session = findSession(codeToken, OidcUtil.OIDC_CODE);
-		}
-
-		// /token refresh_token interchange
-		if (session == null) {
-			var refreshToken = OidcSessionSupport.getOidcRefreshTokenValue(request);
-			if (refreshToken != null) {
-				session = findSession(refreshToken, OidcUtil.OIDC_REFRESH_TOKEN);
-			}
-		}
-
-		// load session directly without the presence of an old session cookie
-		if (session == null) {
-			var sessionId = OidcSessionSupport.getOidcSessionId(
-					request, relyingPartyDefinitions, trustBrokerProperties.getNetwork());
-			if (sessionId != null) {
-				session = findSession(sessionId, null);
-			}
+		var sessionId = OidcSessionSupport.getOidcSessionId(
+				request, relyingPartyDefinitions, trustBrokerProperties.getNetwork());
+		if (sessionId == null) {
+			return;
 		}
 
 		// if found, make sure we also cached it during execution, and it was not expiring in the meantime in sessiondb
+		var session = findSession(sessionId);
 		if (isSessionValid(session)) {
 			ensureSessionIsCached(session);
 			// we now run on the OIDC session

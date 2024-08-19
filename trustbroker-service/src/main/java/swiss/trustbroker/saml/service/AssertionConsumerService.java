@@ -141,10 +141,10 @@ public class AssertionConsumerService {
 			cpResponse.setApplicationName(idpStateData.getRpApplicationName());
 		}
 
-		// scripts BeforeIdm CP side
+		// Scripts BeforeIdm CP side
 		scriptService.processCpBeforeIdm(cpResponse, response, claimsParty.getId(), referrer);
 
-		//Original CpResponse before filtering the attributes
+		// Original CpResponse before filtering the attributes
 		cpResponse.setOriginalAttributes(new HashMap<>(cpResponse.getAttributes()));
 
 		// Filter CP attributes
@@ -618,9 +618,7 @@ public class AssertionConsumerService {
 		}
 	}
 
-	// NOTE: ADFS HRD app has a mode to display all tiles with an error message, nice to debug all tiles for missing
-	// translations.
-	// For security reasons the feature was discarded through.
+	// Show HRD screen when we have multiple CPs
 	public RpRequest renderUI(String rpIssuer, String referer, String applicationName,
 							  HttpServletRequest httpRequest, String requestId,
 			StateData stateData) {

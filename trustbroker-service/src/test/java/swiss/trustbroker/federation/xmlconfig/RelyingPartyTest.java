@@ -69,6 +69,15 @@ class RelyingPartyTest {
 		assertThat(rp.getSloUrl(SloProtocol.SAML2), is(Optional.of(SLO_ATTR_URL)));
 	}
 
+	@Test
+	void getSloUrlOnlyUsedForSaml() {
+		var rp = buildRp(null, null);
+		rp.getSso().setSloUrl(SLO_ATTR_URL);
+		assertThat(rp.getSloUrl(SloProtocol.SAML2), is(Optional.of(SLO_ATTR_URL)));
+		assertThat(rp.getSloUrl(SloProtocol.OIDC), is(Optional.empty()));
+		assertThat(rp.getSloUrl(SloProtocol.HTTP), is(Optional.empty()));
+	}
+
 	private RelyingParty buildRp(String url, String issuer) {
 		var sso = Sso.builder().sloUrl("").build();
 		var rp = RelyingParty.builder().sso(sso).build();

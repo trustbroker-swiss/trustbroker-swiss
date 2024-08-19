@@ -77,7 +77,7 @@ public class Sso implements Serializable {
 	private FingerprintCheck fingerprintCheck;
 
 	/**
-	 * Shortcut for <pre>SloResponse</pre> with this URL <pre>mode=RESPONSE</pre> and defaults otherwise.
+	 * Shortcut for <pre>SloResponse</pre> with this URL and defaults otherwise.
 	 * Absolute or relative URL as for <pre>SloResponse</pre>
 	 *
 	 * @see SloResponse

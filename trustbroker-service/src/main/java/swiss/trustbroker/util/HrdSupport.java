@@ -24,6 +24,7 @@ import org.apache.commons.lang3.StringUtils;
 import swiss.trustbroker.api.homerealmdiscovery.attributes.HrdClaimsProviderToRelyingPartyMapping;
 import swiss.trustbroker.api.homerealmdiscovery.attributes.HrdHttpData;
 import swiss.trustbroker.api.homerealmdiscovery.service.HrdService;
+import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
@@ -230,13 +231,18 @@ public class HrdSupport {
 		if (network == null) {
 			return cpMappings;
 		}
+		var networkHeader = properties.getNetwork() != null ? properties.getNetwork().getNetworkHeader() : null;
 		var newList = new ArrayList<>(cpMappings.stream().filter(cpm -> cpm.isValidForNetwork(network)).toList());
 		if (log.isDebugEnabled()) {
-			var networkHeader = properties.getNetwork() != null ? properties.getNetwork().getNetworkHeader() : null;
 			log.debug("Got {}={} reducing CP mappings from {} to {} entries", networkHeader, network,
 					cpMappings.size(), newList.size());
 		}
-		return newList.isEmpty() ? cpMappings : newList;
+		if (newList.isEmpty()) {
+			throw new RequestDeniedException(String.format(
+					"Got %s=%s but none of the configured cps are available on that network: %s",
+					networkHeader, network, cpMappings));
+		}
+		return newList;
 	}
 
 	private static List<ClaimsProviderRelyingParty> filterMappingsForRelyingPartyAlias(String rpOrAppId,

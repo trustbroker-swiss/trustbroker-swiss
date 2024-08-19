@@ -308,9 +308,9 @@ class RelyingPartySetupUtilTest {
 				.scopes(Scopes.builder()
 						.scopeList(List.of("lost")).build())
 				.authorizationGrantTypes(AuthorizationGrantTypes.builder()
-						.grantTypes(List.of("authorization_code", "client_secret_post", "refresh_token")).build())
+						.grantTypes(List.of("authorization_code", "refresh_token")).build())
 				.clientAuthenticationMethods(ClientAuthenticationMethods.builder()
-						.methods(List.of("none", "client_secret_basic")).build())
+						.methods(List.of("none", "client_secret_basic", "client_secret_post")).build())
 				.qoa(Qoa.builder().classes(List.of("lost")).build())
 				.build();
 

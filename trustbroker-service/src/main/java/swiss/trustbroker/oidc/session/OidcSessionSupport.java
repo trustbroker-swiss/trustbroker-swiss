@@ -64,7 +64,7 @@ public class OidcSessionSupport {
 	// So we cannot make this compile-time save, but it's used for exception improvements only anyway.
 	static final String SPRING_SECURITY_SAVED_REQUEST = "SPRING_SECURITY_SAVED_REQUEST";
 
-	// Just for debugging puposes we want to know when spring is processing the SAML response on OIDC side
+	// Just for debugging purposes we want to know when spring is processing the SAML response on OIDC side
 	static final String SAML2_AUTHN_REQUEST = "org.springframework.security.saml2.provider.service.web."
 			+ "HttpSessionSaml2AuthenticationRequestRepository.SAML2_AUTHN_REQUEST";
 
@@ -90,7 +90,7 @@ public class OidcSessionSupport {
 	// track authenticated subject FYI mainly
 	private static final String SPRING_PRINCIPAL_NAME = "SPRING_PRINCIPAL_NAME";
 
-	// forced authentication support flag to prevent loops when pörompt=login comes along
+	// forced authentication support flag to prevent loops when prompt=login comes along
 	private static final String OIDC_PROMPT_LOGIN_PENDING = "OIDC_PROMPTLOGIN_PENDING";
 
 	private OidcSessionSupport() {
@@ -304,6 +304,24 @@ public class OidcSessionSupport {
 		return oidcSessionId;
 	}
 
+	public static String getOrCreatedOidcConversationId(TomcatSession session,
+			RelyingPartyDefinitions relyingPartyDefinitions, NetworkConfig networkConfig) {
+		if (session == null) {
+			session = HttpExchangeSupport.getRunningHttpSession();
+		}
+		if (session != null && session.getStateData() != null) {
+			var conversationId = session.getStateData().getLastConversationId();
+			if (conversationId == null) {
+				conversationId = "OA2_" + session.getIdInternal() + "_" + WebSupport.getTraceId();
+				session.getStateData().setLastConversationId(conversationId);
+			}
+			return conversationId;
+		}
+		// no session, prefix with OAZ
+		var wireSessionId = getOidcSessionId(null, relyingPartyDefinitions, networkConfig);
+		return wireSessionId != null ? "OAZ_" + wireSessionId + "_" + WebSupport.getTraceId() : null;
+	}
+
 	public static String getOidcCodeTokenValue(HttpServletRequest request) {
 		if (request == null) {
 			request = HttpExchangeSupport.getRunningHttpRequest();
@@ -453,8 +471,12 @@ public class OidcSessionSupport {
 		Set<String> ret = new LinkedHashSet<>();
 		if (relyingPartyDefinitions != null && messageUrl != null) {
 			// Note: We could speed up locating client with using cl.isValidRedirectUri_s_ but ERROR less precise then
-			var clients = relyingPartyDefinitions.getOidcClientsByPredicate(
-					cl -> cl.isValidRedirectUri(messageUrl) && cl.isSameRealm(realm));
+			var clients = relyingPartyDefinitions.getOidcClientsByPredicate(cl ->
+					cl.isValidRedirectUri(messageUrl));
+			if (clients.size() > 1) {
+				// not enough information sent by client and matching via URL finds multiple configs using the same ACUrl
+				clients = clients.stream().filter(cl -> cl.isSameRealm(realm)).toList();
+			}
 			clients.forEach(c -> ret.add(c.getId()));
 		}
 		return ret;
@@ -574,7 +596,6 @@ public class OidcSessionSupport {
 						clientId, OidcUtil.OIDC_PROMPT, OidcUtil.OIDC_PROMPT_LOGIN,
 						request.getRequestURI(), WebSupport.getClientHint(request, trustBrokerProperties.getNetwork()));
 			}
-
 			session.setAttributeInternal(OIDC_PROMPT_LOGIN_PENDING, System.currentTimeMillis());
 		}
 
@@ -595,6 +616,9 @@ public class OidcSessionSupport {
 		var httpExchange = HttpExchangeSupport.getRunningHttpExchange();
 		httpExchange.getResponse().addCookie(oidcSessionCookie);
 
+		// initial conversation trace if not yet done
+		var conversationId = getOrCreatedOidcConversationId(session, relyingPartyDefinitions, trustBrokerProperties.getNetwork());
+
 		// exchange update also with client info
 		// Note: Cookies for HTTP session tracking should only be emitted on OIDC side, SAML works without web session
 		var req = httpExchange.getRequest();
@@ -602,24 +626,25 @@ public class OidcSessionSupport {
 		if (principal != null) {
 			// Note: Spring security sets the authentication context twice so this also gets logged twice (onResponse, final)
 			if (!httpExchange.isAuthContextHandled()) {
-				log.info("Established OIDC authentication for clientId={} userName={} ssoSessionId={} oidcSessionId={} "
-								+ "trackingCookie={} on host={} requestUrl={} cookieValidSec={} cookieSecure={} ",
+				log.info("Established OIDC authentication for clientId={} userName={} ssoSessionId={} oidcSessionId={}"
+								+ " conversationId={} trackingCookie={} on host={} requestUrl={}"
+								+ " cookieValidSec={} cookieSecure={} ",
 						clientId, principal.getName(), ssoSessionId, session.getId(),
-						oidcSessionCookie.getName(), host, req.getRequestURL(),
+						conversationId, oidcSessionCookie.getName(), host, req.getRequestURL(),
 						oidcSessionCookie.getMaxAge(), oidcSessionCookie.getSecure());
 				httpExchange.setAuthContextHandled(true);
 			}
 		}
 		else {
-			log.debug("Refresh OIDC authentication for clientId={} oidcSessionId={} "
-							+ "trackingCookie={} on host={} requestUrl={} cookieValidSec={} cookieSecure={}",
-					clientId, session.getId(), oidcSessionCookie.getName(), host, req.getRequestURL(),
+			log.debug("Refresh OIDC authentication for clientId={} oidcSessionId={} conversationId={}"
+							+ " trackingCookie={} on host={} requestUrl={} cookieValidSec={} cookieSecure={}",
+					clientId, session.getId(), oidcSessionCookie.getName(), host, req.getRequestURL(), conversationId,
 					oidcSessionCookie.getMaxAge(), oidcSessionCookie.getSecure());
 		}
 	}
 
 	// Mainly Set-Cookie BSESSION_CLIENT_ID=sessionid to track the federated login and leave some cross-checking data on the
-	// session so we can validate when a session is retrieved not matching the caller context.
+	// session, so we can validate when a session is retrieved not matching the caller context.
 	// We keep the cookie as a hint to find client_id and session as a last resort to find the OIDC auth state in
 	// getOidcSessionId.
 	// NOTE: TomcatSession.getSession == HttpSession, they may have differing IDs potentially but not observed yet
@@ -663,7 +688,7 @@ public class OidcSessionSupport {
 			String clientId, String sessionId, String principalName,
 			TrustBrokerProperties trustBrokerProperties) {
 		var httpExchange = HttpExchangeSupport.getRunningHttpExchange();
-		// best effort, logout might not contain any reference to session or client so we do not clear the cookie then
+		// best effort, logout might not contain any reference to session or client, so we do not clear the cookie then
 		if (httpExchange != null && clientId != null) {
 			boolean cookieSecure = trustBrokerProperties.isSecureBrowserHeaders();
 			discardOidcClientCookie(clientId, httpExchange.getResponse(), cookieSecure);
@@ -693,9 +718,9 @@ public class OidcSessionSupport {
 		}
 	}
 
-	// SSOService creates a mapping session for the StateData.ssoSessionId on establishing a SSO session.
+	// SSOService creates a mapping session for the StateData.ssoSessionId on establishing an SSO session.
 	// A joining OIDC participant si added for GLO handling.
-	// If there is no XTB SSO session an OIDC client exists on it's own.
+	// If there is no XTB SSO session an OIDC client exists on its own.
 	// So summarized we have these session identifiers:
 	// - Primary sessionId (SESS1) belongs to XTB_encoded_cp_subject
 	// - SP SAML mapping spSessionId (SESS1): UUID belongs to the relying party
@@ -758,7 +783,7 @@ public class OidcSessionSupport {
 	// Federation from CP to RP on SAML response
 	// https://domain/login/saml2/sso/client_id => client_id
 	public static String getSamlExchangeAcsUrlClientId(String acsUrl) {
-		// SAML AuthnRequest AssertionConsumerService URL recieved on SAM side
+		// SAML AuthnRequest AssertionConsumerService URL received on SAM side
 		if (acsUrl != null && acsUrl.contains(ApiSupport.SPRING_SAML_FEDERATION_CTXPATH)) {
 			return acsUrl.replaceAll(".*" + ApiSupport.SPRING_SAML_FEDERATION_CTXPATH, "");
 		}
@@ -798,7 +823,7 @@ public class OidcSessionSupport {
 	static TomcatSession invalidateSessionOnPromptLogin(TomcatSession session,
 			String idpUrl, String clientId, NetworkConfig networkConfig) {
 		if (session == null) {
-			return session;
+			return null;
 		}
 
 		// discard session for a new login
@@ -908,34 +933,6 @@ public class OidcSessionSupport {
 
 	public static String getStateParam(HttpServletRequest request) {
 		return StringUtil.clean(request.getParameter(OidcUtil.OIDC_STATE_ID));
-	}
-
-	public static void addOAuth2AuthorizationTracking(StateData stateData,
-			String codeToken, String refreshToken, String authorization, int tokenCount) {
-		stateData.setOidcSessionId(codeToken); // primary key
-		stateData.setOidcRefreshToken(refreshToken); // init on /token, use on /token
-		stateData.setOidcTokenData(authorization);
-		stateData.setOidcTokenCount(tokenCount);
-	}
-
-	public static void removeOAuth2AuthorizationTracking(StateData stateData) {
-		// keys
-		stateData.setOidcRefreshToken(null);
-		// authorization state
-		stateData.setOidcTokenData(null);
-		stateData.setOidcTokenCount(0);
-	}
-
-	public static String getOAuth2Authorization() {
-		var session = HttpExchangeSupport.getRunningHttpSession();
-		if (session == null) {
-			return null;
-		}
-		var state = session.getStateData();
-		if (state == null) {
-			return null;
-		}
-		return state.getOidcTokenData();
 	}
 
 	public static String getSessionInitiator() {

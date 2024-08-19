@@ -14,6 +14,8 @@
  */
 package swiss.trustbroker.oidc.tx;
 
+import java.util.regex.Pattern;
+
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
@@ -52,15 +54,16 @@ public class FragmentUtil {
 
 	static String checkAndFixFragmentMode(String redirect, HttpSession session, String responseMode) {
 		if (redirect != null) {
-			if (redirect.contains("?code=") && session != null && OIDC_RESPONSE_FRAGMENT.equals(
-					session.getAttribute(OIDC_RESPONSE_MODE))) {
+			if (session != null && OIDC_RESPONSE_FRAGMENT.equals(session.getAttribute(OIDC_RESPONSE_MODE))
+					&& (redirect.contains("?code=") || (redirect.contains("&code=")))) {
 				log.debug("Handling code redirect switch to fragment on session={}", session);
 				removeFragmentModeFlag(session);
-				return redirect.replace("?code=", "#code=");
+				return redirect.replaceFirst("\\?", "#");
 			}
-			if (redirect.contains("?error=") && OIDC_RESPONSE_FRAGMENT.equals(responseMode)) {
+			if (OIDC_RESPONSE_FRAGMENT.equals(responseMode)
+					&& (redirect.contains("?error=") || (redirect.contains("&error=")))) {
 				log.debug("Handling error redirect switch to fragment on={}", redirect);
-				return redirect.replace("?error=", "#error=");
+				return redirect.replaceFirst("\\?", "#");
 			}
 		}
 		return redirect;

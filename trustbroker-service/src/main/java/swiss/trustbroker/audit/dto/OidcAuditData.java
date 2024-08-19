@@ -33,5 +33,7 @@ public class OidcAuditData {
 
 	private String ssoSessionId;
 
+	private String conversationId;
+
 	private String oidcLogoutUrl;
 }

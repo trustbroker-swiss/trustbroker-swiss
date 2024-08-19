@@ -68,14 +68,12 @@ public class OidcClient implements Serializable {
 	private String realm;
 
 	/**
-	 * Policy Enforcement Point (PEP) SupportQOA=true feature also covering a mapping bug of qoa40 to
-	 * AuthNormal observed in runtime: true, false, qoa-40-as-normal
+	 * Legacy Policy Enforcement Point (PEP) QOA mapping policy.
 	 * <br/>
-	 * Default: true
+	 * Fallback: Global defaultUsePepQoaPolicy
  	 */
 	@XmlAttribute(name = "usePepQoa")
-	@Builder.Default
-	private String usePepQoa = Boolean.TRUE.toString();
+	private String usePepQoa;
 
 	/**
 	 * Permitted redirect URLs for this client.
@@ -161,7 +159,8 @@ public class OidcClient implements Serializable {
 	}
 
 	public boolean isSameRealm(String incomingRealm) {
-		return incomingRealm != null && incomingRealm.equals(realm);
+		return (realm == null && incomingRealm == null) // site working without realms
+				|| (realm != null && realm.equals(incomingRealm)); // site working with realms
 	}
 
 }

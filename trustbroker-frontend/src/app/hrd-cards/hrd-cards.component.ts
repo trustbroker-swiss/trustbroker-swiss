@@ -16,7 +16,7 @@
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute, Params } from '@angular/router';
+import { ActivatedRoute, Params, Router } from '@angular/router';
 
 import { environment } from '../../environments/environment';
 import { IdpObject } from '../model/idpObject';
@@ -46,7 +46,8 @@ export class HrdCardsComponent implements OnInit {
 		private readonly breakpointObserver: BreakpointObserver,
 		private readonly idpObjectService: IdpObjectService,
 		public readonly languageService: LanguageService,
-		private readonly themeService: ThemeService
+		private readonly themeService: ThemeService,
+		private readonly router: Router
 	) {
 		this.theme = this.themeService.getTheme();
 		this.themeService.subscribe({
@@ -104,6 +105,12 @@ export class HrdCardsComponent implements OnInit {
 				if (location) {
 					// writing the body of the redirect result to the document does not work
 					window.location.href = location;
+					return;
+				}
+				// document.write for error page does not work here
+				const url = resp.url.replace(/^.*(\/failure\/.*$)/, '$1');
+				if (url !== resp.url) {
+					void this.router.navigate([url]);
 					return;
 				}
 				window.document.write(resp.body);

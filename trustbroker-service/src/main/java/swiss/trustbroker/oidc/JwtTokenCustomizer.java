@@ -98,9 +98,12 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		var client = relyingPartyDefinitions.getOidcClientConfigById(authorization.getRegisteredClientId(), properties);
 
 		addTokenClaims(cpResponse, context);
+
+		String conversationId = null;
 		if (context.getPrincipal() instanceof Saml2Authentication saml2Authentication) {
 			var saml2Response = saml2Authentication.getSaml2Response();
 			var response = getResponse(saml2Response);
+			conversationId = response.getInResponseTo();
 			addAuthTimeClaim(cpResponse, response); // from original SAML Response Assertion
 			addAcrClaim(cpResponse, response, client); // from original SAML Response Assertion
 			addSidClaim(context.getPrincipal(), cpResponse);
@@ -148,7 +151,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		setTypeHeader(context);
 
 		// audit
-		auditTokenClaims(context, kid, cpResponse);
+		auditTokenClaims(context, kid, cpResponse, conversationId);
 	}
 
 	private void addExpiresClaim(CpResponse cpResponse, Optional<OidcClient> client) {
@@ -203,7 +206,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 			   });
 	}
 
-	private void auditTokenClaims(JwtEncodingContext context, String kid, CpResponse cpResponse) {
+	private void auditTokenClaims(JwtEncodingContext context, String kid, CpResponse cpResponse, String conversationId) {
 		// OIDC claims in data section
 		var auditDtoBuilder = new OutboundAuditMapper(properties);
 		context.getClaims()
@@ -230,6 +233,9 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		// correlation with SAML side sending ssoSessionId usually
 		var ssoSessionId = cpResponse.getAttribute(CoreAttributeName.SSO_SESSION_ID.getNamespaceUri());
 		auditDto.setSsoSessionId(ssoSessionId);
+
+		// correlated with initial OIDC session
+		auditDto.setConversationId(conversationId);
 
 		// token type influences log level as access_token and id_token are mostly the same
 		var tokenType = context.getTokenType()
@@ -372,16 +378,12 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 			return;
 		}
 
-		String useLegacyQoa = null; // pass through
-		if (oidcClient.isPresent()) {
-			useLegacyQoa = oidcClient.get()
-									 .getUsePepQoa();
-		}
+		var useLegacyQoa = getLegacyQoaFlag(oidcClient);
 
 		var authnContextClassRefs = new ArrayList<String>();
 		for (var assertion : response.getAssertions()) {
 			for (var authnStatement : assertion.getAuthnStatements()) {
-				addContextCLassRef(useLegacyQoa, authnContextClassRefs, authnStatement);
+				addContextClassRef(useLegacyQoa, authnContextClassRefs, authnStatement);
 			}
 		}
 		if (authnContextClassRefs.size() == 1) {
@@ -392,7 +394,18 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		}
 	}
 
-	private void addContextCLassRef(String legacyQoaPolicy, List<String> authnContextClassRefs,
+	private String getLegacyQoaFlag(Optional<OidcClient> oidcClient) {
+		String useLegacyQoa = null; // pass through
+		if (oidcClient.isPresent()) {
+			useLegacyQoa = oidcClient.get().getUsePepQoa();
+			if (useLegacyQoa == null) {
+				useLegacyQoa = properties.getOidc().getDefaultUsePepQoaPolicy();
+			}
+		}
+		return useLegacyQoa;
+	}
+
+	private void addContextClassRef(String legacyQoaPolicy, List<String> authnContextClassRefs,
 			AuthnStatement authnStatement) {
 		var authContext = authnStatement.getAuthnContext();
 		if (authContext == null || authContext.getAuthnContextClassRef() == null ||
@@ -403,15 +416,8 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		var contextQoa = authContext.getAuthnContextClassRef()
 									.getURI();
 		if (legacyQoaPolicy != null) {
-			if (legacyQoaPolicy.equalsIgnoreCase(Boolean.TRUE.toString())) {
-				contextQoa = qoaService.extractPepQoaFromAuthLevel(contextQoa, false)
-									   .getName();
-			}
-			//just in case: hack aligning to a PEP bug in case application would break otherwise
-			else if (legacyQoaPolicy.equalsIgnoreCase("qoa40-as-normal")) {
-				contextQoa = qoaService.extractPepQoaFromAuthLevel(contextQoa, true)
-									   .getName();
-			}
+			contextQoa = qoaService.extractPepQoaFromAuthLevel(contextQoa, legacyQoaPolicy)
+								   .getName();
 		}
 		authnContextClassRefs.add(contextQoa);
 	}

@@ -131,6 +131,9 @@ class AuditMapperTest {
 		cpResponse.setAttribute(CoreAttributeName.CLAIMS_NAME.getName(), "ignoredClaimsName");
 		cpResponse.setAttribute(CoreAttributeName.EMAIL.getNamespaceUri(), TEST_EMAIL);
 		cpResponse.setAttribute(CoreAttributeName.FIRST_NAME.getName(), TEST_FIRST_NAME);
+		cpResponse.setAttribute(CoreAttributeName.HOME_REALM.getName(), "dropped");
+		cpResponse.setOriginalAttributes(new HashMap<>(cpResponse.getAttributes())); // simulate saving incoming CP attrs
+		cpResponse.removeAttributes(CoreAttributeName.HOME_REALM.getName()); // simulate CP attr filtering
 		// result not mapped inbound:
 		cpResponse.setResult(CoreAttributeName.NAME_ID.getName(), List.of("ignoredValue"));
 
@@ -142,7 +145,7 @@ class AuditMapperTest {
 		assertThat(auditDto.getDestination(), is(TEST_DESTINATION));
 		assertThat(auditDto.getIssuer(), is(TEST_ISSUER));
 		assertThat(auditDto.getResponseAttributes(), is(not(nullValue())));
-		assertThat(auditDto.getResponseAttributes().size(), is(3));
+		assertThat(auditDto.getResponseAttributes().size(), is(4));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.CLAIMS_NAME.getName()),
 				is(AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME, CoreAttributeName.CLAIMS_NAME.getNamespaceUri(),
 						AuditDto.AttributeSource.IDP_RESPONSE, 2)));
@@ -152,6 +155,9 @@ class AuditMapperTest {
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.EMAIL.getName()),
 				is(AuditDto.ResponseAttributeValue.of(TEST_EMAIL, CoreAttributeName.EMAIL.getNamespaceUri(),
 						AuditDto.AttributeSource.IDP_RESPONSE, 1)));
+		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.HOME_REALM.getName()),
+				is(AuditDto.ResponseAttributeValue.of("dropped", CoreAttributeName.HOME_REALM.getNamespaceUri(),
+						AuditDto.AttributeSource.DROPPED_RESPONSE, 1)));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.NAME_ID.getName()),
 				is(nullValue()));
 	}

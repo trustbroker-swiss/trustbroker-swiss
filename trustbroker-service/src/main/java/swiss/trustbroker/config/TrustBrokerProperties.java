@@ -282,11 +282,18 @@ public class TrustBrokerProperties {
 	private int sloNotificationMinWaitMillis = 200;
 
 	/**
-	 * Global default for logout responses.
+	 * Global default for SAML logout responses. Relative path or known absolute URL (e.g. to confirmation page).
 	 *
 	 * @see swiss.trustbroker.federation.xmlconfig.SloResponse
 	 */
-	private String sloDefaultDestinationPath;
+	private String sloDefaultSamlDestinationPath;
+
+	/**
+	 * Global default for OIDC logout responses. Relative path or known absolute URL (e.g. to confirmation page).
+	 *
+	 * @see swiss.trustbroker.federation.xmlconfig.SloResponse
+	 */
+	private String sloDefaultOidcDestinationPath;
 
 	/**
 	 * SSO session ID policy.

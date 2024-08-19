@@ -44,6 +44,8 @@ public class SloResponse implements Serializable {
 
 	/**
 	 * The mode of this entry.
+	 * <br/>
+	 * Default: RESPONSE
 	 */
 	@XmlAttribute(name = "mode")
 	@Builder.Default
@@ -51,6 +53,8 @@ public class SloResponse implements Serializable {
 
 	/**
 	 * The protocol for which this entry applies.
+	 * <br/>
+	 * Default: SAML2
 	 */
 	@XmlAttribute(name = "protocol")
 	@Builder.Default
@@ -66,6 +70,9 @@ public class SloResponse implements Serializable {
 
 	/**
 	 * Enables OIDC <pre>frontchannel_logout_session_required</pre>.
+	 * <br/>
+	 * Default: false
+	 *
 	 * @See https://openid.net/specs/openid-connect-frontchannel-1_0.html
  	 */
 	@XmlAttribute(name = "sessionRequired")
@@ -76,6 +83,8 @@ public class SloResponse implements Serializable {
 	 * Use notification cross-protocol (i.e. use protocol=OIDC even if RP is a SAML SSO session participant and vice versa).
 	 * <br/>
 	 * Note: protocol HTTP is always used crossProtocol.
+	 * <br/>
+	 * Default: false
  	 */
 	@XmlAttribute(name = "crossProtocol")
 	@Builder.Default

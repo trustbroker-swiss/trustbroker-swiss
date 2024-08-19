@@ -15,6 +15,8 @@
 
 package swiss.trustbroker.audit.service;
 
+import java.util.HashMap;
+
 import swiss.trustbroker.audit.dto.AuditDto;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.saml.dto.CpResponse;
@@ -27,7 +29,14 @@ public class InboundAuditMapper extends AuditMapper {
 
 	@Override
 	protected AuditMapper mapAttributes(CpResponse cpResponse) {
-		return mapFromDefinitions(cpResponse.getAttributes(), AuditDto.AttributeSource.IDP_RESPONSE);
+		mapFromDefinitions(cpResponse.getAttributes(), AuditDto.AttributeSource.IDP_RESPONSE); // filtered
+		if (cpResponse.getOriginalAttributes() != null && !cpResponse.getOriginalAttributes().isEmpty()) {
+			// log original attributes that have been dropped too because with XML encryption SAML-tracer does not help
+			var originalAttributes = new HashMap<>(cpResponse.getOriginalAttributes());
+			cpResponse.getAttributes().forEach((k, v) -> originalAttributes.remove(k));
+			mapFromDefinitions(originalAttributes, AuditDto.AttributeSource.DROPPED_RESPONSE); // dropped
+		}
+		return this;
 	}
 
 	@Override

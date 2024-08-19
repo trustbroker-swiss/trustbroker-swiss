@@ -62,8 +62,7 @@ import swiss.trustbroker.util.WebSupport;
 /**
  * Maps DTOs for auditing. Returns this to allow building from multiple sources. This class has a cyclic dependency to saml
  * package, but we live with that (clean on split if need be).
- *
- * For auditing we can consume IDPReponse.attributes as follows:
+ * For auditing we can consume CPResponse attributes as follows:
  * <ul>
  * <li>AttributeName.name (from internal processing and IDM) can be directly consumed as name="value" (no deduplication)</li>
  * <li>AttributeName.fullyQualifiedName (from CP origin mostly) consumed as originName="value (fullyQualifiedName)"</li>
@@ -164,7 +163,7 @@ public abstract class AuditMapper {
 			// issuer is from the message, rpIssuer and cpIssuer reflect the federation relation
 			setIfNotNull(builder::rpIssuer, stateData.getRpIssuer());
 			setIfNotNull(builder::cpIssuer, stateData.getCpIssuer());
-			setIfNotNull(builder::conversationId, stateData.getLastConversationId()); // related to authnrequest
+			setIfNotNull(builder::conversationId, stateData.getLastConversationId()); // related to initiating auth request
 			setIfNotNull(builder::ssoSessionId, stateData.getSsoSessionId());
 			setIfNotNull(builder::applicationName, stateData.getRpApplicationName()); // AuthnRequest only
 			setIfNotNull(builder::oidcClientId, stateData.getRpOidcClientId()); // AuthnRequest only
@@ -246,6 +245,7 @@ public abstract class AuditMapper {
 		if (assertion == null) {
 			return this;
 		}
+		setIfNotNull(builder::conversationId, assertion.getID());
 		if (assertion.getIssuer() != null) {
 			setIfNotNull(builder::issuer, assertion.getIssuer().getValue());
 		}
@@ -253,21 +253,19 @@ public abstract class AuditMapper {
 			setIfNotNull(builder::principal, assertion.getSubject().getNameID().getValue());
 		}
 		if (CollectionUtils.isNotEmpty(assertion.getAttributeStatements())) {
-			assertion.getAttributeStatements().stream().forEach(as -> {
-				if (as.getAttributes() != null) {
-					as.getAttributes().stream().forEach(a -> {
-						var name = a.getName();
-						var attributeName = AttributeRegistry.forName(name);
-						var values = SamlUtil.getAttributeValues(a);
-						if (values.size() == 1) {
-							addResponseAttribute(name, attributeName, values.get(0), AuditDto.AttributeSource.SAML_RESPONSE); // single value
-						}
-						else {
-							addResponseAttribute(name, attributeName, values, AuditDto.AttributeSource.SAML_RESPONSE); // list
-						}
-					});
-				}
-			});
+			assertion.getAttributeStatements().forEach(as ->
+				as.getAttributes().forEach(a -> {
+					var name = a.getName();
+					var attributeName = AttributeRegistry.forName(name);
+					var values = SamlUtil.getAttributeValues(a);
+					if (values.size() == 1) {
+						addResponseAttribute(name, attributeName, values.get(0), AuditDto.AttributeSource.SAML_RESPONSE); // single value
+					}
+					else {
+						addResponseAttribute(name, attributeName, values, AuditDto.AttributeSource.SAML_RESPONSE); // list
+					}
+				})
+			);
 		}
 		setIfNotNull(builder::samlMessage, assertion);
 		return this;
@@ -281,6 +279,7 @@ public abstract class AuditMapper {
 			}
 			setIfNotNull(builder::oidcClientId, oidcAuditData.getOidcClientId());
 			setIfNotNull(builder::ssoSessionId, oidcAuditData.getSsoSessionId());
+			setIfNotNull(builder::conversationId, oidcAuditData.getConversationId());
 			setIfNotNull(builder::destination, oidcAuditData.getOidcLogoutUrl());
 			return this;
 		}

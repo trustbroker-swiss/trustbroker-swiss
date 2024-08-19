@@ -129,11 +129,15 @@ public class CustomLogoutSuccessHandler extends SimpleUrlLogoutSuccessHandler {
 					clientId, ssoSessionId, oidcSessionId, redirectUrl);
 			handleRedirectResponse(redirectUrl, response);
 		}
+
+		// correlated with initial OIDC session
+		var convId = OidcSessionSupport.getOrCreatedOidcConversationId(null, relyingPartyDefinitions, properties.getNetwork());
 		var oidcAuditData = OidcAuditData.builder()
 										 .oidcClientId(clientId)
 										 .ssoSessionId(ssoSessionId)
 										 .oidcSessionId(oidcSessionId)
-										 .oidcLogoutUrl(redirectUrl)
+										 .conversationId(convId)
+										 .oidcLogoutUrl(redirectUrl != null ? redirectUrl : "missing-form-client")
 										 .build();
 		ssoService.auditLogoutRequestFromRp(request, null, stateData, relyingParty, oidcAuditData);
 	}

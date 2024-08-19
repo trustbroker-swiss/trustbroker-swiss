@@ -2142,7 +2142,7 @@ class SsoServiceTest {
 	})
 	void computeSamlSingleLogoutUrlFromReferrer(String sloUrl, String path, String expected) {
 		var relyingParty = buildRelyingParty(true);
-		doReturn(path).when(trustBrokerProperties).getSloDefaultDestinationPath();
+		doReturn(path).when(trustBrokerProperties).getSloDefaultSamlDestinationPath();
 
 		var result = ssoService.computeSamlSingleLogoutUrl(sloUrl, relyingParty);
 

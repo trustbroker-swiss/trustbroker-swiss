@@ -140,7 +140,7 @@ public class WebSupport {
 	private static String getOrCreateTraceId(HttpServletRequest request) {
 		var traceId = getTraceId(request);
 		if (traceId == null) {
-			traceId = UUID.randomUUID().toString();
+			traceId = UUID.randomUUID().toString().replace("-", "");
 		}
 		return traceId;
 	}

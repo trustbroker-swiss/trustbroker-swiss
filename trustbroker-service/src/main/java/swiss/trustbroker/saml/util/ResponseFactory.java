@@ -104,6 +104,9 @@ public class ResponseFactory {
 			ConstAttributes constAttr, ResponseParameters params) {
 		var assertion = OpenSamlUtil.buildAssertionObject(params.getSkinnyAssertionStyle());
 		var assertionId = OpenSamlUtil.generateSecureRandomId();
+		if (params.getConversationId() != null) {
+			assertionId = params.getConversationId() + assertionId; // conversation extended
+		}
 		assertion.setID(assertionId);
 		assertion.setIssueInstant(params.getIssuerInstant());
 		assertion.setVersion(SAMLVersion.VERSION_20);

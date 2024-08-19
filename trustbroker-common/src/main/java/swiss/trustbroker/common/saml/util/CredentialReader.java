@@ -383,7 +383,7 @@ public class CredentialReader {
 			var stream = CredentialReader.class.getClassLoader().getResourceAsStream(keystorePath);
 			if (stream == null) {
 				throw new TechnicalException(String.format("Reading %s keystore from keystorePath=%s failed",
-						keystorePath, keystoreType));
+						keystoreType, keystorePath));
 			}
 			return stream;
 		}

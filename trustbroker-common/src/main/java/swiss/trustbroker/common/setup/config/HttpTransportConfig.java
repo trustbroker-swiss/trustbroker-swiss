@@ -61,6 +61,7 @@ public class HttpTransportConfig implements TransportConfigCallback {
 		if (transport instanceof HttpTransport httpTransport && accessToken != null) {
 			var provider = new UsernamePasswordCredentialsProvider("git", accessToken);
 			httpTransport.setCredentialsProvider(provider);
+			// proxy settings from java via https.proxyHost/Port or socksProxyHost/Port out of the box
 		}
 	}
 

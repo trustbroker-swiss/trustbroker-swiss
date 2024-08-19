@@ -56,12 +56,17 @@ export class ProfileSelectionComponent implements OnInit {
 		this.profileService.sendSelectedProfile(input).subscribe({
 			next: resp => {
 				// Access Request GET URL from automatically followed redirect, document.write does not work here
-				const url = resp.url.replace(/^.*(\/accessrequest\/.*$)/, '$1');
+				let url = resp.url.replace(/^.*(\/accessrequest\/.*$)/, '$1');
 				if (url !== resp.url) {
 					void this.router.navigate([url]);
 					return;
 				}
-
+				// document.write for error page does not work here
+				url = resp.url.replace(/^.*(\/failure\/.*$)/, '$1');
+				if (url !== resp.url) {
+					void this.router.navigate([url]);
+					return;
+				}
 				window.document.write(resp.body);
 				if (document.forms.length > 0) {
 					document.forms.item(0).submit();
