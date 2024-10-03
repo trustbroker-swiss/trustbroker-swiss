@@ -1,29 +1,25 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.monitoring;
+package swiss.trustbroker.monitoring.controller;
 
 import java.util.List;
 import java.util.Optional;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.opensaml.messaging.context.MessageContext;
@@ -43,6 +39,8 @@ import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.monitoring.dto.MonitoringResponse;
+import swiss.trustbroker.monitoring.dto.Status;
 import swiss.trustbroker.saml.controller.AbstractSamlController;
 import swiss.trustbroker.saml.dto.UiObject;
 import swiss.trustbroker.saml.service.AssertionConsumerService;
@@ -58,29 +56,6 @@ import swiss.trustbroker.util.SamlValidator;
 @Slf4j
 public class MonitoringController extends AbstractSamlController {
 
-	public enum Status {
-		UP,
-		DOWN,
-		INVALID
-	}
-
-	@Data
-	@Builder
-	@JsonInclude(JsonInclude.Include.NON_NULL)
-	private static class MonitoringResponse {
-
-		private static final MonitoringResponse UP = MonitoringResponse.builder().status(Status.UP).build();
-
-		private static final MonitoringResponse DOWN = MonitoringResponse.builder().status(Status.DOWN).build();
-
-		private static final MonitoringResponse INVALID = MonitoringResponse.builder().status(Status.INVALID).build();
-
-		@NonNull
-		private Status status;
-
-		private Integer numCp;
-	}
-
 	private final RelyingPartySetupService relyingPartySetupService;
 
 	private final AssertionConsumerService assertionConsumerService;
@@ -88,7 +63,6 @@ public class MonitoringController extends AbstractSamlController {
 	private final ClaimsProviderService claimsProviderService;
 
 	private final SamlOutputService samlOutputService;
-
 
 	public MonitoringController(TrustBrokerProperties trustBrokerProperties, SamlValidator samlValidator,
 			RelyingPartySetupService relyingPartySetupService, AssertionConsumerService assertionConsumerService,

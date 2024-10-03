@@ -14,6 +14,7 @@
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
+
 package swiss.trustbroker.common.setup.config;
 
 import java.net.InetSocketAddress;

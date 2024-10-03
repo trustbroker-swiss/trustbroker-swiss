@@ -29,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.opensaml.saml.saml2.core.AuthnContextClassRef;
 import org.opensaml.saml.saml2.core.RequestedAuthnContext;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
@@ -50,9 +51,7 @@ class OidcAuthnRequestContextCustomizer implements Consumer<OpenSaml5Authenticat
 		// Pass on client_id as applicationName too via SAML ProviderName
 		authnRequest.setProviderName(OidcSessionSupport.getOidcClientId(authnRequestContext.getRequest()));
 		// Pass OIDC sessionId as conversationId for E2E tracking
-		var conversationId = OidcSessionSupport.getOrCreatedOidcConversationId(
-				null, relyingPartyDefinitions, properties.getNetwork());
-		authnRequest.setID(conversationId + OpenSamlUtil.generateSecureRandomId());
+		authnRequest.setID(TraceSupport.getOwnTraceParentForSaml());
 		// Handle prompt=login as forceAuthn=true
 		if (OidcUtil.isOidcPromptLogin(authnRequestContext.getRequest())) {
 			authnRequest.setForceAuthn(true);

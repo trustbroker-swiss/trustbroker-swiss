@@ -69,4 +69,5 @@ public class SubjectName implements Serializable {
 	public boolean isIssuerMatching(String cpIssuerId) {
 		return issuer == null || issuer.equals(cpIssuerId);
 	}
+
 }

@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.sso.service;
@@ -44,7 +44,6 @@ import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.shibboleth.shared.codec.HTMLEncoder;
-import net.shibboleth.shared.security.impl.RandomIdentifierGenerationStrategy;
 import org.apache.commons.lang3.StringUtils;
 import org.opensaml.saml.saml2.core.LogoutRequest;
 import org.opensaml.saml.saml2.core.LogoutResponse;
@@ -62,6 +61,7 @@ import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.Base64Util;
 import swiss.trustbroker.common.saml.util.SamlFactory;
 import swiss.trustbroker.common.saml.util.SamlUtil;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.common.util.UrlAcceptor;
@@ -190,8 +190,6 @@ public class SsoService {
 
 	private final StateCacheService stateCacheService;
 
-	private final RandomIdentifierGenerationStrategy randomGenerator;
-
 	private final TrustBrokerProperties trustBrokerProperties;
 
 	private final Clock clock;
@@ -296,6 +294,12 @@ public class SsoService {
 		return findValidStateFromCookies(nameParams, cookies);
 	}
 
+	public Collection<StateData> findValidStatesFromCookies(RelyingParty relyingParty, Cookie[] cookies) {
+		var nameParams = getCookieSsoGroupName(relyingParty);
+		var stateCookies = findValidStateCookies(nameParams, cookies);
+		return findValidStatesFromStateCookies(stateCookies, false).values();
+	}
+
 	public Optional<StateWithCookies> findValidStateAndCookiesToExpire(SsoCookieNameParams nameParams, Cookie[] cookies) {
 		var stateCookies = findValidStateCookies(nameParams, cookies);
 		var validStates = findValidStatesFromStateCookies(stateCookies, true);
@@ -394,7 +398,8 @@ public class SsoService {
 	}
 
 	public String generateRelayState() {
-		return SamlUtil.generateRelayState(randomGenerator.generateIdentifier());
+		// pure random we should use SamlUtil.generateRelayState with randomGenerator.generateIdentifier
+		return TraceSupport.getOwnTraceParentForSaml();
 	}
 
 	public boolean allowSso(StateData stateData) {
@@ -602,7 +607,7 @@ public class SsoService {
 			qoa = qoaService.getDefaultLevel();
 			log.debug("QOA {} used as minimal fallback", qoa);
 		}
- 		return qoa.getName();
+		return qoa.getName();
 	}
 
 	private static List<String> getIdpAssertedContextClassesFromState(StateData stateData) {
@@ -644,7 +649,7 @@ public class SsoService {
 
 		// request based decision (including DEBUG logging for request side)
 		if (!isQoaEnoughForSso(relyingParty, requestQoas, knownQoa)) {
-			qoaSufficient=  false;
+			qoaSufficient = false;
 		}
 		// no required QoAs => treat as all possible QoAs
 		// state based decision (including INFO logging for )
@@ -1067,7 +1072,7 @@ public class SsoService {
 		return originalNameId;
 	}
 
-	public static boolean isOidcPrincipalAllowedToJoinSsoSession(StateData ssoStateData, String userPrincipal,
+	public boolean isOidcPrincipalAllowedToJoinSsoSession(StateData ssoStateData, String userPrincipal,
 			String oidcSessionId) {
 		if (!ssoStateData.isSsoEstablished()) {
 			log.debug("Skip non-SSO join of participant oidcSessionId={} userPrincipal=\"{}\" to "
@@ -1199,9 +1204,10 @@ public class SsoService {
 		}
 
 		// these fields are set on the base object in AssertionConsumerService.saveState
-		ssoStateData.setLastConversationId(stateDataByAuthnReq.getLastConversationId());
 		ssoStateData.setForceAuthn(stateDataByAuthnReq.getForceAuthn());
 		ssoStateData.setSignedAuthnRequest(stateDataByAuthnReq.getSignedAuthnRequest());
+		ssoStateData.setLastConversationId(stateDataByAuthnReq.getLastConversationId());
+		TraceSupport.switchToConversation(stateDataByAuthnReq.getLastConversationId()); // detach along traceId
 
 		if (stateDataByAuthnReq.getId().equals(ssoStateData.getId())) {
 			// happens if the HRD selection GET request is sent twice, should not happen normally
@@ -1389,7 +1395,7 @@ public class SsoService {
 				log.debug("Signed SAML LogoutRequest for sloUrl={}", url);
 			}
 			result.setSamlLogoutRequest(SamlUtil.encode(logoutRequest));
-			result.setSamlRelayState(generateRelayState());
+			result.setSamlRelayState(SamlUtil.generateRelayState());
 		}
 		else if (sloResponse.getProtocol() == SloProtocol.OIDC) {
 			url = appendFrontchannelLogoutQueryString(url, sloResponse.getIssuer(), oidcSessionId);

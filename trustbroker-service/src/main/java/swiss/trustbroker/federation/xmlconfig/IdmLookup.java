@@ -17,7 +17,6 @@ package swiss.trustbroker.federation.xmlconfig;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -32,7 +31,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.EnumUtils;
 import swiss.trustbroker.api.idm.dto.IdmRequest;
 import swiss.trustbroker.api.idm.dto.IdmRequests;
 
@@ -60,7 +58,7 @@ public class IdmLookup implements Serializable, IdmRequests {
 	 * Handling of same attributes across queries.
 	 */
 	@XmlAttribute(name = "multiQueryPolicy")
-	private MultiQueryPolicy multiQueryPolicy;
+	private String multiQueryPolicy;
 
 	/**
 	 * List of queries to be executed.
@@ -78,26 +76,6 @@ public class IdmLookup implements Serializable, IdmRequests {
 	@Override
 	public List<IdmRequest> getQueryList() {
 		return Collections.unmodifiableList(queries);
-	}
-
-	@JsonIgnore
-	@Override
-	public String getMultiQueryPolicy() {
-		return multiQueryPolicy != null ? multiQueryPolicy.name() : null;
-	}
-
-	@JsonIgnore
-	public void setMultiQueryPolicy(String multiQueryPolicyName) {
-		if (multiQueryPolicyName == null) {
-			this.multiQueryPolicy = null;
-		}
-		if (EnumUtils.isValidEnum(MultiQueryPolicy.class, multiQueryPolicyName)) {
-			this.multiQueryPolicy = EnumUtils.getEnum(MultiQueryPolicy.class, multiQueryPolicyName);
-		}
-		else if (log.isErrorEnabled()) {
-			log.error("Cannot set multiQueryPolicy of={} . Valid inputs are={}", multiQueryPolicyName,
-					Arrays.toString(MultiQueryPolicy.values()));
-		}
 	}
 
 	public void updateIdmQueries(List<IdmRequest> idmRequests) {

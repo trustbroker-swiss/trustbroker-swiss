@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.saml.service;
@@ -121,11 +121,10 @@ public class AuthenticationService {
 		}
 
 		// find RP
-		String referer = WebUtil.getHeader(HttpHeaders.REFERER, httpRequest);
-		String rpIssuer = authnRequest.getIssuer().getValue();
+		var referer = WebUtil.getHeader(HttpHeaders.REFERER, httpRequest);
+		var rpIssuer = authnRequest.getIssuer().getValue();
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuer, referer);
-
-		if (relyingPartyDefinitions.isRpDisabled(relyingParty, httpRequest)) {
+		if (relyingPartyDefinitions.isRpDisabled(relyingParty, httpRequest, trustBrokerProperties.getNetwork())) {
 			throw new TechnicalException(String.format("RelyingParty=%s disabled", relyingParty.getId()));
 		}
 
@@ -285,10 +284,10 @@ public class AuthenticationService {
 		return null;
 	}
 
-
 	private String redirectToSkinnyHRD(RpRequest rpRequest, String skinnyHtml) {
 		var uiObjects = rpRequest.getUiObjects();
 		var pageContent = SkinnyHrd.buildSkinnyHrdPage(uiObjects, skinnyHtml);
 		return apiSupport.getSkinnyHrd(pageContent, rpRequest.getRequestId(), skinnyHtml);
 	}
+
 }

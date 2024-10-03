@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.saml.util;
@@ -43,7 +43,7 @@ public class CoreAttributeInitializer implements AttributeInitializer {
 		for (var value : CoreAttributeName.values()) {
 			var registered = AttributeRegistry.forName(value.getName());
 			if (registered != value) {
-				log.error("CoreAttributeName.{} must be registered by it's name - found={}", value.getName(), registered);
+				log.error("CoreAttributeName.{} must be registered by its name - found={}", value.getName(), registered);
 				ok = false;
 			}
 			// validate lazy initialization of namespaceUri
@@ -54,7 +54,7 @@ public class CoreAttributeInitializer implements AttributeInitializer {
 			else {
 				registered = AttributeRegistry.forName(value.getNamespaceUri());
 				if (registered != value) {
-					log.error("CoreAttributeName.{} must be registered by it's namespaceUri - found={}", value.getName(),
+					log.error("CoreAttributeName.{} must be registered by its namespaceUri - found={}", value.getName(),
 							registered);
 					ok = false;
 				}

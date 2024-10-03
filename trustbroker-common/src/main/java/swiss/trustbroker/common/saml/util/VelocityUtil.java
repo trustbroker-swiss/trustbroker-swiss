@@ -28,6 +28,8 @@ import net.shibboleth.shared.servlet.HttpServletSupport;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.VelocityEngine;
 import org.springframework.http.MediaType;
+import swiss.trustbroker.common.exception.ErrorMarker;
+import swiss.trustbroker.common.exception.ExceptionUtil;
 import swiss.trustbroker.common.exception.TechnicalException;
 
 /**
@@ -62,9 +64,6 @@ public class VelocityUtil {
 			VelocityEngine velocityEngine, HttpServletResponse response, String velocityTemplate,
 			VelocityContext context) {
 		log.debug("Rendering velocityTemplate={}", velocityTemplate);
-		// HTTPPostEncoder.postEncode copied, not flushing the stream to allow TX commit
-		// Alternative 1: HttpServletResponseWrapper with custom output catching the flush
-		// Alternative 2: Use @Transactional on SamlController split away from AppController
 		try {
 			HttpServletSupport.addNoCacheHeaders(response);
 			HttpServletSupport.setUTF8Encoding(response);
@@ -76,7 +75,12 @@ public class VelocityUtil {
 			}
 		}
 		catch (Exception ex) {
-			throw new TechnicalException(String.format("Error rendering Velocity template msg=%s", ex.getMessage()), ex);
+			if (ExceptionUtil.isBrokenPipe(ex)) {
+				throw new TechnicalException(ErrorMarker.BROKEN_PIPE, String.format(
+						"Connection to client broken while rendering Velocity template msg='%s'", ex.getMessage()), ex);
+			}
+			throw new TechnicalException(
+					String.format("Error rendering Velocity template msg='%s'", ex.getMessage()), ex);
 		}
 	}
 

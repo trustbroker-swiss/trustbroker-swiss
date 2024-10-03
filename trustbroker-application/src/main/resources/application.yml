@@ -34,7 +34,7 @@ spring:
     password: ${STATECACHE_PASS}
     schemas: TBSS16
     driver-class-name: org.mariadb.jdbc.Driver
-    locations: [classpath:db/migration/mariadb]
+    locations: [ classpath:db/migration/mariadb ]
     baselineOnMigrate: true # force upgrading XTB schema even though the database is not empty
     placeholders:
       databaseName: ${spring.flyway.schemas}
@@ -67,6 +67,20 @@ server:
 
 # /actuator customization
 management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: trustbroker
   server:
     port: 8091
   security:
@@ -85,7 +99,9 @@ trustbroker:
     claimsDefinitionMapping: definition/ClaimsProviderDefinition.xml
     claimsProviderSetup: definition/SetupCP.xml
     relyingPartySetup: definition/SetupRP.xml
-    scriptPath: definition/scripts/
+    scriptPath: definition/
+    globalScriptPath: scripts/
+    globalProfilesPath: profiles/
     ssoGroupSetup: definition/SetupSSOGroups.xml
     keystoreBasePath: ${TRUSTBROKER_HOME}/configuration/latest/keystore/
     secureBrowserHeaders: true # false required for OIDC when XTB runs on http instead of https
@@ -161,6 +177,7 @@ trustbroker:
         - Authorization
         - Content-Type
         - X-Requested-With
+        - traceparent
     # HTTP security headers - see defaults in ContentSecurityPolicies, FrameOptionsPolicies.
     csp:
       #oidc:
@@ -274,6 +291,8 @@ trustbroker:
           namespaceUri: http://trustbroker.swiss/claims/authLevel
         - name: SsoSessionId
           namespaceUri: http://trustbroker.swiss/claims/ssoSessionId
+        - name: ConversationId
+          namespaceUri: http://trustbroker.swiss/claims/conversationId
 
     gui:
       images: ${TRUSTBROKER_HOME}/configuration/latest/images/
@@ -330,6 +349,9 @@ logging:
     root: INFO
     # Audit facility only logs RP side in INFO level, to see CP side use DEBUG and to see claim details use TRACE
     swiss.trustbroker.audit.service.AuditLogger: TRACE
+    # Access logging (DEBUG on op logger shows incoming requests as well, DEBUG on full logger shows conversational HTTP headers)
+    swiss.trustbroker.op: INFO
+    swiss.trustbroker.op.http: INFO
     # opensaml is not happy with RelayState > 80 bytes (according top spec) but handles it anyway
     org.opensaml.saml.common.binding.SAMLBindingSupport: ERROR
     # SAML handling in spring-authorization-server (Processing SAML response from... Found x validation errors in...)

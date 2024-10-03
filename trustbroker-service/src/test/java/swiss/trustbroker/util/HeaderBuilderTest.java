@@ -1,17 +1,18 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
+
 package swiss.trustbroker.util;
 
 import static org.hamcrest.CoreMatchers.is;
@@ -21,6 +22,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +40,8 @@ class HeaderBuilderTest implements FrameAncestorHandler {
 	private static final String CSP = "default-src https://localhost";
 
 	public static final String ACL = "https://localhost:8080";
+
+	public static final String OWN_URL = "https://localhost:9090";
 
 	private MockHttpServletRequest request;
 
@@ -122,7 +126,7 @@ class HeaderBuilderTest implements FrameAncestorHandler {
 	@ParameterizedTest
 	@MethodSource
 	void oidcCspFrameOptions(List<String> frameAncestors, String origin, String referer,
-			String frameOptions, String expectedFrameOptions, String csp, String expectedCsp,
+			String frameOptions, Set<String> ownOrigins,  String expectedFrameOptions, String csp, String expectedCsp,
 			List<String> expectedAppliedFrameAncestors) {
 		properties.getCsp().setOidc(csp);
 		properties.getFrameOptions().setOidc(frameOptions);
@@ -133,7 +137,7 @@ class HeaderBuilderTest implements FrameAncestorHandler {
 			request.addHeader(HttpHeaders.REFERER, referer);
 		}
 		this.frameAncestors = frameAncestors;
-		headerBuilder.oidcCspFrameOptions();
+		headerBuilder.oidcCspFrameOptions(ownOrigins);
 		assertThat(response.getHeader(HeaderBuilder.CONTENT_SECURITY_POLICY), is(expectedCsp));
 		assertThat(response.getHeader(HeaderBuilder.FRAME_OPTIONS), is(expectedFrameOptions));
 		assertThat(appliedFrameAncestors, is(expectedAppliedFrameAncestors));
@@ -142,14 +146,25 @@ class HeaderBuilderTest implements FrameAncestorHandler {
 	static Object[][] oidcCspFrameOptions() {
 		var aclCsp = CSP + "; frame-ancestors 'self' " + ACL;
 		return new Object[][] {
-				{ Collections.emptyList(), null, null, null, null, CSP, CSP, Collections.emptyList() },
-				{ Collections.emptyList(), null, null, FRAME_OPTIONS, FRAME_OPTIONS, CSP, CSP, Collections.emptyList() },
-				{ List.of(ACL), null, null, "SAMEORIGIN", "SAMEORIGIN", CSP, CSP, Collections.emptyList() },
-				{ List.of(ACL), ACL, null, FRAME_OPTIONS, null, CSP, aclCsp, List.of(ACL) },
-				{ List.of(CorsSupport.ALL_ORIGINS), ACL, null, FRAME_OPTIONS, null, CSP, aclCsp, List.of(ACL) },
-				{ List.of(ACL), null, ACL + "/path", FRAME_OPTIONS, null, CSP, aclCsp, List.of(ACL) },
-				{ List.of(ACL), ACL, null, FRAME_OPTIONS, null, CSP, aclCsp, List.of(ACL) },
-				{ List.of(ACL), ACL, null, FRAME_OPTIONS, null, null, "frame-ancestors 'self' " + ACL, List.of(ACL) }
+				{ Collections.emptyList(), null, null, null, Collections.emptySet(),
+						null, CSP, CSP, Collections.emptyList() },
+				{ Collections.emptyList(), null, null, FRAME_OPTIONS, Collections.emptySet(),
+						FRAME_OPTIONS, CSP, CSP, Collections.emptyList() },
+				{ List.of(ACL), null, null, "SAMEORIGIN", Collections.emptySet(),
+						"SAMEORIGIN", CSP, CSP, Collections.emptyList() },
+				{ List.of(ACL), ACL, null, FRAME_OPTIONS, Collections.emptySet(),
+						null, CSP, aclCsp, List.of(ACL) },
+				{ List.of(CorsSupport.ALL_ORIGINS), ACL, null, FRAME_OPTIONS, Collections.emptySet(),
+						null, CSP, aclCsp, List.of(ACL) },
+				{ List.of(ACL), null, ACL + "/path", FRAME_OPTIONS, Collections.emptySet(),
+						null, CSP, aclCsp, List.of(ACL) },
+				{ List.of(ACL), ACL, null, FRAME_OPTIONS, Collections.emptySet(),
+						null, CSP, aclCsp, List.of(ACL) },
+				{ List.of(ACL), ACL, null, FRAME_OPTIONS, Collections.emptySet(),
+						null, null, "frame-ancestors 'self' " + ACL, List.of(ACL) },
+				{ List.of(ACL), OWN_URL, null, FRAME_OPTIONS, Set.of(OWN_URL),
+						null, null, "frame-ancestors 'self' " + OWN_URL, List.of(OWN_URL) }
+
 		};
 	}
 

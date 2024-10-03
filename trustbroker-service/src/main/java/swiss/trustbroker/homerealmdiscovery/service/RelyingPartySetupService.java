@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.homerealmdiscovery.service;
@@ -52,7 +52,6 @@ import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.HomeName;
 import swiss.trustbroker.federation.xmlconfig.IdmLookup;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
-import swiss.trustbroker.federation.xmlconfig.Script;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.federation.xmlconfig.Signature;
 import swiss.trustbroker.federation.xmlconfig.SsoGroup;
@@ -129,7 +128,7 @@ public class RelyingPartySetupService {
 
 		// Test data has localhost:7070 ACLs all over the place so for proper logout testing without a ton of misleading
 		// audit entries we need to get rid of the referer matching the issuer match is working.
-		// This code should be discarded anyway as the stealth mode is gone and is not even being used in there, actually.
+		// This code should be discarded anyway as the discontinued stealth mode is gone and is not even being used in there, actually.
 		if (rpByIdCount == 0) {
 			getAllRelyingPartiesByReferer(relyingParties, refererUrl, false);
 			var rpByRefererCount = relyingParties.size() - rpByIdCount;
@@ -143,7 +142,7 @@ public class RelyingPartySetupService {
 		return getRelyingPartyByIssuerIdOrReferrer(issuerId, refererUrl, false);
 	}
 
-	// hostname in referer to be found in acsUrl consumers whistelist
+	// hostname in referer to be found in acsUrl consumers whitelist
 	private void getAllRelyingPartiesByReferer(List<RelyingParty> relyingParties, String refererUrl,
 			boolean uniqueAcsUrl) {
 		List<String> refererIds = RelyingPartyUtil.getIdsFromReferer(refererUrl);
@@ -454,22 +453,6 @@ public class RelyingPartySetupService {
 					relyingParty.getId(), issuerId, refererUrl);
 		}
 		return Optional.ofNullable(idmLookup);
-	}
-
-	public List<Script> getRpScripts(String issuerId, String refererUrl) {
-		var found = getRelyingPartyByIssuerIdOrReferrer(issuerId, refererUrl).getScripts();
-		if (found == null || found.getScripts() == null) {
-			return Collections.emptyList();
-		}
-		return found.getScripts();
-	}
-
-	public List<Script> getCpScripts(String issuerId, String refererUrl) {
-		var found = getClaimsProviderSetupByIssuerId(issuerId, refererUrl).getScripts();
-		if (found == null || found.getScripts() == null) {
-			return Collections.emptyList();
-		}
-		return found.getScripts();
 	}
 
 	public List<Definition> getRpAttributesDefinitions(String requestIssuer, String refererUrl) {

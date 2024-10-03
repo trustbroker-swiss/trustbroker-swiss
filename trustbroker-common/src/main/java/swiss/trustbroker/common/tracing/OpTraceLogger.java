@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.tracing;
@@ -21,8 +21,8 @@ package swiss.trustbroker.common.tracing;
  * method of the call chain is entered one uses logInitialEnter to initialize the RequestContext and
  * emit a log entry. If one leaves that method one uses logInitialReturn to delete the RequestContext
  * and emit a log entry. For all other methods one uses logEnter and logReturn. If one calls another
- * service (so one is client) logClientCall is used to extend the transferId to mark that call and to
- * emit a log entry. If one returns from that call one uses logClientReturn to restore the transferId
+ * service (so one is client) logClientCall is used to extend the traceId to mark that call and to
+ * emit a log entry. If one returns from that call one uses logClientReturn to restore the traceId
  * and to emit a log entry.
  */
 public interface OpTraceLogger {
@@ -69,31 +69,31 @@ public interface OpTraceLogger {
 	 * In general this will be done when a request enters the web tier or when entering the
 	 * business tier e.g. remote-ejb or webservice.
 	 *
-	 * @param transferId initial transferId for that request (received from e.g. reverse proxy)
+	 * @param traceId initial traceId for that request (received from e.g. reverse proxy)
 	 * @param calledObject called object or called servlet/filter or database name
 	 * @param calledMethod method called or request URL or SQL query
 	 * @param principal userPrincipal emitted in the log statement.
 	 * @param clientId id of client as received from front-end (e.g. reverse proxy) server or session ID
 	 */
-	void logInitialEnter(String transferId, String calledObject, String calledMethod, String principal, String clientId);
+	void logInitialEnter(String traceId, String calledObject, String calledMethod, String principal, String clientId);
 
 	/**
 	 * Emit a service entering statement into the OP-TraceLog.
 	 **
-	 * @param transferId initial transferId for that request (received from e.g. reverse proxy)
+	 * @param traceId initial traceId for that request (received from e.g. reverse proxy)
 	 * @param calledObject called object or called servlet/filter or database name
 	 * @param calledMethod method called or request URL or SQL query
 	 * @param principal userPrincipal emitted in the log statement.
 	 * @param optional name/value pairs to be appended at the end of the log entry
 	 * @param clientId id of client as received from front-end (e.g. reverse proxy) server or session ID
 	 */
-	void logInitialEnter(String transferId, String calledObject, String calledMethod, String principal, Object[][] optional,
+	void logInitialEnter(String traceId, String calledObject, String calledMethod, String principal, Object[][] optional,
 			String clientId);
 
 	/**
 	 * Emit a service entering statement into the OP-TraceLog.
 	 **
-	 * @param transferId initial transferId for that request (received from e.g. reverse proxy)
+	 * @param traceId initial traceId for that request (received from e.g. reverse proxy)
 	 * @param calledObject called object or called servlet/filter or database name
 	 * @param calledMethod method called or request URL or SQL query
 	 * @param principal userPrincipal emitted in the log statement.
@@ -102,14 +102,14 @@ public interface OpTraceLogger {
 	 * @param fullRequestContext injection point dependent data (e.g. the HttpServletRequest)
 	 */
 	@SuppressWarnings("java:S107")
-	void logInitialEnter(String transferId, String calledObject, String calledMethod, String principal, Object[][] optional,
+	void logInitialEnter(String traceId, String calledObject, String calledMethod, String principal, Object[][] optional,
 			String clientId, Object fullRequestContext, Object fullResponseContext);
 
 	/**
 	 * Emit a service invocation statement into the OP-TraceLog.
 	 *
-	 * Used to emit a log entry if one calls another service. The transferId is extended to give this
-	 * call a unique transferId. Only use this method for synchronous calls. You have to call logClientReturn
+	 * Used to emit a log entry if one calls another service. The traceId is extended to give this
+	 * call a unique traceId. Only use this method for synchronous calls. You have to call logClientReturn
 	 * after using this method.
 	 *
 	 * @param calledObject called object or called servlet/filter or database name
@@ -196,8 +196,8 @@ public interface OpTraceLogger {
 	/**
 	 * Emit a asynchronous service invocation statement into the OP-TraceLog.
 	 *
-	 * Used to emit a log entry if one calls another service. The transferId is extended
-	 * to give this call a unique transferId. Only use this method for asynchronous calls.
+	 * Used to emit a log entry if one calls another service. The traceId is extended
+	 * to give this call a unique traceId. Only use this method for asynchronous calls.
 	 * You have to call logAsyncClientReturn after using this method where you have to
 	 * pass the RequestContext object returned by this method.
 	 *

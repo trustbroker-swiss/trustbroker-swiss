@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.util;
@@ -46,15 +46,12 @@ public class WebUtil {
 
 	public static final String HTTP_HEADER_X_ORIGINAL_FORWARDED_FOR = "X-Original-Forwarded-For"; // observed, derived from X-F-F
 
+	public static final String HTTP_HEADER_X_SIMULATED_FORWARDED_FOR = "X-Simulated-Forwarded-For"; // simulate device or gateway
+
 	public static final String HTTP_HEADER_X_REAL_IP = "X-Real-Ip"; // direct client
 
 	public static final String HTTP_REMOTE_USER = "X-Remote-User";
 
-	public static final String HTTP_REQUEST_ID = "X-Request-Id"; // set by LB
-
-	public static final String HTTP_HEADER_OPEN_TELEMETRY_TRACE_ID = "X-B3-TraceId";
-
-	public static final String HTTP_HEADER_TRANSFER_ID = "transferId";
 
 	// Same site values
 	// See also:
@@ -70,7 +67,7 @@ public class WebUtil {
 
 	public static final String COOKIE_SAME_SITE_STRICT = "Strict";
 
-	public static final String COOKIE_SAME_SITE_DYNAMIC  = "Dynamic"; // XTB config value - choose based on involved URLs
+	public static final String COOKIE_SAME_SITE_DYNAMIC = "Dynamic"; // XTB config value - choose based on involved URLs
 
 	private WebUtil() {
 	}
@@ -112,24 +109,18 @@ public class WebUtil {
 		return null;
 	}
 
-	// NOTE: TraceIds pop up on XTB error screen and are used to correlate the request in the logs
-	// UUID and hex strings are indexed as that, so they are easy to find.
-	public static String getTraceId(HttpServletRequest request, String httpHeaderDefaultTraceId) {
-		// LB injected header
-		var ret = getHeader(httpHeaderDefaultTraceId, request);
-		// OpenTelemetry might be supported by cloud
-		if (ret == null) {
-			ret = getHeader(HTTP_HEADER_OPEN_TELEMETRY_TRACE_ID, request);
+	// for tests only, for gateway check we have a look at all IPs in the chain
+	public static String getGatewayIp(HttpServletRequest request) {
+		return getGatewayIp(request, false);
+	}
+
+	// additionally support simulation of an IP address for mobile GW usecase only
+	public static String[] getGatewayIps(HttpServletRequest request) {
+		var ip = getHeader(HTTP_HEADER_X_SIMULATED_FORWARDED_FOR, request);
+		if (ip != null) {
+			return new String[] { ip };
 		}
-		// internet common use
-		if (ret == null) {
-			ret = getHeader(HTTP_REQUEST_ID, request);
-		}
-		// some funny fallback
-		if (ret == null) {
-			ret = getHeader(HTTP_HEADER_TRANSFER_ID, request);
-		}
-		return ret;
+		return getClientIps(request, false);
 	}
 
 	// Track problems based on IP addresses the user agents have (attacks, debugging login problems)

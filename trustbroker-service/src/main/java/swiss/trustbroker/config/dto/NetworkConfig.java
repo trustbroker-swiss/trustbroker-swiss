@@ -67,6 +67,30 @@ public class NetworkConfig {
 	@Builder.Default
 	private String testNetworkHeader = "X-Simulated-Client-Network";
 
+	/**
+	 * Running on K8S supporting canary routing using cookies, a test instance.
+	 *
+	 * @since 1.7.0
+	 */
+	@Builder.Default
+	private String canaryMarkerName = "canary";
+
+	/**
+	 * Value for <code>canaryMarkerName</code>.
+	 *
+	 * @since 1.7.0
+	 */
+	@Builder.Default
+	private String canaryEnabledValue = "always";
+
+	/**
+	 * Allow to disable OpenTelemetry traceparent propagation to backends, that might block use otherwise.
+	 *
+	 * @since 1.7.0
+	 */
+	@Builder.Default
+	private Boolean tracingEnabled = Boolean.TRUE;
+
 	public boolean isIntranet(String name) {
 		return intranetNetworkName != null && intranetNetworkName.equals(name);
 	}

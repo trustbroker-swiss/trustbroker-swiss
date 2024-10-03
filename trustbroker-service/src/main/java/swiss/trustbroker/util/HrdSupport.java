@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.util;
@@ -106,7 +106,7 @@ public class HrdSupport {
 		// In this case the mobile CP is displayed for testing purposes even though login is not possible.
 		if (cpSelection == null && properties.getNetwork() != null &&
 				StringUtils.isNotEmpty(properties.getNetwork().getMobileGatewayIpRegex())) {
-			var clientIps = WebSupport.getGatewayIps(request);
+			var clientIps = WebUtil.getGatewayIps(request);
 			var gatewayIp = properties.getNetwork().getMobileGatewayIpRegex();
 			if (isGateWayIp(clientIps, gatewayIp)) {
 				cpSelection = properties.getMobileIdpId();
@@ -158,7 +158,7 @@ public class HrdSupport {
 			HrdService hrdService) {
 
 		// bailout if we have only a single CP based on config or groovy scripting
-		if (cpMappings  == null || cpMappings.size() < 2) {
+		if (cpMappings == null || cpMappings.size() < 2) {
 			return cpMappings;
 		}
 

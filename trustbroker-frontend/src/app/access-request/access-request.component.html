@@ -1,13 +1,13 @@
 <!--
  Copyright (C) 2024 trustbroker.swiss team BIT
- 
+
  This program is free software.
  You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- 
+
  This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- 
+
  See the GNU Affero General Public License for more details.
  You should have received a copy of the GNU Affero General Public License along with this program.
  If not, see <https://www.gnu.org/licenses/>.
@@ -18,18 +18,16 @@
 	</div>
 	<div class="body-1 medium-emphasis mb-2">
 		<div class="ob-alert ob-alert-info">
-			<p [innerHTML]="'trustbroker.accessrequest.message.' + this.state | translate | safeLinebreaks"></p>
+			<p [innerHTML]="'trustbroker.accessrequest.message.' + this.state | translate | safeMarkup"></p>
 		</div>
-		<div *ngIf="this.showInitiateButtons">
-			<button mat-flat-button color="accent" (click)="initiateAccessRequest()" tabindex="1" type="submit" class="button-text">
+		<div>
+			<button *ngIf="this.showContinueButton" mat-flat-button color="accent" (click)="initiateAccessRequest()" tabindex="1" type="submit" class="button-text">
 				<span>{{ "trustbroker.accessrequest.continue" | translate }}</span>
 			</button>
-			<button mat-flat-button (click)="abortAccessRequest()" tabindex="1" type="submit" class="button-text mr-1">
+			<button *ngIf="this.showAbortButton" mat-flat-button (click)="abortAccessRequest()" tabindex="1" type="submit" class="button-text mr-1">
 				<span>{{ "trustbroker.accessrequest.abort" | translate }}</span>
 			</button>
-		</div>
-		<div *ngIf="this.showLoginButtons">
-			<button mat-flat-button color="accent" (click)="completeAccessRequest()" tabindex="1" type="submit" class="button-text">
+			<button *ngIf="this.showLoginButton" mat-flat-button color="accent" (click)="completeAccessRequest()" tabindex="1" type="submit" class="button-text">
 				<span>{{ "trustbroker.accessrequest.login" | translate }}</span>
 			</button>
 		</div>

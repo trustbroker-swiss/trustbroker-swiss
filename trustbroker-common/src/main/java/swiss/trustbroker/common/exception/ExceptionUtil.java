@@ -1,20 +1,25 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
+
 package swiss.trustbroker.common.exception;
 
+import java.io.IOException;
+
 public class ExceptionUtil {
+
+	public static final String BROKEN_PIPE = "Broken pipe";
 
 	private ExceptionUtil() { }
 
@@ -32,6 +37,16 @@ public class ExceptionUtil {
 	public static String getRootMessage(Throwable ex) {
 		ex = getRootCause(ex);
 		return (ex != null ? ex.getMessage() : null);
+	}
+
+	// detection of "Broken pipe" IOException
+	public static boolean isBrokenPipe(Throwable ex) {
+		var rootCause = getRootCause(ex);
+		if (rootCause instanceof IOException) {
+			var msg = rootCause.getMessage();
+			return msg != null && msg.contains(BROKEN_PIPE);
+		}
+		return false;
 	}
 
 }

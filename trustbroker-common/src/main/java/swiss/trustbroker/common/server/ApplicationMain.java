@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.server;
@@ -37,25 +37,15 @@ import swiss.trustbroker.common.setup.service.GitService;
  * Initialize everything before starting spring container, especially libraries using statics.
  */
 @Slf4j
-public abstract class ApplicationMain {
+public class ApplicationMain {
+
+	private static final String HTTPS_PROXY_SYS = "https_proxy";
 
 	private static final String HTTPS_PROXY_HOST = "https.proxyHost";
 
 	private static final String HTTPS_PROXY_PORT = "https.proxyPort";
 
-	protected final Class<?> starterClass;
-
-	protected String[] args;
-
-	protected ApplicationMain(Class<?> starterClass, String[] args) {
-		this.starterClass = starterClass;
-		try {
-			this.args = getCompleteDefaultArgs(args);
-		}
-		catch (TrustBrokerException ex) {
-			log.error("Failed to start application {}", starterClass, ex);
-		}
-	}
+	private ApplicationMain() {}
 
 	// using backends with un-official CAs we need custom engineered tls-truststore.p12 etc.
 	private static void checkTlsSetup() {
@@ -75,7 +65,7 @@ public abstract class ApplicationMain {
 
 	// allow injecting http proxy from system ENV so we do not need to patch VM args into the startup command
 	private static void checkAndSetProxy() {
-		var proxyEnv = System.getenv("https_proxy");
+		var proxyEnv = BootstrapProperties.getFromSysPropsOrEnv(HTTPS_PROXY_SYS, null, false);
 		var proxyVm = System.getProperty(HTTPS_PROXY_HOST);
 		if (!StringUtils.isEmpty(proxyEnv) && StringUtils.isEmpty(proxyVm)) {
 			try {
@@ -89,7 +79,7 @@ public abstract class ApplicationMain {
 		}
 		var proxyHost = System.getProperty(HTTPS_PROXY_HOST);
 		var proxyPort = System.getProperty(HTTPS_PROXY_PORT);
-		if (proxyHost == null) {
+		if (proxyHost != null) {
 			log.info("Proxy setup: Running HTTPS with proxyHost={} proxyPort={}", proxyHost, proxyPort);
 		}
 	}
@@ -119,7 +109,7 @@ public abstract class ApplicationMain {
 
 	// Support bootRun, IDE run etc
 	// For our re-config support we always disable the automatic re-loading options to not spam the logs and remove overhead
-	private static String[] getCompleteDefaultArgs(String[] args) {
+	public static String[] getCompleteDefaultArgs(String[] args) {
 		List<String> betterArgs = new ArrayList<>();
 		Collections.addAll(betterArgs, args);
 		// no args means DEV
@@ -158,12 +148,12 @@ public abstract class ApplicationMain {
 		}
 	}
 
-	protected void initSamlSubSubsystem() {
+	protected static void initSamlSubSubsystem() {
 		SamlInitializer.initSamlSubSystem();
 	}
 
 	// simple version, no IPs and other context
-	protected void logException(Throwable ex) {
+	protected static void logException(Throwable ex) {
 		if (ex instanceof TrustBrokerException tex) {
 			log.error(tex.getInternalMessage(), ex);
 		}
@@ -175,42 +165,28 @@ public abstract class ApplicationMain {
 		}
 	}
 
-	protected abstract void runApplication();
-
 	// Application gets config from Git and runs a scheduler to keep it up-to-date
 	@SuppressWarnings("java:S1147") // called from main, may System.exit
-	public void runBootstrap() {
+	public static void runBootstrap() {
 		try {
 			// logback bootstrap to not DEBUG
 			configureLogback();
+
 			// make sure user.home does not interfere for SSH access
 			configureHome();
-			// get bootstrap config
-			GitService.bootConfiguration();
-			runServer();
-		}
-		catch (Exception e) {
-			logException(e);
-			System.exit(1);
-		}
-	}
 
-	// Application runs passive i.e. just consumes an available configuration
-	@SuppressWarnings("java:S1147") // called from main, may System.exit
-	public void runServer() {
-		try {
+			// check JVM and its sub-system allowing connection to git repo
 			showJavaVersion();
-
-			BootstrapProperties.validateBootstrap();
-
-			checkTlsSetup();
 			checkAndSetProxy();
 
+			// bootstrap config
+			GitService.bootConfiguration();
+			BootstrapProperties.validateBootstrap();
+			checkTlsSetup();
+
+			// security stuff
 			initSamlSubSubsystem();
-
 			showSecurityProviders();
-
-			runApplication();
 		}
 		catch (Exception e) {
 			logException(e);

@@ -57,7 +57,7 @@ import { MaterialHeaderComponent } from './material-frame/material-header/materi
 import { EnvironmentDisplayPipe } from './pipes/environment-display.pipe';
 import { LanguageDisplayPipe } from './pipes/language-display.pipe';
 import { NativeLanguageDisplayPipe } from './pipes/native-language-display.pipe';
-import { SafeLinebreaksPipe } from './pipes/safe-linebreaks.pipe';
+import { SafeMarkupPipe } from './pipes/safe-markup.pipe';
 import { ProfileSelectionCardComponent } from './profile-selection/profile-selection-card/profile-selection-card.component';
 import { ProfileSelectionComponent } from './profile-selection/profile-selection.component';
 import { CustomHttpInterceptor } from './services/custom-http-interceptor.service';
@@ -103,7 +103,7 @@ export class MissingTranslationHelper implements MissingTranslationHandler {
 		NativeLanguageDisplayPipe,
 		LanguageDisplayPipe,
 		EnvironmentDisplayPipe,
-		SafeLinebreaksPipe,
+		SafeMarkupPipe,
 		DeviceInfoComponent,
 		ErrorBoxComponent,
 		ErrorPageComponent,

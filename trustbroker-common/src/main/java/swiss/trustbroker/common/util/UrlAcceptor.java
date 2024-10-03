@@ -1,20 +1,20 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
+
 package swiss.trustbroker.common.util;
 
-import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.List;
@@ -130,21 +130,16 @@ public class UrlAcceptor {
 		if (!StringUtils.hasText(host)) {
 			return false;
 		}
-		if (host.equals("localhost")) {
+		if (host.equals("localhost") || host.equals("localhost.localdomain")) {
 			return true; // speed up as DNS lookups are expensive
+		}
+		if ("[0:0:0:0:0:0:0:1]".equals(host) || "[::1]".equals(host)) {
+			return true;
 		}
 		// handle IP addresses too even though we cannot see if the client was manipulated to forward localhost to bad server
 		try {
-			// map to IP (expensive, local DNS cache lookup at least for any redirect URL we get)
-			var inetAddress = InetAddress.getByName(host);
-			var hostIp = inetAddress.getHostAddress();
-
-			// IPv6 loopback address should either be "0:0:0:0:0:0:0:1" or "::1"
-			if ("[0:0:0:0:0:0:0:1]".equals(hostIp) || "[::1]".equals(hostIp)) {
-				return true;
-			}
 			// IPv4 loopback address ranges from 127.0.0.1 to 127.255.255.255
-			var ipv4Octets = hostIp.split("\\.");
+			var ipv4Octets = host.split("\\.");
 			if (ipv4Octets.length != 4) {
 				return false;
 			}

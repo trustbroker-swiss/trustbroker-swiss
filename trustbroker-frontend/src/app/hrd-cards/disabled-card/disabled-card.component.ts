@@ -16,6 +16,7 @@
 import { Component, Input } from '@angular/core';
 import { Theme } from '../../model/Theme';
 import { ThemeService } from '../../services/theme-service';
+import { SafeHtml } from '@angular/platform-browser';
 
 @Component({
 	selector: 'app-disabled-card',
@@ -23,6 +24,6 @@ import { ThemeService } from '../../services/theme-service';
 	styleUrls: ['./disabled-card.component.scss']
 })
 export class DisabledCardComponent {
-	@Input() cardText: string;
+	@Input() cardText: SafeHtml;
 	@Input() theme: Theme = ThemeService.defaultTheme;
 }

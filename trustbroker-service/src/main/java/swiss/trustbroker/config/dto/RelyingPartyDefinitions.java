@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.config.dto;
@@ -108,7 +108,7 @@ public class RelyingPartyDefinitions {
 			return;
 		}
 
-		// HRD's with only a single entry get an additional mapping
+		// HRDs with only a single entry get an additional mapping
 		var singleCpId = getSingleClaimsProviderId(relyingParty);
 		if (singleCpId != null) {
 			var oidcClientCpKey = getClientKey(client.getId(), singleCpId);
@@ -251,7 +251,7 @@ public class RelyingPartyDefinitions {
 
 	// We need this special lookup to deal with Oidc.Client setups attached to multiple SetupRP (legacy copy&paste).
 	// On startup this ambiguity is actually reported as an ERROR but old habits die hard.
-	// Picking the right config is best effort and if they copied configs are aligned it even works as expected.
+	// Picking the right config is best-effort and if they copied configs are aligned it even works as expected.
 	private Pair<RelyingParty, OidcClient> getRelyingPartyOidcPair(String clientId, TrustBrokerProperties properties) {
 		Pair<RelyingParty, OidcClient> ret = null;
 		if (oidcConfigurations != null) {
@@ -323,7 +323,9 @@ public class RelyingPartyDefinitions {
 				.toList();
 	}
 
-	public boolean isRpDisabled(RelyingParty relyingParty, HttpServletRequest httpRequest) {
-		return relyingParty != null && FeatureEnum.FALSE.equals(relyingParty.getEnabled()) && !WebSupport.canaryModeEnabled(httpRequest);
+	public boolean isRpDisabled(RelyingParty relyingParty, HttpServletRequest httpRequest,
+			NetworkConfig networkConfig) {
+		return relyingParty != null && FeatureEnum.FALSE.equals(relyingParty.getEnabled())
+				&& !WebSupport.canaryModeEnabled(httpRequest, networkConfig);
 	}
 }

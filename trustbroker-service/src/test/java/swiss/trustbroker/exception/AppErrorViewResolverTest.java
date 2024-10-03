@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.exception;
@@ -32,6 +32,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import swiss.trustbroker.common.exception.ErrorCode;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
@@ -62,19 +63,21 @@ class AppErrorViewResolverTest {
 	@MethodSource
 	void resolveErrorView(HttpStatus status, ErrorCode errorCode, AuthenticationException ex,
 			String issuer, String url, String expected) {
-		var traceId = "trace1";
+		var traceIdOnTheWire = "00-000102030405060708090a0b0c0d0e0f-0102030405060708-00";
 		var request = new MockHttpServletRequest();
-		request.addHeader(WebUtil.HTTP_HEADER_TRANSFER_ID, traceId);
+		request.addHeader(TraceSupport.W3C_TRACEPARENT, traceIdOnTheWire);
 		request.setParameter(OidcUtil.REDIRECT_URI, REDIRECT_URI);
+		TraceSupport.setMdcTraceContext(request);
 		OidcExceptionHelper.saveAuthenticationException(request, ex);
 		var oidcProperties = new OidcProperties();
 		oidcProperties.setIssuer(issuer);
 		doReturn(oidcProperties).when(properties).getOidc();
-		doReturn(url).when(apiSupport).getErrorPageUrl(errorCode.getLabel(), traceId);
+		doReturn(url).when(apiSupport).getErrorPageUrl(errorCode.getLabel(), TraceSupport.getOwnTraceParent());
 		Map<String, Object> model = Map.of("test", "value");
 		var result = appErrorViewResolver.resolveErrorView(request, status, model);
 		assertThat(result.getViewName(), is(WebSupport.getViewRedirectResponse(expected)));
 		assertThat(result.getModel(), is(Collections.emptyMap()));
+		TraceSupport.clearMdcTraceContext();
 	}
 
 	static Object[][] resolveErrorView() {

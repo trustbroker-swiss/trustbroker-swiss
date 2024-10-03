@@ -1,17 +1,18 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
+
 package swiss.trustbroker.federation.xmlconfig;
 
 import java.time.Instant;
@@ -91,9 +92,7 @@ public enum OidcMapper {
  	 */
 	SWISS_SOCIAL_SECURITY_NO {
 
-		private static final Pattern PATTERN = Pattern.compile("\\p{Digit}\\p{Digit}\\p{Digit}"
-				+ "[.]?\\p{Digit}\\p{Digit}\\p{Digit}\\p{Digit}[.]?\\p{Digit}\\p{Digit}\\p{Digit}\\p{Digit}"
-				+ "[.]?\\p{Digit}\\p{Digit}");
+		private static final Pattern PATTERN = Pattern.compile("\\d\\d\\d[.]?\\d\\d\\d\\d[.]?\\d\\d\\d\\d[.]?\\d\\d");
 
 		public Object map(Object value) {
 			if (value instanceof String valueStr) {
@@ -120,6 +119,16 @@ public enum OidcMapper {
 		public Object map(Object value) {
 			return value;
 		}
+	},
+
+	/**
+	 * Normalize emails dropping duplicates (same value from different sources).
+	 * Experimental: RFC 5321 actually says mails can have a case-sensitive local-part but in practice it's case insensitive.
+	 */
+	EMAIL {
+		public Object map(Object value) {
+			return value == null ? null : value.toString().toLowerCase();
+		}
 	};
 
 	public abstract Object map(Object value);
@@ -129,7 +138,17 @@ public enum OidcMapper {
 		if (values == null) {
 			return null;
 		}
-		return values.stream().map(this::map).toList();
+		// optionally make value unique for some mapper types
+		return optionalUnique(values.stream().map(this::map).toList());
+	}
+
+	private List<Object> optionalUnique(List<Object> values) {
+		if (this.equals(EMAIL)) {
+			return values.stream()
+					.distinct()
+					.toList();
+		}
+		return values;
 	}
 
 	private static void unexpectedValue(Object value, String mapper) {

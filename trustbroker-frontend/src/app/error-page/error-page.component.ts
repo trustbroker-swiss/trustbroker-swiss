@@ -60,8 +60,8 @@ export class ErrorPageComponent implements OnInit {
 			}
 			if (
 				this.parameterInvalid(textKey, '^[0-9A-Za-z]*$') ||
-				this.parameterInvalid(params.reference, '^[-0-9A-Za-z]*$') ||
-				this.parameterInvalid(params.sessionId, '^[-0-9A-Za-z_]*$')
+				this.parameterInvalid(params.reference, '^[0-9A-Za-z.-]*$') ||
+				this.parameterInvalid(params.sessionId, '^[0-9A-Za-z_-]*$')
 			) {
 				return;
 			}

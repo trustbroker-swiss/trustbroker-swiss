@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.oidc;
@@ -29,9 +29,6 @@ import com.google.common.collect.Lists;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.security.oauth2.core.AuthorizationGrantType;
-import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
-import org.springframework.security.oauth2.core.oidc.OidcScopes;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationServerMetadataClaimNames;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
@@ -51,6 +48,8 @@ import swiss.trustbroker.common.util.UrlAcceptor;
 import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
+import swiss.trustbroker.federation.xmlconfig.AuthorizationGrantType;
+import swiss.trustbroker.federation.xmlconfig.ClientAuthenticationMethod;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.IdmQuery;
 import swiss.trustbroker.federation.xmlconfig.Multivalued;
@@ -58,6 +57,7 @@ import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.OidcMapper;
 import swiss.trustbroker.federation.xmlconfig.OidcSecurityPolicies;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
+import swiss.trustbroker.federation.xmlconfig.Scope;
 import swiss.trustbroker.oidc.session.OidcSessionSupport;
 import swiss.trustbroker.script.service.ScriptService;
 
@@ -75,30 +75,17 @@ public class OidcConfigurationUtil {
 				? client.getOidcSecurityPolicies()
 				: defaultSecurityPolicies(defaultTokenTimeSec); // align on SAML assertion config
 		var clientAuthenticationMethods =
-				client.getClientAuthenticationMethods() != null && client.getClientAuthenticationMethods().getMethods() != null
+				client.getClientAuthenticationMethods() != null
 						? client.getClientAuthenticationMethods().getMethods()
-						: List.of(
-								ClientAuthenticationMethod.NONE.getValue(),
-								ClientAuthenticationMethod.CLIENT_SECRET_BASIC.getValue(),
-								ClientAuthenticationMethod.CLIENT_SECRET_POST.getValue()
-						);
+						: ClientAuthenticationMethod.defaultValues();
 		var authorizationGrantTypes =
-				client.getAuthorizationGrantTypes() != null && client.getAuthorizationGrantTypes().getGrantTypes() != null
+				client.getAuthorizationGrantTypes() != null
 						? client.getAuthorizationGrantTypes().getGrantTypes()
-						: List.of(
-								AuthorizationGrantType.AUTHORIZATION_CODE.getValue(),
-								AuthorizationGrantType.REFRESH_TOKEN.getValue()
-						);
+						: AuthorizationGrantType.defaultValues();
 		var configuredScopes =
-				client.getScopes() != null && client.getScopes().getScopeList() != null
+				client.getScopes() != null
 						? client.getScopes().getScopeList()
-						: List.of(
-								OidcScopes.OPENID,
-								OidcScopes.EMAIL,
-								OidcScopes.PHONE,
-								OidcScopes.PROFILE,
-								OidcScopes.ADDRESS
-						);
+						: Scope.defaultNames();
 		var clientId = client.getId();
 		log.debug("Using Oidc Client with clientId={} authenticationMethods='{}', authorizationGrantTypes='{}' scopes='{}'",
 				clientId, clientAuthenticationMethods, authorizationGrantTypes, configuredScopes);
@@ -115,18 +102,19 @@ public class OidcConfigurationUtil {
 				.clientSettings(clientSettings)
 				.clientAuthenticationMethods(authenticationMethods ->
 						clientAuthenticationMethods.forEach(authenticationMethod ->
-								authenticationMethods.add(OidcConfigurationUtil.stringToAuthenticationMethod(authenticationMethod))))
+								authenticationMethods.add(authenticationMethod.getMethod())))
 				.authorizationGrantTypes(grantTypes ->
 						authorizationGrantTypes.forEach(
-								grantType -> grantTypes.add(OidcConfigurationUtil.stringToAuthorizationGrantType(grantType))))
+								grantType -> grantTypes.add(grantType.getType())))
 				.scopes(scopes -> scopes.addAll(configuredScopes))
 				// RedirectUris is a mandatory field for a Registered client
 				.redirectUris(uris -> uris.addAll(client.getRedirectUris().getRedirectUrls()))
-				.tokenSettings(tokenSettings).build();
+				.tokenSettings(tokenSettings)
+				.build();
 
 		// validation and init/refresh logging
 		var clientAuth = registeredClient.getClientAuthenticationMethods();
-		var frontendClient = clientAuth.contains(ClientAuthenticationMethod.NONE);
+		var frontendClient = clientAuth.contains(ClientAuthenticationMethod.NONE.getMethod());
 		var backendClient = (clientAuth.size() > 1 || !frontendClient) && registeredClient.getClientSecret() != null;
 		var broken = !(frontendClient || backendClient);
 		var fixHint1 = "HINT (FE): requireProofKey=true,ClientAuthenticationMethod=none";
@@ -145,32 +133,6 @@ public class OidcConfigurationUtil {
 		}
 
 		return registeredClient;
-	}
-
-	static AuthorizationGrantType stringToAuthorizationGrantType(String authorizationGrantType) {
-		if (AuthorizationGrantType.AUTHORIZATION_CODE.getValue().equals(authorizationGrantType)) {
-			return AuthorizationGrantType.AUTHORIZATION_CODE;
-		}
-		else if (AuthorizationGrantType.CLIENT_CREDENTIALS.getValue().equals(authorizationGrantType)) {
-			return AuthorizationGrantType.CLIENT_CREDENTIALS;
-		}
-		else if (AuthorizationGrantType.REFRESH_TOKEN.getValue().equals(authorizationGrantType)) {
-			return AuthorizationGrantType.REFRESH_TOKEN;
-		}
-		return new AuthorizationGrantType(authorizationGrantType);        // Custom authorization grant type
-	}
-
-	static ClientAuthenticationMethod stringToAuthenticationMethod(String authenticationMethod) {
-		if (ClientAuthenticationMethod.CLIENT_SECRET_BASIC.getValue().equals(authenticationMethod)) {
-			return ClientAuthenticationMethod.CLIENT_SECRET_BASIC;
-		}
-		else if (ClientAuthenticationMethod.CLIENT_SECRET_POST.getValue().equals(authenticationMethod)) {
-			return ClientAuthenticationMethod.CLIENT_SECRET_POST;
-		}
-		else if (ClientAuthenticationMethod.NONE.getValue().equals(authenticationMethod)) {
-			return ClientAuthenticationMethod.NONE;
-		}
-		return new ClientAuthenticationMethod(authenticationMethod);        // Custom client authentication method
 	}
 
 	static Map<String, List<Object>> extractSamlAttributesFromContext(JwtEncodingContext context) {

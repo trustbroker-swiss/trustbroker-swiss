@@ -1,26 +1,29 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.util;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.cors.CorsUtils;
 import swiss.trustbroker.common.util.UrlAcceptor;
@@ -50,14 +53,14 @@ public class CorsSupport {
 
 	// NOTE: This also works for /userinfo but trustbroker-oidcclient not propagate it
 	public static void setAccessControlHeaders(HttpServletRequest request, HttpServletResponse response,
-			CorsPolicies corsPolicies) {
+			CorsPolicies corsPolicies, Set<String> ownOrigins) {
 		// preserve already set header
 		var originSet = response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN);
 		if (originSet != null) {
 			log.debug("Preserving {}={} and all other AC headers", HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, originSet);
 			return;
 		}
-		var allowedOrigins = corsPolicies == null ? DEFAULT_ORIGINS : corsPolicies.getAllowedOrigins();
+		var allowedOrigins = getAllowedOrigins(corsPolicies, ownOrigins);
 		var origin = getAllowedOrigin(request, allowedOrigins);
 		if (origin == null) {
 			return;
@@ -78,6 +81,25 @@ public class CorsSupport {
 					corsPolicies == null ? DEFAULT_METHODS : String.join(", ", corsPolicies.getAllowedMethods()));
 			response.setHeader(HttpHeaders.ACCESS_CONTROL_MAX_AGE, DEFAULT_MAXAGE);
 		}
+	}
+
+	private static List<String> getAllowedOrigins(CorsPolicies corsPolicies, Set<String> ownOrigins) {
+		if (corsPolicies == null) {
+			return DEFAULT_ORIGINS;
+		}
+		List<String> result = null;
+		if (CollectionUtils.isNotEmpty(ownOrigins)) {
+			result = new ArrayList<>(ownOrigins);
+		}
+		if (CollectionUtils.isNotEmpty(corsPolicies.getAllowedOrigins())) {
+			if (result == null) {
+				result = new ArrayList<>(corsPolicies.getAllowedOrigins());
+			}
+			else {
+				result.addAll(corsPolicies.getAllowedOrigins());
+			}
+		}
+		return result;
 	}
 
 	/**

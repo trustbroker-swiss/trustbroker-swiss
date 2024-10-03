@@ -31,10 +31,10 @@ export class AnnouncementsComponent implements OnInit {
 	showAnnouncements = false;
 	announcements: AnnouncementResponse[];
 	appVisible: boolean;
+	theme: Theme;
 	private authnRequestId: string;
 	private issuer: string;
 	private referer: string;
-	private theme: Theme;
 
 	constructor(
 		private readonly announcementService: AnnouncementsService,

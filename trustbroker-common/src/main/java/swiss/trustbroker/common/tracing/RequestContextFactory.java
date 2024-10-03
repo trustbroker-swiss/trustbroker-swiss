@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.tracing;
@@ -26,7 +26,7 @@ package swiss.trustbroker.common.tracing;
 public interface RequestContextFactory {
 
 	/**
-	 * Creates a new RequestContext with an initialized transferId.
+	 * Creates a new RequestContext with an initialized traceId.
 	 * 
 	 * The newly created RequestContext is also pushed on to the request context stack.
 	 *  
@@ -36,21 +36,21 @@ public interface RequestContextFactory {
     RequestContext create(String calledObject, String calledMethod);
 
 	/**
-	 * Creates a new RequestContext with the given transferId and principal.
+	 * Creates a new RequestContext with the given traceId and principal.
 	 */
-	RequestContext create(String calledObject, String calledMethod, String transferId, String principal, String clientId);
+	RequestContext create(String calledObject, String calledMethod, String traceId, String principal, String clientId);
 	/**
-	 * Creates a new RequestContext with the given transferId and principal.
+	 * Creates a new RequestContext with the given traceId and principal.
 	 *
 	 * @param calledObject called object or called servlet/filter or database name
 	 * @param calledMethod method called or request URL or SQL query
-	 * @param transferId transferId that will be set for the RequestContext
+	 * @param traceId traceId that will be set for the RequestContext
 	 * @param principal userPrincipal to set for the RequestContext
 	 * @param clientId  clientId to set for the RequestContext
 	 * @param fullRequestContext injection point dependent data (e.g. the HttpServletRequest)
 	 * @return newly created RequestContext
 	 */
-	RequestContext create(String calledObject, String calledMethod, String transferId, String principal, String clientId,
+	RequestContext create(String calledObject, String calledMethod, String traceId, String principal, String clientId,
 			Object fullRequestContext, Object fullResponseContext);
 
 
@@ -60,27 +60,27 @@ public interface RequestContextFactory {
     RequestContext create(String calledObject, String calledMethod, RequestContext context);
     
     /**
-     * Puts a new RequestContext with an extended transferId onto the request context stack.
+     * Puts a new RequestContext with an extended traceId onto the request context stack.
      * 
      * This is done when a synchronous client call is done. Asynchronous client calls also
-     * get a RequestContext with an extended transferId but that RequestContext may not be put
+     * get a RequestContext with an extended traceId but that RequestContext may not be put
      * onto the request context stack. The client doing the asynchronous call must manage the
      * returned RequestContext by itself.
      * @see RequestContextFactory#getNextTransferId(String, String)
-     * @return current RequestContext with extended transferId
+     * @return current RequestContext with extended traceId
      */
     RequestContext extendTransferId(String obj, String mth);
     
     /**
-     * Creates a new RequestContext with an extended transferId.
+     * Creates a new RequestContext with an extended traceId.
 	 *
      * Generates a new unique Transfer-Id. The new Transfer-Id is built by appending a process-wide
      * unique Request-Id to the Transfer-Id stored in the current RequestContext on top of the
      * request context stack. The resulting RequestContext is not put itself onto the request 
      * context stack. Asynchronous client calls use this method to get a RequestContext with an
-     * extended transferId.
+     * extended traceId.
      * 
-     * @return unique transferId
+     * @return unique traceId
      * @throws IllegalArgumentException when no RequestContext is available
      */
     RequestContext getNextTransferId(String obj, String mth);

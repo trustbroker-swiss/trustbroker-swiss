@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.saml.util;
@@ -65,6 +65,7 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import swiss.trustbroker.common.exception.ExceptionUtil;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.tracing.TraceSupport;
 
 @Slf4j
 public class SamlUtil {
@@ -475,6 +476,11 @@ public class SamlUtil {
 	public static String getHexString(byte[] input) {
 		var hexFormat = HexFormat.ofDelimiter(":").withUpperCase();
 		return hexFormat.formatHex(input);
+	}
+
+	public static String generateRelayState() {
+		// pure random we should use SamlUtil.generateRelayState with randomGenerator.generateIdentifier
+		return TraceSupport.getOwnTraceParentForSaml();
 	}
 
 	public static List<String> getValuesFromAttribute(Attribute attribute) {

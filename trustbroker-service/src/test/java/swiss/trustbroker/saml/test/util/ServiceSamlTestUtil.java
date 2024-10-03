@@ -1,19 +1,28 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.saml.test.util;
+
+import static swiss.trustbroker.config.TestConstants.CACHE_DEFINITION_PATH;
+import static swiss.trustbroker.config.TestConstants.LATEST_DEFINITION_PATH;
+import static swiss.trustbroker.config.TestConstants.TEST_BASE_PROFILE;
+import static swiss.trustbroker.config.TestConstants.TEST_BASE_STANDARD;
+import static swiss.trustbroker.config.TestConstants.TEST_CP_DEFINITIONS;
+import static swiss.trustbroker.config.TestConstants.TEST_SETUP_CP;
+import static swiss.trustbroker.config.TestConstants.TEST_SETUP_RP;
+import static swiss.trustbroker.config.TestConstants.TEST_SSO_GROUP_SETUP;
 
 import java.time.OffsetDateTime;
 import java.util.Collections;
@@ -58,27 +67,15 @@ import swiss.trustbroker.test.saml.util.SamlTestBase;
 
 public class ServiceSamlTestUtil implements SamlHttpTestBase {
 
-	private final static String TEST_AUTHN_REQUEST = "latest/definitions/RPToTBAuthnRequest.xml";
+	private final static String TEST_AUTHN_REQUEST = LATEST_DEFINITION_PATH + "RPToTBAuthnRequest.xml";
 
-	private final static String TEST_AUTHN_RESPONSE = "latest/definitions/CPToTBAuthnResponse.xml";
+	private final static String TEST_AUTHN_RESPONSE = LATEST_DEFINITION_PATH + "CPToTBAuthnResponse.xml";
 
-	private final static String TEST_LOGOUT_REQUEST = "latest/definitions/LogoutRequest.xml";
+	private final static String TEST_LOGOUT_REQUEST = LATEST_DEFINITION_PATH + "LogoutRequest.xml";
 
-	private final static String TEST_BASE_PROFILE = "ProfileRP_Standard.xml";
+	private final static String SAMPLE_CP_RESPONSE = LATEST_DEFINITION_PATH + "SampleCPResponse.xml";
 
-	private final static String TEST_BASE_STANDARD = "latest/definitions/" + TEST_BASE_PROFILE;
-
-	private final static String TEST_SETUP_RP = "latest/definitions/SetupRP.xml";
-
-	private final static String TEST_SETUP_CP = "latest/definitions/SetupCP.xml";
-
-	private final static String TEST_CP_DEFINITIONS = "latest/definitions/ClaimsProviderDefinitions.xml";
-
-	private final static String TEST_SSO_GROUP_SETUP = "latest/definitions/SetupSSOGroups.xml";
-
-	private final static String SAMPLE_CP_RESPONSE = "latest/definitions/SampleCPResponse.xml";
-
-	private final static String TEST_LOGOUT_RESPONSE = "latest/definitions/LogoutResponse.xml";
+	private final static String TEST_LOGOUT_RESPONSE = LATEST_DEFINITION_PATH + "LogoutResponse.xml";
 
 	public static final String AUTHN_REQUEST_ISSUER_ID = "urn:test:TESTRP";
 
@@ -111,10 +108,10 @@ public class ServiceSamlTestUtil implements SamlHttpTestBase {
 
 	public static RelyingPartySetup loadBaseClaimMergeTest() {
 		List<RelyingParty> relyingParties = loadRelyingParties();
-		RelyingPartySetup rulesDefinitions = new RelyingPartySetup(relyingParties);
+		RelyingPartySetup rulesDefinitions = RelyingPartySetup.builder().relyingParties(relyingParties).build();
 		String definitionPath = getBaseRuleFilePath();
-		String newCacheDefinition = "cache/definition/";
-		RelyingPartySetupUtil.loadRelyingParty(relyingParties, definitionPath, newCacheDefinition, null, Collections.emptyList());
+		RelyingPartySetupUtil.loadRelyingParty(relyingParties, definitionPath,
+				CACHE_DEFINITION_PATH, null, Collections.emptyList());
 		Credential credential = SamlTestBase.dummyCredential(
 				SamlTestBase.TEST_TB_KEYSTORE_JKS,
 				SamlTestBase.TEST_KEYSTORE_PW,
@@ -122,7 +119,9 @@ public class ServiceSamlTestUtil implements SamlHttpTestBase {
 		for (RelyingParty relyingParty : relyingParties) {
 			relyingParty.setRpSigner(credential);
 			relyingParty.setRpTrustCredentials(List.of(credential));
-			relyingParty.getAcWhitelist().calculateDerivedUrls();
+			if (relyingParty.getAcWhitelist() != null) {
+				relyingParty.getAcWhitelist().calculateDerivedUrls();
+			}
 		}
 		return rulesDefinitions;
 	}

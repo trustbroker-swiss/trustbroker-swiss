@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.sessioncache.service;
@@ -36,6 +36,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ContextConfiguration;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.sessioncache.dto.ArtifactCacheEntity;
 import swiss.trustbroker.sessioncache.repo.ArtifactCacheRepository;
 import swiss.trustbroker.util.SessionTimeConfiguration;
@@ -56,12 +57,15 @@ class ArtifactStorageServiceTest {
 	@MockBean
 	Clock clock;
 
+	@MockBean
+	private MetricsService metricsService;
+
 	ArtifactStorageService cacheService;
 
 	@BeforeEach
 	void setUp() {
 		cacheService = new ArtifactStorageService(artifactCacheRepository, clock,
-				Duration.ofSeconds(SessionTimeConfiguration.ARTIFACT_REAP_INTERVAL_SECS));
+				Duration.ofSeconds(SessionTimeConfiguration.ARTIFACT_REAP_INTERVAL_SECS), metricsService);
 		doReturn(START_INSTANT).when(clock).instant();
 	}
 

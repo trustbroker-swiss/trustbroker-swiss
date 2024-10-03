@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.saml.util;
@@ -56,14 +56,17 @@ public enum CoreAttributeName implements MutableAttributeName {
 	ISSUED_CLIENT_EXT_ID("IssuedClientExtId", true, null, null, null),
 
 	// Related to IDM SAML federation credential mappings in Default tenant towards access tenants
-	HOME_NAME("HomeName", true,null,null, null),
+	HOME_NAME("HomeName", true, null, null, null),
 
-	HOME_REALM("HomeRealm", true,null,null, null),
+	HOME_REALM("HomeRealm", true, null, null, null),
 
-	AUTH_LEVEL("AuthLevel", false,null,null, null),
+	AUTH_LEVEL("AuthLevel", false, null, null, null),
 
-	// new session tracking feature
-	SSO_SESSION_ID("SsoSessionId", true,null,null, null);
+	// Allow session tracking via a message claim
+	SSO_SESSION_ID("SsoSessionId", true, null, null, null),
+
+	// Allow federation tracking via message attribute/claim
+	CONVERSATION_ID("ConversationId", true, null, null, null);
 
 	private final String name;
 

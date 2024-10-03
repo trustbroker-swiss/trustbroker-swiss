@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.audit.service;
@@ -20,6 +20,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.Mockito.doReturn;
 
 import java.sql.Timestamp;
@@ -51,6 +52,7 @@ import org.opensaml.saml.saml2.core.impl.StatusBuilder;
 import org.opensaml.saml.saml2.core.impl.StatusCodeBuilder;
 import org.opensaml.saml.saml2.core.impl.StatusMessageBuilder;
 import org.springframework.http.HttpHeaders;
+import org.springframework.mock.web.MockHttpServletRequest;
 import swiss.trustbroker.audit.dto.AuditDto;
 import swiss.trustbroker.audit.dto.EventType;
 import swiss.trustbroker.audit.dto.OidcAuditData;
@@ -59,6 +61,8 @@ import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlFactory;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
+import swiss.trustbroker.common.tracing.TraceSupport;
+import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.NetworkConfig;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
@@ -96,9 +100,6 @@ class AuditMapperTest {
 
 	@Mock
 	private TrustBrokerProperties trustBrokerProperties;
-
-	@Mock
-	private HttpServletRequest httpServletRequest;
 
 	@BeforeAll
 	static void setup() {
@@ -222,7 +223,8 @@ class AuditMapperTest {
 		assertThat(auditDto.getDestination(), is(TEST_DESTINATION));
 		assertThat(auditDto.getIssuer(), is(TEST_ISSUER));
 		assertThat(auditDto.getAssertionConsumerUrl(), is(acsUrl));
-		assertThat(auditDto.getConversationId(), is(TEST_REQUEST_ID));
+		assertThat(auditDto.getMessageId(), is(TEST_REQUEST_ID));
+		assertThat(auditDto.getConversationId(), is(TraceSupport.getOwnTraceParent()));
 	}
 
 	@Test
@@ -243,33 +245,38 @@ class AuditMapperTest {
 
 	@Test
 	void testMapFromHttpRequest() {
-		doReturn(null).when(httpServletRequest).getHeader(WebSupport.HTTP_HEADER_X_ORIGINAL_FORWARDED_FOR);
-		doReturn("myClientIp").when(httpServletRequest).getHeader(WebSupport.HTTP_HEADER_X_FORWARDED_FOR);
-		String extId = "myEntryId";
-		doReturn(extId).when(httpServletRequest).getHeader(AuditMapper.HTTP_HEADER_X_FORWARDED_HOST);
-		String userAgent = "myUserAgent";
-		doReturn(userAgent).when(httpServletRequest).getHeader(HttpHeaders.USER_AGENT);
 		var network = new NetworkConfig();
 		doReturn(network).when(trustBrokerProperties).getNetwork();
-		doReturn("myNetwork").when(httpServletRequest).getHeader(network.getNetworkHeader());
-		String deviceId = "myXDevId";
-		doReturn(deviceId).when(httpServletRequest).getHeader(WebSupport.HTTP_HEADER_DEVICE_ID);
-		doReturn("myEntryHost").when(httpServletRequest).getHeader(HttpHeaders.HOST);
-		doReturn("myReferer").when(httpServletRequest).getHeader(HttpHeaders.REFERER);
-		String transferId = "l"
-				+ "bTraceId";
-		doReturn(transferId).when(httpServletRequest).getHeader(WebSupport.getHttpHeaderDefaultTraceId());
-		String url = "myUrl";
-		doReturn(new StringBuffer(url)).when(httpServletRequest).getRequestURL();
 
+		var request = new MockHttpServletRequest();
+		var url = "/myUrl";
+		var entryHost = "entryHost";
+		var userAgent = "myUserAgent";
+		var deviceId = "myXDevId";
+		var traceParent = "00-000102030405060708090a0b0c0d0e0f-0102030405060708-01";
+		var requestId = "000102030405060708090a0b0c0d0e0f";
+		request.addHeader(WebUtil.HTTP_HEADER_X_FORWARDED_FOR, "myClientIp");
+		request.addHeader(AuditMapper.HTTP_HEADER_X_FORWARDED_HOST, entryHost);
+		request.addHeader(HttpHeaders.USER_AGENT, userAgent);
+		request.addHeader(network.getNetworkHeader(), "myNetwork");
+		request.addHeader(WebSupport.HTTP_HEADER_DEVICE_ID, deviceId);
+		request.addHeader(HttpHeaders.HOST, "myEntryHost");
+		request.addHeader(HttpHeaders.REFERER, "myReferer");
+		request.addHeader(TraceSupport.getHttpTraceIdHeaderName(), requestId);
+		request.addHeader(TraceSupport.W3C_TRACEPARENT, traceParent);
+		request.setRequestURI(url);
+
+		TraceSupport.setMdcTraceContext(request);
 		var auditDto = new InboundAuditMapper(trustBrokerProperties)
-				.mapFrom(httpServletRequest)
+				.mapFromThreadContext()
+				.mapFrom(request)
 				.build();
+		TraceSupport.clearMdcTraceContext();
 
-		assertThat(auditDto.getUrl(), is(url));
+		assertThat(auditDto.getUrl(), is("http://myEntryHost" + url));
 		assertThat(auditDto.getClientType(), is(userAgent));
-		assertThat(auditDto.getTransferId(), is(transferId));
-		assertThat(auditDto.getEntryId(), is(extId));
+		assertThat(auditDto.getTraceId(), startsWith(requestId)); // just the trace part
+		assertThat(auditDto.getEntryId(), is(entryHost));
 		assertThat(auditDto.getDeviceId(), is(deviceId));
 	}
 
@@ -278,10 +285,10 @@ class AuditMapperTest {
 		var ssoGroup = "group1";
 		var ssoQoa = "Qoa60"; // format irrelevant for this test
 		var establishedTime = Timestamp.from(Instant.now());
-		var arDurationSecs = 10l;
+		var arDurationSecs = 10L;
 		var arSentTime = Timestamp.from(establishedTime.toInstant().plusSeconds(2));
 		var arCompletedTime = Timestamp.from(arSentTime.toInstant().plusSeconds(arDurationSecs));
-		var loginDurationSecs = 20l;
+		var loginDurationSecs = 20L;
 		var loginCompletedTime = Timestamp.from(establishedTime.toInstant().plusSeconds(loginDurationSecs));
 		var expirationTime = Timestamp.from(establishedTime.toInstant().plusSeconds(100));
 
@@ -418,6 +425,7 @@ class AuditMapperTest {
 				.build();
 
 		assertThat(auditDto.getEventType(), is(type));
+		assertThat(auditDto.getMessageId(), is(TEST_REQUEST_ID));
 		assertThat(auditDto.getDestination(), is(TEST_DESTINATION));
 		assertThat(auditDto.getIssuer(), is(TEST_ISSUER));
 		assertThat(auditDto.getConversationId(), is(nullValue())); // a conversation is based on state (authnrequest.ID)
@@ -480,9 +488,9 @@ class AuditMapperTest {
 											   .federationServiceIssuerId(issuer)
 											   .rpClientName("client")
 											   .recipientId("recipient")
-				.subjectValiditySeconds(600)
-				.audienceValiditySeconds(400)
-				.skinnyAssertionStyle(OpenSamlUtil.SKINNY_ALL)
+											   .subjectValiditySeconds(600)
+											   .audienceValiditySeconds(400)
+											   .skinnyAssertionStyle(OpenSamlUtil.SKINNY_ALL)
 											   .build();
 		response.getAssertions()
 				.add(ResponseFactory.createAssertion(
@@ -526,7 +534,7 @@ class AuditMapperTest {
 
 	@Test
 	void mapAssertion() {
-		// smulate some CP response stuff
+		// simulate some CP response stuff
 		var firstName = "TestFirstName";
 		var middleName = "Middle";
 		var lastName = "Last";
@@ -534,9 +542,9 @@ class AuditMapperTest {
 		userDetails.put(Definition.builder().name(CoreAttributeName.FIRST_NAME.getName()).build(), List.of(firstName));
 		userDetails.put(Definition.builder().name(CoreAttributeName.NAME.getName()).build(), List.of(middleName, lastName));
 		var cpResponse = CpResponse.builder()
-									.nameIdFormat("unknown-nameid-format")
-									.userDetails(userDetails)
-									.build();
+								   .nameIdFormat("unknown-nameid-format")
+								   .userDetails(userDetails)
+								   .build();
 		// have a minimal assertion mapped to auditi output
 		var responseParams = ResponseParameters.builder()
 											   .issuerId(TEST_ISSUER)
@@ -564,10 +572,10 @@ class AuditMapperTest {
 		var redirectUrl = "https://localhost/redirectUrl";
 		var ssoSessionId = "ssoSession1";
 		var oidcData = OidcAuditData.builder()
-				.oidcClientId(clientId)
-				.ssoSessionId(ssoSessionId)
-				.oidcLogoutUrl(redirectUrl)
-				.build();
+									.oidcClientId(clientId)
+									.ssoSessionId(ssoSessionId)
+									.oidcLogoutUrl(redirectUrl)
+									.build();
 		var auditDto = new InboundAuditMapper(trustBrokerProperties)
 				.mapFrom(oidcData)
 				.build();

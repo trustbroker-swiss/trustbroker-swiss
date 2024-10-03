@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.oidc;
@@ -34,12 +34,12 @@ import org.springframework.security.oauth2.core.http.converter.OAuth2ErrorHttpMe
 import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticationException;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import swiss.trustbroker.common.exception.ErrorCode;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.oidc.session.OidcSessionSupport;
 import swiss.trustbroker.util.ApiSupport;
-import swiss.trustbroker.util.WebSupport;
 
 @Slf4j
 public class CustomFailureHandler implements AuthenticationFailureHandler {
@@ -68,7 +68,7 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 	public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response,
 			AuthenticationException exception) throws IOException {
 		var clientId = OidcSessionSupport.getOidcClientId(request);
-		var client = relyingPartyDefinitions.getRelyingPartyByOidcClientId(clientId, null, trustBrokerProperties,true);
+		var client = relyingPartyDefinitions.getRelyingPartyByOidcClientId(clientId, null, trustBrokerProperties, true);
 		var referrer = WebUtil.getHeader(HttpHeaders.REFERER, request);
 
 		// exception from sub-systems
@@ -100,18 +100,13 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 		}
 
 		// construct redirect to OIDC client or service with service context
-		var traceId = WebSupport.getTraceId(request);
+		var traceId = TraceSupport.getOwnTraceParent();
 		var errorPage = apiSupport.getErrorPageUrl(ErrorCode.REQUEST_DENIED.getLabel(), traceId);
 		var location = OidcExceptionHelper.buildLocationForAuthenticationException(request, exception, errorPage,
 				trustBrokerProperties.getOidc().getIssuer(), "spring-security");
 
 		// invalidate web session to not base authorization_code flow after refresh_token failures
-		var session = request.getSession(false);
-		if (session != null) {
-			OidcSessionSupport.discardOidcClientCookie(clientId, response, trustBrokerProperties.isSecureBrowserHeaders());
-			log.debug("Cleared OIDC web sessionId={} because of failure='{}'", session.getId(), errMsg);
-			session.invalidate();
-		}
+		OidcSessionSupport.invalidateSession(request, response, trustBrokerProperties, clientId, errMsg);
 
 		// choose failure notification approach
 		var acceptHeader = request.getHeader(HttpHeaders.ACCEPT);

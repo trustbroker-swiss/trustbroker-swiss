@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.config;
@@ -43,6 +43,7 @@ import swiss.trustbroker.config.dto.QualityOfAuthenticationConfig;
 import swiss.trustbroker.config.dto.SamlProperties;
 import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.config.dto.StateCacheProperties;
+import swiss.trustbroker.config.dto.Support;
 import swiss.trustbroker.config.dto.WsTrustConfig;
 
 /**
@@ -71,7 +72,7 @@ public class TrustBrokerProperties {
 	/**
 	 * Unused / empty for normal setup.
 	 * <br/>
-	 * In development Angular frontend is used via proxy on http://localhost:4200
+	 * In development Angular frontend is used via proxy on <a href="http://localhost:4200">http://localhost:4200</a>
 	 */
 	private String frontendBaseUrl = "";
 
@@ -116,11 +117,32 @@ public class TrustBrokerProperties {
 	private String ssoGroupSetup;
 
 	/**
-	 * Relative path of the Groovy scripts
+	 * Relative path of the Groovy scripts.
+	 * <br/>
+	 * Potentially breaking changes:
+	 * <ul>
+	 *     <li>With 1.7.0 the last part was extracted into <code>globalScriptPath</code>.</li>
+	 * </ul>
 	 *
 	 * @see swiss.trustbroker.federation.xmlconfig.Script
 	 */
 	private String scriptPath;
+
+	/**
+	 * Relative path to <code>scriptPath</code> of the global Groovy scripts.
+	 *
+	 * @see swiss.trustbroker.federation.xmlconfig.Script
+	 * @since 1.7.0
+	 */
+	private String globalScriptPath;
+
+	/**
+	 * Relative path to <code>definition</code> of the global profiles.
+	 *
+	 * @see swiss.trustbroker.federation.xmlconfig.RelyingParty#getBase()
+	 * @since 1.7.0
+	 */
+	private String globalProfilesPath;
 
 	/**
 	 * Default signer.
@@ -219,6 +241,15 @@ public class TrustBrokerProperties {
 	private boolean serverSingleUser = false;
 
 	/**
+	 * Support features.
+	 * <br/>
+	 * Default: null, disabled
+	 *
+	 * @since 1.7.0
+	 */
+	private Support support;
+
+	/**
 	 * Default should be secure, disable in DEV only if needed for picky user-agents.
 	 * <br/>
 	 * Default: true
@@ -226,7 +257,7 @@ public class TrustBrokerProperties {
 	private boolean secureBrowserHeaders = true;
 
 	/**
-	 * Use session cookue for SSO, should always be true.
+	 * Use session cookie for SSO, should always be true.
 	 * <br/>
 	 * Default: true
 	 */
@@ -381,7 +412,7 @@ public class TrustBrokerProperties {
 	 * Development feature:
 	 * Set this to <pre>../trustbroker-service/src/main/resources</pre>
 	 * for faster template development - templates will be loaded from the file system on each access
- 	 */
+	 */
 	private String velocityTemplatePath;
 
 	/**
@@ -408,17 +439,17 @@ public class TrustBrokerProperties {
 	 * Skinny SAML messages reducing the size of the messages (large SAML messages on picky perimeters might block).
 	 * <br/>
 	 * Default: a,no-type
- 	 */
+	 */
 	private String skinnyAssertionNamespaces = OpenSamlUtil.SKINNY_ALL;
 
 	/**
 	 * Legacy clients that get the skinny HRD screen (monitor, testing).
- 	 */
+	 */
 	private List<RegexNameValue> skinnyHrdTriggers;
 
 	/**
 	 * HTTP markers identifying monitoring clients that cannot deal with new features.
- 	 */
+	 */
 	private List<RegexNameValue> monitoringHints;
 
 	//  As bootstrap works without spring, we need to handle a few boostrap parameters via ENV and/or system properties.

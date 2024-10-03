@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.util;
@@ -80,6 +80,8 @@ public class ApiSupport {
 
 	static final String ONBOARD_POSTFIX = "/onboard";
 
+	static final String ABORT_POSTFIX = "/abort";
+
 	static final String INITIATE_POSTFIX = "/initiate";
 
 	static final String HRD_CP_API = HRD_API + "/claimsproviders";
@@ -105,6 +107,12 @@ public class ApiSupport {
 	private static final String MONITORING_ACS_API = "/monitoring/relyingparties";
 
 	public static final String MONITORING_ACS_URL = API_CONTEXT + MONITORING_ACS_API;
+
+	public static final String CONFIG_STATUS_API = API_CONTEXT + "/config/status";
+
+	public static final String CONFIG_SCHEMAS_API = API_CONTEXT + "/config/schemas";
+
+	public static final String VERSION_API = API_CONTEXT + "/version";
 
 	static final String METADATA_API = "/metadata";
 
@@ -320,6 +328,10 @@ public class ApiSupport {
 
 	public String getAccessRequestOnboardingUrl(String sessionId) {
 		return getFrontendUrl(FRONTEND_CONTEXT, ACCESS_REQUEST_PAGE, sessionId, ONBOARD_POSTFIX);
+	}
+
+	public String getAccessRequestAbortUrl(String sessionId) {
+		return getFrontendUrl(FRONTEND_CONTEXT, ACCESS_REQUEST_PAGE, sessionId, ABORT_POSTFIX);
 	}
 
 	public String getAccessRequestConfirmationUrl(String sessionId) {

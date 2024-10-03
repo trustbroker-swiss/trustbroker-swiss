@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.tracing;
@@ -41,7 +41,7 @@ public class SpringOpTraceInterceptor {
 	@Around("@annotation(swiss.trustbroker.common.tracing.Traced) ||"
 			+ "@within(swiss.trustbroker.common.tracing.Traced)")
 	public Object trace(ProceedingJoinPoint joinPoint) throws Throwable {
-		// prevent optracing if @Traced component is accidentally used in the logging statement calling it's toString method
+		// prevent optracing if @Traced component is accidentally used in the logging statement calling its toString method
 		MethodSignature signature = (MethodSignature) joinPoint.getSignature();
 		String method = signature.getMethod().getName();
 		if (method.equals("toString")) {
@@ -57,7 +57,7 @@ public class SpringOpTraceInterceptor {
 		try {
 			// ====>
 			var self = joinPoint.getTarget();
-			var object = self.getClass().getName();
+			var object = self.getClass().getSimpleName();
 			REQUEST_CONTEXT_FACTORY.extendTransferId(object, method);
 			OP.logClientCall(object, method);
 			// invoke target
@@ -77,7 +77,7 @@ public class SpringOpTraceInterceptor {
 	private void createRequestContext(ProceedingJoinPoint joinPoint) {
 		boolean isOpTraceDebugEnabled = OP.isDebugEnabled();
 		try {
-			final var objName = joinPoint.getTarget().getClass().getName();
+			final var objName = joinPoint.getTarget().getClass().getSimpleName();
 			final var signature = (MethodSignature) joinPoint.getSignature();
 			final var method = signature.getMethod().getName();
 			final var username = "TechTB"; // statically identify XTB on server side, check config for tech accounts
@@ -121,7 +121,7 @@ public class SpringOpTraceInterceptor {
 		var threadId = String.valueOf(Thread.currentThread().getId());
 		var time = String.valueOf(System.currentTimeMillis());
 		var uniqueId = UUID.randomUUID().toString();
-		// simulate a transferId
+		// simulate a clientId
 		clientId.append(threadId).append(".");
 		clientId.append(username).append(".");
 		clientId.append(time).append(".");

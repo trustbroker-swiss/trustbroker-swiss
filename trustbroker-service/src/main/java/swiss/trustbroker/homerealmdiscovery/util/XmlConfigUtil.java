@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.homerealmdiscovery.util;
@@ -19,11 +19,16 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.FileVisitOption;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.xml.XMLConstants;
 import javax.xml.transform.Source;
 import javax.xml.transform.stream.StreamSource;
@@ -39,9 +44,11 @@ import org.xml.sax.SAXException;
 import org.xml.sax.SAXNotRecognizedException;
 import org.xml.sax.SAXNotSupportedException;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.util.DirectoryUtil;
 import swiss.trustbroker.exception.GlobalExceptionHandler;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderDefinitions;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
+import swiss.trustbroker.federation.xmlconfig.PathReference;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.RelyingPartySetup;
 import swiss.trustbroker.federation.xmlconfig.SsoGroupSetup;
@@ -52,18 +59,11 @@ import swiss.trustbroker.federation.xmlconfig.SsoGroupSetup;
 @Slf4j
 public class XmlConfigUtil {
 
-	private static class XmlContext {
+	private record XmlContext(JAXBContext jaxbContext, Schema schema) {}
 
-		private final JAXBContext jaxbContext;
+	record LoadResult <T> (List<T> result, Map<String, TechnicalException> skipped) {}
 
-		private final Schema schema;
-
-		private XmlContext(JAXBContext jaxbContext, Schema schema) {
-			this.jaxbContext = jaxbContext;
-			this.schema = schema;
-		}
-
-	}
+	private static final String CONFIG_FILE_EXTENSION = ".xml";
 
 	// classes handled by this class
 	private static final List<Class<?>> SCHEMA_CLASSES = List.of(
@@ -88,6 +88,65 @@ public class XmlConfigUtil {
 	}
 
 	private XmlConfigUtil() {
+	}
+
+	// load multiple files
+	public static <T> LoadResult<T> loadConfigFromDirectory(File mappingFile, Class<T> entryType) {
+		var definitionDirectory = mappingFile.getParentFile();
+		if (definitionDirectory == null || !definitionDirectory.isDirectory()) {
+			log.error("Cannot iterate over directory {}", definitionDirectory);
+			return new LoadResult<>(Collections.emptyList(), Collections.emptyMap());
+		}
+		var filePrefix = filePrefix(mappingFile);
+		Map<String, TechnicalException> skipped = new ConcurrentHashMap<>();
+		var definitionPath = definitionDirectory.toPath();
+		try (var stream = Files.walk(definitionPath, FileVisitOption.FOLLOW_LINKS)) {
+			var entries = stream
+					.filter(Files::isRegularFile)
+					.filter(file -> isMatchingFile(file, filePrefix))
+					.map(file -> loadConfigFromFile(file, definitionPath, entryType, skipped))
+					.filter(Objects::nonNull) // ignore skipped entries
+					.toList();
+			return new LoadResult<>(entries, skipped);
+		}
+		catch (IOException ex) {
+			throw new TechnicalException(String.format("Could not traverse path=%s message=%s",
+					definitionDirectory.getAbsolutePath(), ex.getMessage()), ex);
+		}
+	}
+
+	// SetupXY.xml => SetupXY
+	private static String filePrefix(File mappingFile) {
+		return mappingFile.getName().replace(CONFIG_FILE_EXTENSION, "");
+	}
+
+	private static boolean isMatchingFile(Path configPath, String filePrefix) {
+		var fileName = configPath.getFileName().toString();
+		return fileName.startsWith(filePrefix) && fileName.endsWith(CONFIG_FILE_EXTENSION);
+	}
+
+	private static <T> T loadConfigFromFile(Path configPath, Path definitionPath, Class<T> entryType,
+			Map<String, TechnicalException> skipped) {
+		var configFile = configPath.toFile();
+		try {
+			var result = loadConfigFromFile(configFile, entryType);
+			if (result instanceof PathReference holder) {
+				var subPath = DirectoryUtil.relativePath(configPath.getParent(), definitionPath, false);
+				log.debug("Config file={} of type={} is in subPath={}", configPath, result.getClass().getSimpleName(), subPath);
+				holder.setSubPath(subPath.toString());
+			}
+			return result;
+		}
+		catch (TechnicalException ex) {
+			if (log.isDebugEnabled()) {
+				log.error("Could not load config: {}", ex.getInternalMessage(), ex);
+			}
+			else {
+				log.error("Could not load config: {}", ex.getInternalMessage()); // exception stack too verbose
+			}
+			skipped.put(configFile.getAbsolutePath(), ex);
+			return null;
+		}
 	}
 
 	private static Map<Class<?>, XmlContext> initXmlContexts() {
@@ -176,4 +235,5 @@ public class XmlConfigUtil {
 		log.debug("Loaded definition type {} from: {}", entryType.getSimpleName(), configFile.getAbsolutePath());
 		return configData;
 	}
+
 }

@@ -28,8 +28,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
-import java.util.zip.Inflater;
-import java.util.zip.InflaterOutputStream;
 
 import org.springframework.security.saml2.Saml2Exception;
 
@@ -59,19 +57,6 @@ final class Saml2Utils {
 		}
 		catch (IOException ex) {
 			throw new Saml2Exception("Unable to deflate string", ex);
-		}
-	}
-
-	static String samlInflate(byte[] b) {
-		try {
-			ByteArrayOutputStream out = new ByteArrayOutputStream();
-			InflaterOutputStream iout = new InflaterOutputStream(out, new Inflater(true));
-			iout.write(b);
-			iout.finish();
-			return new String(out.toByteArray(), StandardCharsets.UTF_8);
-		}
-		catch (IOException ex) {
-			throw new Saml2Exception("Unable to inflate string", ex);
 		}
 	}
 

@@ -1,20 +1,21 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.homerealmdiscovery.util;
 
+import static org.hamcrest.CoreMatchers.endsWith;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
@@ -26,6 +27,15 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static swiss.trustbroker.config.TestConstants.CACHE_DEFINITION_PATH;
+import static swiss.trustbroker.config.TestConstants.CACHE_PATH;
+import static swiss.trustbroker.config.TestConstants.TEST_BASE_PROFILE;
+import static swiss.trustbroker.config.TestConstants.TEST_BASE_STANDARD;
+import static swiss.trustbroker.config.TestConstants.TEST_CACHE_BASE_RULE;
+import static swiss.trustbroker.config.TestConstants.TEST_RULE_WITH_CACHE_BASE_DEFINITIONS;
+import static swiss.trustbroker.config.TestConstants.TEST_SETUP_CP;
+import static swiss.trustbroker.config.TestConstants.TEST_SETUP_RP;
+import static swiss.trustbroker.config.TestConstants.TEST_SETUP_RP_INVALID_XML;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -51,6 +61,8 @@ import swiss.trustbroker.api.idm.service.IdmStatusPolicyCallback;
 import swiss.trustbroker.api.relyingparty.dto.RelyingPartyConfig;
 import swiss.trustbroker.api.sessioncache.dto.CpResponseData;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.config.TestConstants;
+import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.Certificates;
@@ -89,25 +101,6 @@ class RuleDefinitionUtilTest {
 		}
 	}
 
-	private static final String DEFINITION_PATH = "/definition/";
-
-	private static final String CACHE_PATH = "cache/";
-
-	private static final String CACHE_DEFINITION_PATH = "cache/definition/";
-
-	private final static String TEST_BASE_PROFILE = "ProfileRP_Standard.xml";
-
-	private final static String TEST_BASE_STANDARD = "latest/definitions/" + TEST_BASE_PROFILE;
-
-	private final static String TEST_SETUP_RP = "latest/definitions/SetupRP.xml";
-
-	private final static String TEST_SETUP_RP_INVALID_XML = "latest/definitions/SetupRPInvalidXml.xml";
-
-	private final static String TEST_SETUP_CP = "latest/definitions/SetupCP.xml";
-
-	private final static String TEST_RULE_WITH_CACHE_BASE_DEFINITIONS = "latest/definitions/RuleDefinitionWithCachedBase.xml";
-
-	private final static String TEST_CACHE_BASE_RULE = "ProfileRP_Standard2.xml";
 
 	private final static String IDENTITY_QUERY = "IDENTITY";
 
@@ -467,7 +460,8 @@ class RuleDefinitionUtilTest {
 	@Test
 	void loadBaseClaimNoBaseTest() {
 		Collection<RelyingParty> claimRules = givenClaimRulesWithoutBase();
-		RelyingPartySetupUtil.loadRelyingParty(claimRules, DEFINITION_PATH, CACHE_DEFINITION_PATH, null, List.of(idmService));
+		RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
+				CACHE_DEFINITION_PATH,null, List.of(idmService));
 
 		assertNotNull(claimRules);
 	}
@@ -475,18 +469,21 @@ class RuleDefinitionUtilTest {
 	@Test
 	void loadBaseClaimBaseDoesNotExistTest() {
 		Collection<RelyingParty> claimRules = givenClaimRulesWithBaseNotFound();
-		assertDoesNotThrow(() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, DEFINITION_PATH, CACHE_DEFINITION_PATH, null, List.of(idmService)));
+		assertDoesNotThrow(() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
+				CACHE_DEFINITION_PATH, null, List.of(idmService)));
 		assertDoesNotThrow(
-				() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, DEFINITION_PATH, CACHE_DEFINITION_PATH, null, List.of(idmService)));
+				() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
+						CACHE_DEFINITION_PATH, null, List.of(idmService)));
 		claimRules.forEach(rp -> assertEquals(FeatureEnum.INVALID, rp.getEnabled(), "RP " + rp.getId()));
 	}
 
 	@Test
 	void loadRpInvalidXml() {
 		var mappingFile = new File(RuleDefinitionUtilTest.class.getClassLoader().getResource(TEST_SETUP_RP_INVALID_XML).getFile());
-		var result = ClaimsProviderUtil.loadConfigFromDirectory(mappingFile, RelyingParty.class);
-		assertThat(result.skipped, is(1));
-		assertThat(result.result, hasSize(0));
+		var result = XmlConfigUtil.loadConfigFromDirectory(mappingFile, RelyingParty.class);
+		assertThat(result.skipped().size(), is(1));
+		assertThat(result.skipped().keySet().iterator().next(), endsWith(TEST_SETUP_RP_INVALID_XML));
+		assertThat(result.result(), hasSize(0));
 	}
 
 	@Test
@@ -494,7 +491,8 @@ class RuleDefinitionUtilTest {
 		List<RelyingParty> claimRules = givenClaimRulesWithBase();
 		String definitionPath = baseRuleFilePath();
 
-		RelyingPartySetupUtil.loadRelyingParty(claimRules, definitionPath, CACHE_PATH, null, List.of(idmService));
+		RelyingPartySetupUtil.loadRelyingParty(claimRules, definitionPath, CACHE_PATH,
+				null, List.of(idmService));
 
 		assertNotNull(claimRules);
 		assertNull(claimRules.get(0).getConstAttributes());
@@ -527,44 +525,75 @@ class RuleDefinitionUtilTest {
 	@Test
 	void loadSetupRpTest() {
 		var relyingParties = loadRelyingParties();
-		assertEquals(16, relyingParties.size());
+		assertEquals(TestConstants.VALID_TEST_RPS, relyingParties.size());
+		assertEquals(TestConstants.INVALID_TEST_RPS,
+				relyingParties.stream().filter(rp -> rp.getEnabled() == FeatureEnum.INVALID).toList().size());
 	}
 
 	@Test
 	void loadSetupCpTest() {
 		var claimParties = loadClaimsParties();
-		assertEquals(3, claimParties.size());
+		assertEquals(TestConstants.VALID_TEST_CPS, claimParties.size());
 	}
 
 	@Test
 	void loadBaseClaimFromFileAndMergeWithBaseTest() {
 		var relyingParties = loadRelyingParties();
 
-		RelyingPartySetupUtil.loadRelyingParty(relyingParties, baseRuleFilePath(), "cache/", null, List.of(idmService));
-		assertEquals(16, relyingParties.size());
+		var properties = new TrustBrokerProperties();
+		properties.setGlobalProfilesPath("profiles");
+		RelyingPartySetupUtil.loadRelyingParty(relyingParties, baseRuleFilePath(), "cache/", properties, List.of(idmService));
+		assertEquals(TestConstants.VALID_TEST_RPS, relyingParties.size());
 
-		RelyingParty testRp = relyingParties.get(0);
-		RelyingParty testRp2 = relyingParties.get(1);
+		validateTestRp(relyingParties, "urn:test:SAMPLERP");
 
+		validateTestRp(relyingParties, "urn:test:TESTRP");
+
+		validateRpInSubDir(relyingParties, "urn:test:TEST_APPLICATION_LOCAL_PROFILE", "certs/test-application-cert.pem");
+
+		validateRpInSubDir(relyingParties, "urn:test:TEST_APPLICATION_STANDARD_PROFILE", "test-cert.pem");
+
+		validateRpInSubDir(relyingParties, "urn:test:TEST_APPLICATION_GLOBAL_PROFILE","global/global-cert.pem");
+
+		validateRpInSubDir(relyingParties, "urn:test:TEST_APPLICATION_GROUP_PROFILE","application_group/group-cert.pem");
+
+		assertTrue(relyingParties.stream().anyMatch(rp -> rp.getId().equals("urn:test:GROUP1")));
+		assertTrue(relyingParties.stream().anyMatch(rp -> rp.getId().equals("urn:test:GROUP2")));
+	}
+
+	private static void validateTestRp(List<RelyingParty> relyingParties, String anObject) {
+		var testRp = findRpById(relyingParties, anObject);
+		assertEquals(true, testRp.isValid());
+		assertEquals("", testRp.getSubPath());
 		assertNotNull(testRp.getConstAttributes());
-		assertNotNull(testRp.getConstAttributes().getAttributeDefinitions());
+		assertNotNull(testRp.getConstAttributes()
+							.getAttributeDefinitions());
 		assertNotNull(testRp.getCertificates());
-		assertNotNull(testRp.getCertificates().getSignerKeystore());
+		assertNotNull(testRp.getCertificates()
+							.getSignerKeystore());
 		assertNotNull(testRp.getIdmLookup());
-		assertNotNull(testRp.getIdmLookup().getQueries());
-		assertEquals(2, testRp.getIdmLookup().getQueries().size());
-		assertNotNull(testRp.getIdmLookup().getQueries().get(1).getUserDetailsSelection());
-		assertNotNull(testRp.getIdmLookup().getQueries().get(1).getClientExtId());
+		assertNotNull(testRp.getIdmLookup()
+							.getQueries());
+		assertEquals(2, testRp.getIdmLookup()
+							  .getQueries()
+							  .size());
+		assertNotNull(testRp.getIdmLookup()
+							.getQueries()
+							.get(1)
+							.getUserDetailsSelection());
+		assertNotNull(testRp.getIdmLookup()
+							.getQueries()
+							.get(1)
+							.getClientExtId());
+	}
 
-		assertNotNull(testRp2.getConstAttributes());
-		assertNotNull(testRp2.getConstAttributes().getAttributeDefinitions());
-		assertNotNull(testRp2.getCertificates());
-		assertNotNull(testRp2.getCertificates().getSignerKeystore());
-		assertNotNull(testRp2.getIdmLookup());
-		assertNotNull(testRp2.getIdmLookup().getQueries());
-		assertEquals(2, testRp2.getIdmLookup().getQueries().size());
-		assertNotNull(testRp2.getIdmLookup().getQueries().get(1).getUserDetailsSelection());
-		assertNotNull(testRp2.getIdmLookup().getQueries().get(1).getClientExtId());
+	private static void validateRpInSubDir(List<RelyingParty> relyingParties, String anObject, String expected) {
+		var testApplicationStandardProfileRp = findRpById(relyingParties, anObject);
+		assertEquals(true, testApplicationStandardProfileRp.isValid());
+		assertEquals("test_application", testApplicationStandardProfileRp.getSubPath());
+		assertEquals(expected, testApplicationStandardProfileRp.getCertificates()
+															   .getSignerKeystore()
+															   .getCertPath());
 	}
 
 	@Test
@@ -609,7 +638,8 @@ class RuleDefinitionUtilTest {
 		rp.setOidc(givenOidcClient(List.of(cUrl)));
 		var claimRules = List.of(rp);
 		var definitionPath = baseRuleFilePath();
-		assertDoesNotThrow(() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, definitionPath, CACHE_PATH, null, List.of(idmService)));
+		assertDoesNotThrow(() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, definitionPath, CACHE_PATH,
+				null, List.of(idmService)));
 		assertThat(rp.getEnabled(), is(expectedEnabled));
 	}
 
@@ -694,14 +724,14 @@ class RuleDefinitionUtilTest {
 	}
 
 	private List<RelyingParty> loadRelyingParties() {
-		var defintion = RuleDefinitionUtilTest.class.getClassLoader().getResource(TEST_SETUP_RP).getFile();
-		var relyingPartySetup = ClaimsProviderUtil.loadRelyingPartySetup(defintion);
+		var definition = RuleDefinitionUtilTest.class.getClassLoader().getResource(TEST_SETUP_RP).getFile();
+		var relyingPartySetup = ClaimsProviderUtil.loadRelyingPartySetup(definition);
 		return relyingPartySetup.getRelyingParties();
 	}
 
 	private List<ClaimsParty> loadClaimsParties() {
-		var defintion = RuleDefinitionUtilTest.class.getClassLoader().getResource(TEST_SETUP_CP).getFile();
-		var claimsProviderSetup = ClaimsProviderUtil.loadClaimsProviderSetup(defintion);
+		var definition = RuleDefinitionUtilTest.class.getClassLoader().getResource(TEST_SETUP_CP).getFile();
+		var claimsProviderSetup = ClaimsProviderUtil.loadClaimsProviderSetup(definition);
 		return claimsProviderSetup.getClaimsParties();
 	}
 
@@ -730,15 +760,17 @@ class RuleDefinitionUtilTest {
 	}
 
 	private static String baseRuleFilePath() {
-		String file = RuleDefinitionUtilTest.class.getClassLoader().getResource(TEST_BASE_STANDARD).getFile();
-		int filenNameStartIndex = file.indexOf(TEST_BASE_PROFILE);
-		return file.substring(0, filenNameStartIndex);
+		return getBaseProfilePath().replace(TEST_BASE_PROFILE, "");
 	}
 
 	private static String baseCacheRuleFilePath() {
-		String file = RuleDefinitionUtilTest.class.getClassLoader().getResource(TEST_BASE_STANDARD).getFile();
-		int filenNameStartIndex = file.indexOf(TEST_BASE_STANDARD);
-		return file.substring(0, filenNameStartIndex) + "cache/";
+		return getBaseProfilePath().replace(TEST_BASE_STANDARD, CACHE_PATH);
+	}
+
+	private static String getBaseProfilePath() {
+		return RuleDefinitionUtilTest.class.getClassLoader()
+										   .getResource(TEST_BASE_STANDARD)
+										   .getFile();
 	}
 
 	private Collection<RelyingParty> givenClaimRulesWithoutBase() {
@@ -1002,5 +1034,12 @@ class RuleDefinitionUtilTest {
 		baseAttributes.add(definition2);
 
 		return baseAttributes;
+	}
+
+	private static RelyingParty findRpById(List<RelyingParty> relyingParties, String anObject) {
+		return relyingParties.stream()
+				.filter(rp -> rp.getId().equals(anObject))
+				.findFirst()
+				.orElseThrow();
 	}
 }

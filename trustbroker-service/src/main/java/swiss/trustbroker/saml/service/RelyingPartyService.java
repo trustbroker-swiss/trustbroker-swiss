@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.saml.service;
@@ -60,7 +60,6 @@ import swiss.trustbroker.api.saml.service.OutputService;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.audit.service.InboundAuditMapper;
 import swiss.trustbroker.audit.service.OutboundAuditMapper;
-import swiss.trustbroker.common.exception.ErrorCode;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.dto.SamlBinding;
@@ -70,6 +69,7 @@ import swiss.trustbroker.common.saml.util.EncryptionUtil;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlFactory;
 import swiss.trustbroker.common.saml.util.SamlUtil;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.ProcessUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
@@ -148,7 +148,7 @@ public class RelyingPartyService {
 
 	private final QualityOfAuthenticationService qoaService;
 
-	private void getAttributesFromIDM(CpResponse cpResponse, String requestIssuer, String requestReferer) {
+	private void getAttributesFromIdm(CpResponse cpResponse, String requestIssuer, String requestReferer) {
 		var idpIssuer = cpResponse.getIssuer();
 		var relyingPartyConfig = RelyingParty.builder().id(requestIssuer).build();
 		var callback = new DefaultIdmStatusPolicyCallback(cpResponse);
@@ -176,19 +176,19 @@ public class RelyingPartyService {
 
 		// If CP homeName is constant, or it was changes by the script(see RelyingPartySetupService.getHomeName), otherwise CP
 		// attributes supporting OriginalIssuer wins
-		String attribute = cpResponse.getAttribute(CoreAttributeName.HOME_NAME.getNamespaceUri());
+		var attribute = cpResponse.getAttribute(CoreAttributeName.HOME_NAME.getNamespaceUri());
 		if (cpResponse.getHomeName() != null && !cpResponse.getHomeName().equals(attribute)) {
 			cpResponse.addPropertyIfMissing(CoreAttributeName.HOME_NAME.getName(),
 					CoreAttributeName.HOME_NAME.getNamespaceUri(), cpResponse.getHomeName());
 		}
 
-		String clientExtId = computeClientExtId(cpResponse);
+		var clientExtId = computeClientExtId(cpResponse);
 		if (clientExtId != null) {
 			cpResponse.addPropertyIfMissing(CoreAttributeName.ISSUED_CLIENT_EXT_ID.getName(),
 					CoreAttributeName.ISSUED_CLIENT_EXT_ID.getNamespaceUri(), clientExtId);
 		}
 
-		String cpAuthLevel = relyingPartySetupService.getCpAuthLevel(cpResponse.getIssuer(), "");
+		var cpAuthLevel = relyingPartySetupService.getCpAuthLevel(cpResponse.getIssuer(), "");
 		if (cpResponse.getAuthLevel() == null) {
 			if (cpAuthLevel == null) {
 				cpAuthLevel = qoaService.getUnspecifiedAuthLevel().getName();
@@ -197,6 +197,10 @@ public class RelyingPartyService {
 			cpResponse.addPropertyIfMissing(CoreAttributeName.AUTH_LEVEL.getName(),
 					CoreAttributeName.AUTH_LEVEL.getNamespaceUri(), cpAuthLevel);
 		}
+
+		var conversationId = TraceSupport.getOwnTraceParent();
+		cpResponse.addPropertyIfMissing(CoreAttributeName.CONVERSATION_ID.getName(),
+				CoreAttributeName.CONVERSATION_ID.getNamespaceUri(), conversationId);
 	}
 
 	static void adjustSsoSessionIdProperty(StateData stateData, CpResponse cpResponse) {
@@ -204,54 +208,6 @@ public class RelyingPartyService {
 			cpResponse.setProperty(CoreAttributeName.SSO_SESSION_ID.getName(),
 					CoreAttributeName.SSO_SESSION_ID.getNamespaceUri(),
 					stateData.getSsoSessionId());
-		}
-	}
-
-	void adjustSubjectNameId(CpResponse cpResponse, RelyingParty relyingParty) {
-		var cpIssuer = cpResponse.getIssuerId();
-		var nameIdMappings = relyingParty.getSubjectNameMappings();
-		if (nameIdMappings == null || nameIdMappings.getSubjects() == null) {
-			return;
-		}
-		var subjectMapping = nameIdMappings.getSubjects()
-				.stream()
-				.filter(m -> m.isIssuerMatching(cpIssuer))
-				.findFirst();
-		if (subjectMapping.isEmpty()) {
-			log.info("Preserve federation principal for cpIssuer={} cpNameId={} rpIssuer={} rpNameId={} using format={}",
-					cpIssuer, cpResponse.getOriginalNameId(), relyingParty.getId(), cpResponse.getNameId(),
-					cpResponse.getNameIdFormat());
-			return;
-		}
-		var nameIdSource = subjectMapping.get().getSource();
-		var claimSource = "AttributesSelection";
-		var nameId = cpResponse.getAttribute(nameIdSource);
-		if (nameId == null) {
-			claimSource = "UserDetailsSelection";
-			nameId = cpResponse.getUserDetail(nameIdSource);
-		}
-		if (nameId == null) {
-			claimSource = "PropertiesSelection";
-			nameId = cpResponse.getProperty(nameIdSource);
-		}
-		if (nameId != null) {
-			// also allow to adjust the format (relevant for some RPs)
-			var nameIdFormat = subjectMapping.get().getFormat();
-			if (nameIdFormat == null) {
-				nameIdFormat = cpResponse.getNameIdFormat();
-			}
-			cpResponse.setNameId(nameId);
-			cpResponse.setNameIdFormat(nameIdFormat);
-			log.info("Change federation principal from cpIssuer={} cpNameId={} to rpIssuer={} rpNameId={}"
-					+ " using source='{} ({})' format={}",
-					cpIssuer, cpResponse.getOriginalNameId(), relyingParty.getId(), cpResponse.getNameId(),
-					nameIdSource, claimSource, nameIdFormat);
-		}
-		else {
-			log.info("Preserve federation principal for cpIssuer={} cpNameId={} rpIssuer={} rpNameId={}"
-					+ " using format={} because source={} is undefined",
-					cpIssuer, cpResponse.getOriginalNameId(), relyingParty.getId(), cpResponse.getNameId(),
-					cpResponse.getNameIdFormat(), nameIdSource);
 		}
 	}
 
@@ -282,7 +238,7 @@ public class RelyingPartyService {
 		// To have a consistent conversationId we need the state but that one could have gone (we might lose the audit here)
 		// on the other hand with INTERACTIVE profile selection we need to prevent auditing twice when /api/v1/hrd/profile is
 		// called by the user selecting the wanted profile.
-		auditResponseFromCp(httpServletRequest, cpResponse, idpStateData);
+		auditResponseFromCp(httpServletRequest, responseData.getResponse(), cpResponse, idpStateData);
 
 		// fetch data and have a first response with all data, profile selection follows
 		fetchIdmData(cpResponse, idpStateData, cpResponse.getClientName());
@@ -292,13 +248,13 @@ public class RelyingPartyService {
 
 		// process CP response
 		return sendSuccessSamlResponseToRp(outputService, responseData, cpResponse, idpStateData,
-				httpServletRequest, httpServletResponse, null);
+				httpServletRequest, httpServletResponse, null, idpStateData.getDeviceId());
 	}
 
 	// Handling all cases (direct CpResponse from CP or interactive profile selection from UI)
 	String sendSuccessSamlResponseToRp(OutputService outputService, ResponseData<Response> responseData, CpResponse cpResponse,
 			StateData idpStateData, HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse,
-			String selectedProfileId) {
+			String selectedProfileId, String incomingDeviceId) {
 
 		// bailout in case script hook did an abort (SAML response with responder status, no profile selection etc.)
 		if (cpResponse.isAborted()) {
@@ -340,9 +296,10 @@ public class RelyingPartyService {
 				relyingParty, claimsParty, subjectNameId, httpServletRequest.getCookies());
 		var stateDataForResponse = stateByCookieId.orElse(null);
 		if (stateDataForResponse != null) {
-			log.debug("Session state found based on cookie, checking SSO...");
+			log.debug("Session state={} found based on cookie, checking SSO for incomingDeviceId={}",
+					stateDataForResponse.getId(), incomingDeviceId);
 			if (ssoService.ssoStateValidForDeviceInfo(claimsParty, relyingParty, stateDataForResponse, idpStateData,
-					idpStateData.getDeviceId(), claimsParty.getId())) {
+					incomingDeviceId, claimsParty.getId())) {
 				ssoService.completeDeviceInfoPreservingStateForSso(stateDataForResponse, idpStateData, relyingParty);
 				log.info("Joined SSO sessionId={} for authnSessionId={}", stateDataForResponse.getId(), idpStateData.getId());
 			}
@@ -396,25 +353,12 @@ public class RelyingPartyService {
 			return null;
 		}
 		var httpData = AccessRequestHttpData.of(httpServletRequest);
-		var arResult = accessRequestService.performAccessRequestIfRequired(httpData, relyingParty, idpStateData);
+		var arResult = accessRequestService.performAccessRequestIfRequired(httpData, relyingParty, idpStateData,
+				() -> fetchIdmData(idpStateData.getCpResponse(), idpStateData, relyingParty.getClientName()));
 		// initiate AR to maybe create new data in IDM
 		if (arResult.getRedirectUrl() != null) {
 			stateCacheService.save(idpStateData, this.getClass().getSimpleName());
 			return arResult.getRedirectUrl();
-		}
-		// return from AR assuming we have new data in IDM
-		if (arResult.isReloadIdmData()) {
-			fetchIdmData(idpStateData.getCpResponse(), idpStateData, relyingParty.getClientName());
-			arResult = accessRequestService
-					.performFallbackAccessRequestIfRequired(httpData, relyingParty, idpStateData);
-			if (arResult.getRedirectUrl() != null) {
-				var allAppRoles = relyingParty.getAccessRequest() != null ?
-						relyingParty.getAccessRequest().getAllTriggerRoles()  : null;
-				log.error("All rpIssuer={} roles='{}' missing after SILENT access request, fallback to INTERACTIVE mode at {}",
-						relyingParty.getId(), allAppRoles, arResult.getRedirectUrl());
-				stateCacheService.save(idpStateData, this.getClass().getSimpleName());
-				return arResult.getRedirectUrl();
-			}
 		}
 		// continue with normal result, but keep session
 		if (arResult.isRetainSession()) {
@@ -535,11 +479,11 @@ public class RelyingPartyService {
 			// we need to remember CpResponse here
 			updateStateWithCpResponse(cpResponse, idpStateData);
 			return apiSupport.getErrorPageUrlWithFlags(cpResponse.uiErrorCode(),
-					WebSupport.getTraceId(), idpStateData.getId(), cpResponse.uiFlags());
+					TraceSupport.getOwnTraceParent(), idpStateData.getId(), cpResponse.uiFlags());
 		}
 
 		// audit incoming (to have a consistent conversationId we need the state, if gone we loose the correlation)
-		auditResponseFromCp(httpServletRequest, cpResponse, idpStateData);
+		auditResponseFromCp(httpServletRequest, responseData.getResponse(), cpResponse, idpStateData);
 
 		// clone status from original response (a SAML object cannot be assigned to another parent)
 		var authnResponse = createSamlResponseFromState(idpStateData, cpResponse);
@@ -766,7 +710,7 @@ public class RelyingPartyService {
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(spIssuer, null);
 
 		// in any case we need the data related to the RP tenant calling us
-		log.debug("Done SSO all-profiles for cpIssuert={} rpIssuer={} subjectNameId={} authnRequestID={}",
+		log.debug("Done SSO all-profiles for cpIssuer={} rpIssuer={} subjectNameId={} authnRequestID={}",
 				cpResponse.getIssuer(), relyingParty.getId(), cpResponse.getNameId(), authnRequestID);
 		refreshUserDataIfNeeded(ssoStateData, stateDataByAuthnReq, relyingParty);
 
@@ -817,7 +761,7 @@ public class RelyingPartyService {
 		updateCpResponseForSso(cpResponse, spStateData, clientName);
 
 		// retrieve current attributes from IDM services
-		getAttributesFromIDM(cpResponse, requestIssuer, requestReferer);
+		getAttributesFromIdm(cpResponse, requestIssuer, requestReferer);
 
 		// derived attributes
 		setProperties(cpResponse);
@@ -830,7 +774,7 @@ public class RelyingPartyService {
 		if (alreadySelectedProfile != null) {
 			var relyingParty = getRelyingParty(stateData);
 			var profileSelectionData = ProfileSelectionData.builder()
-				    .profileSelectionProperties(relyingParty.getProfileSelection())
+				   .profileSelectionProperties(relyingParty.getProfileSelection())
 				   .selectedProfileId(alreadySelectedProfile)
 				   .enforceSingleProfile(false)
 				   .exchangeId(stateData.getSpStateData().getRelayState())
@@ -852,9 +796,9 @@ public class RelyingPartyService {
 		var relyingParty = getRelyingParty(stateData);
 
 		// adjust final settings
-		adjustSubjectNameId(cpResponse, relyingParty);
 		adjustSsoSessionIdProperty(stateData, cpResponse);
 		processOnResponseScript(cpResponse, requestIssuer, requestReferer);
+		SubjectNameMapper.adjustSubjectNameId(cpResponse, relyingParty);
 
 		// assemble and sign
 		var authnResponse = createSamlResponseFromState(stateData, cpResponse);
@@ -1150,22 +1094,23 @@ public class RelyingPartyService {
 				: null;
 		var auditDto = new OutboundAuditMapper(trustBrokerProperties)
 				.mapFrom(stateData)
-				.mapFrom(response)
 				.mapFrom(cpResponse)
+				.mapFrom(response)
 				.mapFrom(httpServletRequest)
 				.mapFrom(relyingParty)
 				.build();
-		auditService.logOutboundSamlFlow(auditDto);
+		auditService.logOutboundFlow(auditDto);
 	}
 
 	private void auditResponseFromCp(HttpServletRequest httpServletRequest,
-			CpResponse cpResponse, StateData stateData) {
+			StatusResponseType response, CpResponse cpResponse, StateData stateData) {
 		var relyingParty = stateData != null ?
 				relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(stateData.getRpIssuer(), null, true)
 				: null;
 		var auditDto = new InboundAuditMapper(trustBrokerProperties)
 				.mapFrom(stateData)
 				.mapFrom(cpResponse)
+				.mapFrom(response)
 				.mapFrom(httpServletRequest)
 				.mapFrom(relyingParty)
 				.build();
@@ -1196,11 +1141,12 @@ public class RelyingPartyService {
 				.build();
 		var psResult = profileSelectionService.doFinalProfileSelection(profileSelectionData, relyingParty, cpResponse, stateData);
 		updateAttributes(psResult, cpResponse);
+		var incomingDeviceId = WebSupport.getDeviceId(request);
 
 		// handle SAML response from state
 		ResponseData<Response> responseData = ResponseData.of(null, profileRequestId, null);
 		return sendSuccessSamlResponseToRp(outputService, responseData, cpResponse, stateData, request, response,
-				selectedProfileId);
+				selectedProfileId, incomingDeviceId);
 	}
 
 	public void sendResponseToRpFromSessionState(OutputService outputService, RelyingParty relyingParty, StateData idpStateData,
@@ -1222,17 +1168,10 @@ public class RelyingPartyService {
 				encodingParameters, outputService);
 	}
 
-	public void reloadIdmDataAndValidateAccessRequestSuccess(RelyingParty relyingParty, StateData idpStateData) {
-		// re-fetch IDM data after access request
+	public void reloadIdmData(RelyingParty relyingParty, StateData idpStateData) {
+		// re-fetch IDM data, usually after access request
 		var cpResponse = idpStateData.getCpResponse();
 		fetchIdmData(cpResponse, idpStateData, relyingParty.getClientName());
-		if (accessRequestService.requireAccessRequest(relyingParty, idpStateData)) {
-			throw new RequestDeniedException(
-					ErrorCode.ACCESS_REQUEST_FAILED,
-					String.format("User with clientExtId=%s does not have the required IDM roles after "
-									+ "interactive access request",
-							cpResponse.getClientExtId()));
-		}
 	}
 
 	// works for SAML messages created by XTB

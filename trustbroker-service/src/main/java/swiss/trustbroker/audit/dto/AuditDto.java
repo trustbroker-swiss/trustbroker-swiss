@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.audit.dto;
@@ -92,8 +92,6 @@ public class AuditDto {
 
 	private String deviceIdAccepted; // XTB device ID in session
 
-	private String transferId; // unused as we are not behind reverse proxy and LB does not send tracr ID
-
 	private String url; // accessed service endpoint (drop when we start putting REST data into the URL may be)
 
 	private String referrer; // HTTP Referer header for debugging and config addressing
@@ -130,7 +128,11 @@ public class AuditDto {
 
 	// correlation attributes
 
-	private String conversationId; // authnrequest.ID and response.inResponseTO
+	private String messageId; // request based traceId potentially visible to user
+
+	private String traceId; // request based traceId provided by perimeter
+
+	private String conversationId; // conversation based traceId handled by XTB
 
 	private String sessId; // SSO/SLO future use
 

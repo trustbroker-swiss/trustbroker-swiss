@@ -65,7 +65,12 @@ services:
       - SPRING_FLYWAY_PASSWORD=${STATECACHE_PASS}
       - SPRING_DATASOURCE_USERNAME=trustbroker
       - SPRING_DATASOURCE_PASSWORD=${STATECACHE_PASS}
+      # Debug SSH startup in case of connectivity problem with external git repo
       #- LOGGING_LEVEL_ROOT=DEBUG
+      # When running behind an enterprise proxy inject a HTTPS or SSH proxy (HTTP not supported)
+      #- HTTPS_PROXY=http://proxy.company.com:1234
+      #- SSH_PROXY_HOST=proxy.company.com
+      #- SSH_PROXY_PORT=1234
     networks:
       - trustbroker-network
 

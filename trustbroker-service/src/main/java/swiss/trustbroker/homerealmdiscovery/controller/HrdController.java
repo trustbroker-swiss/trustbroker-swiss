@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.homerealmdiscovery.controller;
@@ -257,11 +257,11 @@ public class HrdController {
 			throw new TechnicalException(String.format("State value is missing for request with id=%s", authReqId));
 		}
 		var stateDataByAuthnReq = stateDataByAuthnReqOpt.get();
-		// LastConversationId must always match the AuthnRequestId
-		var lastConvId = stateDataByAuthnReq.getSpStateData().getLastConversationId();
-		if (!lastConvId.equals(authReqId)) {
+		// Post-condition assertion only: Wire related messageId must always match the initiating AuthnRequestId here
+		var initiatingRequestId = stateDataByAuthnReq.getSpStateData().getId();
+		if (!initiatingRequestId.equals(authReqId)) {
 			throw new TechnicalException(String.format("State is not valid for request with id=%s, expected lastConvId=%s",
-					authReqId, lastConvId));
+					authReqId, initiatingRequestId));
 		}
 		return stateDataByAuthnReq;
 	}
@@ -333,7 +333,8 @@ public class HrdController {
 	private StateData fetchRequiredStateData(String rpAuthnRequestId) {
 		Optional<StateData> stateDataOpt = stateCacheService.findBySpId(rpAuthnRequestId, this.getClass().getSimpleName());
 		if (stateDataOpt.isEmpty()) {
-			throw new RequestDeniedException(String.format("No state for rpAuthnRequestId='%s'", rpAuthnRequestId));
+			throw new RequestDeniedException(String.format(
+					"State not found. Details: rpAuthnRequestId=%s", rpAuthnRequestId));
 		}
 		return stateDataOpt.get();
 	}

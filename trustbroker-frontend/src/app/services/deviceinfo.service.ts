@@ -13,7 +13,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable, from } from 'rxjs';
 
@@ -50,7 +50,7 @@ export class DeviceInfoService {
 
 	constructor(private readonly http: HttpClient) {}
 
-	sendDeviceInfo(cpUrn: string, rpUrn: string, id: string): Observable<string> {
+	sendDeviceInfo(cpUrn: string, rpUrn: string, id: string): Observable<HttpResponse<string>> {
 		return this.postDeviceInfo(cpUrn, rpUrn, id);
 	}
 
@@ -150,13 +150,14 @@ export class DeviceInfoService {
 		return canvas;
 	}
 
-	private postDeviceInfo(cpUrn: string, rpUrn: string, id: string): Observable<string> {
+	private postDeviceInfo(cpUrn: string, rpUrn: string, id: string): Observable<HttpResponse<string>> {
 		const deviceInfoRes = new DeviceInfoResponse();
 		deviceInfoRes.cpUrn = cpUrn;
 		deviceInfoRes.rpUrn = rpUrn;
 		deviceInfoRes.id = id;
 		return this.http.post<string>(`${this.deviceInfoUrl}`, deviceInfoRes, {
 			headers: new HttpHeaders().set('Accept', 'text/html, application/json'),
+			observe: 'response',
 			responseType: 'text' as 'json'
 		});
 	}

@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.saml.service;
@@ -50,6 +50,7 @@ import swiss.trustbroker.common.saml.util.EncryptionUtil;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
 import swiss.trustbroker.common.saml.util.SamlUtil;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
@@ -112,11 +113,11 @@ public class AssertionConsumerService {
 		var idpStateData = retrieveValidStateDataForResponse(responseData);
 
 		// validation
-		String responseIssuer = responseData.getResponse().getIssuer().getValue();
-		String referrer = idpStateData.getReferer();
+		var responseIssuer = OpenSamlUtil.getMessageIssuerId(responseData.getResponse());
+		var referrer = idpStateData.getReferer();
 		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(responseIssuer, referrer);
 		var encryptionTrustCredentials = relyingPartySetupService.getClaimEncryptionTrustCredentials(responseIssuer, referrer);
-		List<Assertion> responseAssertions = getResponseAssertions(responseData.getResponse(), encryptionTrustCredentials);
+		var responseAssertions = getResponseAssertions(responseData.getResponse(), encryptionTrustCredentials);
 		validateResponse(true, responseData, idpStateData, claimsParty, responseAssertions);
 
 		log.debug("CP response assertion validated");
@@ -156,7 +157,7 @@ public class AssertionConsumerService {
 
 		String rpIssuer = idpStateData.getRpIssuer();
 		var idmLookUp = relyingPartySetupService.getIdmLookUp(rpIssuer, referrer);
-        idmLookUp.ifPresent(idmLookup -> cpResponse.setIdmLookup(idmLookup.shallowClone()));
+		idmLookUp.ifPresent(idmLookup -> cpResponse.setIdmLookup(idmLookup.shallowClone()));
 
 		//set clientExtId
 		cpResponse.setClientExtId(relyingPartySetupService.getRpClientExtId(rpIssuer, ""));
@@ -173,10 +174,7 @@ public class AssertionConsumerService {
 
 	private static List<Assertion> getResponseAssertions(Response response, List<Credential> encryptionTrustCredentials) {
 		List<Assertion> assertions = new ArrayList<>();
-		var issuerId = "MISSING-CP-ISSUER-ID";
-		if (response.getIssuer() != null) {
-			issuerId = response.getIssuer().getValue();
-		}
+		var issuerId = OpenSamlUtil.getMessageIssuerId(response);
 		if (CollectionUtils.isNotEmpty(response.getEncryptedAssertions())) {
 			for (EncryptedAssertion encryptedAssertion : response.getEncryptedAssertions()) {
 				Assertion assertion = EncryptionUtil.decryptAssertion(
@@ -289,7 +287,7 @@ public class AssertionConsumerService {
 
 			// AuthnStatement
 			List<AuthnStatement> authnStatements = assertion.getAuthnStatements();
-			if (authnStatements != null && !authnStatements.isEmpty() && authnStatements.get(0).getAuthnContext() != null) {
+			if (!authnStatements.isEmpty() && authnStatements.get(0).getAuthnContext() != null) {
 				cpResponse.setContextClasses(getContextClassRefsFromStatement(authnStatements));
 			}
 
@@ -302,7 +300,7 @@ public class AssertionConsumerService {
 			for (Attribute attribute : assertionAttributes) {
 				var namespaceUri = attribute.getName();
 				var values = SamlUtil.getValuesFromAttribute(attribute);
-				if (namespaceUri == null || values == null || values.isEmpty()) {
+				if (namespaceUri == null || values.isEmpty()) {
 					log.debug("Ignoring namespaceUri={} value={}", namespaceUri, values);
 					continue;
 				}
@@ -310,7 +308,7 @@ public class AssertionConsumerService {
 				if (CoreAttributeName.AUTH_LEVEL.getNamespaceUri().equals(namespaceUri)) {
 					cpResponse.setAuthLevel(values.get(0));
 					log.debug("Got authLevel={} from cpIssuer={}", cpResponse.getAuthLevel(),
-							response.getIssuer().getValue());
+							OpenSamlUtil.getMessageIssuerId(response));
 				}
 			}
 
@@ -318,8 +316,11 @@ public class AssertionConsumerService {
 
 		// all the rest from CP
 		cpResponse.setInResponseTo(response.getInResponseTo());
-		cpResponse.setIssuer(response.getIssuer().getValue());
+		cpResponse.setIssuer(OpenSamlUtil.getMessageIssuerId(response));
 		cpResponse.setDestination(response.getDestination());
+
+		// just in case, should already have been done via state
+		TraceSupport.switchToConversationFromSamlId(response.getInResponseTo());
 
 		return cpResponse;
 	}
@@ -358,7 +359,7 @@ public class AssertionConsumerService {
 		}
 
 		// UI dispatch
-		var rpIssuer = authnRequest.getIssuer().getValue();
+		var rpIssuer = OpenSamlUtil.getMessageIssuerId(authnRequest);
 		var applicationName = authnRequest.getProviderName();
 		var result = createUiObjects(rpIssuer, authnRequest.getID(), applicationName, httpRequest, stateData);
 
@@ -373,7 +374,7 @@ public class AssertionConsumerService {
 
 	private void auditAuthnRequestFromRp(AuthnRequest authnRequest, HttpServletRequest request, StateData stateData) {
 		var relyingParty = relyingPartySetupService
-				.getRelyingPartyByIssuerIdOrReferrer(authnRequest.getIssuer().getValue(), null, true);
+				.getRelyingPartyByIssuerIdOrReferrer(OpenSamlUtil.getMessageIssuerId(authnRequest), null, true);
 		var auditDto = new InboundAuditMapper(trustBrokerProperties)
 				.mapFrom(stateData)
 				.mapFrom(authnRequest)
@@ -477,33 +478,34 @@ public class AssertionConsumerService {
 
 		// support correlation with OIDC invocation in scripts too on SAML side (if login was trigger by client_id)
 		var oidcClientId = OidcSessionSupport.getSamlExchangeAcsUrlClientId(ascUrl);
+		var conversationId = TraceSupport.switchToConversationFromSamlId(authnRequestId);
 
 		// sp state data
 		var spStateData = StateData.builder()
-				.id(authnRequestId)
-				.lastConversationId(authnRequest.getID())
-				.issuer(authnRequest.getIssuer().getValue())
-				.referer(referer)
-				.rpContext(rpContexts)
-				.relayState(spRelayState)
-				.contextClasses(contextClasses)
-				.comparisonType(comparisonType)
-				.assertionConsumerServiceUrl(ascUrl)
-				.applicationName(providerName)
-				.oidcClientId(oidcClientId)
-				.issueInstant(authnRequest.getIssueInstant().toString())
-				.initiatedViaArtifactBinding(initiatedViaArtifactBinding)
-				.build();
+								   .id(authnRequestId)
+								   .lastConversationId(conversationId) // from SAML POST peer, if coming from us
+								   .issuer(OpenSamlUtil.getMessageIssuerId(authnRequest))
+								   .referer(referer)
+								   .rpContext(rpContexts)
+								   .relayState(spRelayState)
+								   .contextClasses(contextClasses)
+								   .comparisonType(comparisonType)
+								   .assertionConsumerServiceUrl(ascUrl)
+								   .applicationName(providerName)
+								   .oidcClientId(oidcClientId)
+								   .issueInstant(authnRequest.getIssueInstant().toString())
+								   .initiatedViaArtifactBinding(initiatedViaArtifactBinding)
+								   .build();
 
 		StateData stateData;
 		if (ssoState.isEmpty()) {
-			var relayState = ssoService.generateRelayState();
+			var relayState = SamlUtil.generateRelayState();
 			// using relay state as state ID (must surely be a valid ID)
 			SamlUtil.validateSessionId(relayState, "XTB relay state used as session ID");
 			stateData = StateData.builder()
-					.id(relayState)
-					.relayState(relayState)
-					.build();
+								 .id(relayState)
+								 .relayState(relayState)
+								 .build();
 			log.debug("No SSO or no SSO state yet, created new one: {}", relayState);
 		}
 		else {
@@ -515,8 +517,7 @@ public class AssertionConsumerService {
 		stateData.setSpStateData(spStateData);
 
 		// Keep the following in sync with SsoService.copyToSsoStateAndInvalidateAuthnRequestState
-		stateData.setLastConversationId(authnRequest.getID()); // conversation the same for CP and RP side
-
+		stateData.setLastConversationId(spStateData.getLastConversationId()); // conversation the same for CP and RP side
 		stateData.setForceAuthn(OpenSamlUtil.isForceAuthnRequest(authnRequest));
 		stateData.setSignedAuthnRequest(authnRequest.isSigned());
 
@@ -732,10 +733,10 @@ public class AssertionConsumerService {
 
 		// validation
 		if (trustBrokerProperties.getSecurity().isValidateAuthnRequest()) {
-			var issuer = authnRequest.getIssuer().getValue();
+			var issuer = OpenSamlUtil.getMessageIssuerId(authnRequest);
 			var referer = WebUtil.getHeader(org.springframework.http.HttpHeaders.REFERER, request);
 			var trustCredentials = relyingPartySetupService.getRelyingTrustCredentials(issuer, referer);
-			var acWhiteList = relyingPartySetupService.getAcWhiteList(authnRequest.getIssuer().getValue(), null);
+			var acWhiteList = relyingPartySetupService.getAcWhiteList(issuer, null);
 			AssertionValidator.validateAuthnRequest(authnRequest, trustCredentials, acWhiteList, trustBrokerProperties,
 					securityPolicies, signatureContext);
 		}
@@ -757,7 +758,7 @@ public class AssertionConsumerService {
 	}
 
 	private CpResponse validateAndGetCpResponse(ResponseData<Response> responseData, StateData idpStateData) {
-		String responseIssuer = responseData.getResponse().getIssuer().getValue();
+		String responseIssuer = OpenSamlUtil.getMessageIssuerId(responseData.getResponse());
 		String referrer = idpStateData.getReferer();
 		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(responseIssuer, referrer);
 		var encryptionTrustCredentials = claimsParty.getCpEncryptionTrustCredentials();

@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.saml.dto;
@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -461,7 +462,7 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 		var oldValue = getClaims(claimKey);
 		// struct (handle as Map)
 		if (parent != null) {
-			var newValue = new HashMap<String, Object>();
+			var newValue = new LinkedHashMap<>();
 			if (oldValue != null) {
 				newValue.putAll(CollectionUtil.asMap(name, value, oldValue));
 			}
@@ -539,6 +540,11 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	@Override
 	public Map<AttributeName, List<String>> getUserDetailMap() {
 		return Collections.unmodifiableMap(userDetails);
+	}
+
+	@JsonIgnore
+	public boolean hasOriginalNameId() {
+		return originalNameId != null && originalNameId.equals(nameId);
 	}
 
 }

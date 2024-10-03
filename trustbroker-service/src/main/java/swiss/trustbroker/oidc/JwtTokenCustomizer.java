@@ -54,6 +54,7 @@ import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
 import swiss.trustbroker.common.util.OidcUtil;
+import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
@@ -224,11 +225,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		}
 
 		// overwrite referer with the original caller, so we can better correlate the application
-		var session = HttpExchangeSupport.getRunningHttpSession();
-		if (session != null) {
-			auditDto.setReferrer(session.getStateData()
-										.getRpReferer());
-		}
+		auditDto.setReferrer(getCurrentReferrer());
 
 		// correlation with SAML side sending ssoSessionId usually
 		var ssoSessionId = cpResponse.getAttribute(CoreAttributeName.SSO_SESSION_ID.getNamespaceUri());
@@ -237,13 +234,18 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		// correlated with initial OIDC session
 		auditDto.setConversationId(conversationId);
 
+		// correlation by message marker
+		auditDto.setMessageId(getCurrentMessageId());
+
 		// token type influences log level as access_token and id_token are mostly the same
 		var tokenType = context.getTokenType()
 							   .equals(OAuth2TokenType.ACCESS_TOKEN) ?
 				EventType.OIDC_TOKEN : EventType.OIDC_IDTOKEN;
 		auditDto.setEventType(tokenType);
 
-		auditService.logOutboundSamlFlow(auditDto);
+		auditDto.setOidcClientId(cpResponse.getOidcClientId());
+
+		auditService.logOutboundFlow(auditDto);
 	}
 
 	private boolean isEnabledTokenClaim(String claim) {
@@ -257,6 +259,23 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		return properties.getOidc()
 						 .getAddTokenHeader()
 						 .contains(header);
+	}
+
+	private static String getCurrentReferrer() {
+		var session = HttpExchangeSupport.getRunningHttpSession();
+		if (session != null) {
+			return session.getStateData().getRpReferer();
+		}
+		return null;
+	}
+
+	private static String getCurrentMessageId() {
+		var request = HttpExchangeSupport.getRunningHttpRequest();
+		if (request != null) {
+			// at the moment we log this, the code is consumed and invalidated
+			return StringUtil.clean(request.getParameter(OidcUtil.OIDC_CODE));
+		}
+		return null;
 	}
 
 	private void addSidClaim(Authentication principal, CpResponse cpResponse) {

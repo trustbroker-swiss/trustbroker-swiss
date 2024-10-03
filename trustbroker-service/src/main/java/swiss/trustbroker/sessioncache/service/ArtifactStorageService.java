@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.sessioncache.service;
@@ -28,6 +28,7 @@ import net.shibboleth.shared.component.ComponentInitializationException;
 import org.opensaml.storage.AbstractStorageService;
 import org.opensaml.storage.StorageRecord;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.sessioncache.dto.ArtifactCacheEntity;
 import swiss.trustbroker.sessioncache.repo.ArtifactCacheRepository;
 
@@ -41,13 +42,16 @@ public class ArtifactStorageService extends AbstractStorageService {
 
 		@Override
 		public void run() {
+			var numEntries = repository.count();
 			var start = clock.instant();
 			log.debug("Start reaping artifacts");
 			var reaped = repository.deleteAllInBatchByExpirationTimestampBefore(Timestamp.from(start));
 			var duration = Duration.between(start, clock.instant()).toMillis();
+			metricsService.gauge(MetricsService.SESSION_LABEL + MetricsService.SAML_LABEL + "artifacts",
+					numEntries - reaped);
 			var msg = String.format(
-					"Completed reaping ArtifactCache in dTms=%d expiredArtifacts=%d after cleanupInterval=%s",
-					duration, reaped, cleanupInterval);
+					"Completed reaping ArtifactCache in dTms=%d totalArtifacts=%s expiredArtifacts=%d after cleanupInterval=%s",
+					duration, numEntries, reaped, cleanupInterval);
 			if (reaped > 0) {
 				log.info(msg);
 			}
@@ -65,10 +69,14 @@ public class ArtifactStorageService extends AbstractStorageService {
 
 	private final Clock clock;
 
-	public ArtifactStorageService(ArtifactCacheRepository repository, Clock clock, Duration cleanupInterval) {
+	public final MetricsService metricsService;
+
+	public ArtifactStorageService(ArtifactCacheRepository repository, Clock clock, Duration cleanupInterval,
+			MetricsService metricsService) {
 		this.repository = repository;
 		this.clock = clock;
 		this.cleanupInterval = cleanupInterval;
+		this.metricsService = metricsService;
 		if (cleanupInterval.isZero()) {
 			this.cleanupTask = null;
 			// OK for an in memory DB, not suitable for a real DB

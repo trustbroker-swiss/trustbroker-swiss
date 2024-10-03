@@ -1,13 +1,13 @@
 <!--
  Copyright (C) 2024 trustbroker.swiss team BIT
- 
+
  This program is free software.
  You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- 
+
  This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- 
+
  See the GNU Affero General Public License for more details.
  You should have received a copy of the GNU Affero General Public License along with this program.
  If not, see <https://www.gnu.org/licenses/>.
@@ -18,7 +18,7 @@
 	</mat-sidenav>
 	<div class="portal-frame {{ theme.name }}" aria-hidden="false">
 		<ob-master-layout class="portal-master-layout" masterLayout>
-			<ng-container obHeader>
+			<ng-container obHeader *ngIf="theme.hasHeader">
 				<app-mat-header
 					[appName]="'trustbroker.app.title' | translate"
 					[environment]="'trustbroker.footer.info.right' | translate | environmentDisplay"
@@ -28,7 +28,7 @@
 					class="w-100"
 				></app-mat-header>
 			</ng-container>
-			<ng-container obFooter>
+			<ng-container obFooter *ngIf="theme.hasFooter">
 				<app-mat-footer class="d-block w-100" [detailedFooter]="detailedFooter"></app-mat-footer>
 			</ng-container>
 		</ob-master-layout>

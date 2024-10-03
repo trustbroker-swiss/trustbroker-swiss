@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.saml.controller;
@@ -112,7 +112,7 @@ import swiss.trustbroker.util.ApiSupport;
 import swiss.trustbroker.util.SamlValidator;
 import swiss.trustbroker.util.WebSupport;
 
-// hacky class requiring to mock out new unused/(untested facilities
+// hacky class requiring to mock out new unused/untested facilities
 @ExtendWith(SpringExtension.class)
 @SpringBootTest
 @ContextConfiguration(classes = {
@@ -456,7 +456,6 @@ class AppControllerTest {
 	}
 
 	private <T extends RequestAbstractType> T prepareValidIncomingRequest(T request) {
-		doReturn("GeneratedRelayState").when(ssoService).generateRelayState();
 		doThrow(new IllegalArgumentException()).when(relyingPartyService).sendFailedSamlResponseToRp(
 				any(), any(), any(), any(), any());
 		var newSignature =

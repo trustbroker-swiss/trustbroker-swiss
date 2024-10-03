@@ -63,6 +63,7 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.util.Assert;
 import org.w3c.dom.Element;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
+import swiss.trustbroker.common.tracing.TraceSupport;
 
 /**
  * For internal use only. Intended for consolidating common behavior related to minting a
@@ -162,7 +163,7 @@ class OpenSamlAuthenticationRequestResolver {
 		}
 		authnRequestConsumer.accept(registration, authnRequest);
 		if (authnRequest.getID() == null) {
-			authnRequest.setID("ARQ" + UUID.randomUUID());
+			authnRequest.setID(TraceSupport.getOwnTraceParentForSaml());
 		}
 		String relayState = this.relayStateResolver.convert(request);
 		Saml2MessageBinding binding = registration.getAssertingPartyDetails().getSingleSignOnServiceBinding();

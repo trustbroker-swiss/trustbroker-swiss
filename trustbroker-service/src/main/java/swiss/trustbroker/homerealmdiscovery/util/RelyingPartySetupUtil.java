@@ -16,6 +16,7 @@
 package swiss.trustbroker.homerealmdiscovery.util;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -31,6 +32,7 @@ import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.api.idm.dto.IdmRequest;
 import swiss.trustbroker.api.idm.service.IdmService;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.util.DirectoryUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
@@ -40,7 +42,6 @@ import swiss.trustbroker.federation.xmlconfig.Certificates;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.Encryption;
-import swiss.trustbroker.federation.xmlconfig.FeatureEnum;
 import swiss.trustbroker.federation.xmlconfig.Flow;
 import swiss.trustbroker.federation.xmlconfig.FlowPolicies;
 import swiss.trustbroker.federation.xmlconfig.IdmLookup;
@@ -65,6 +66,8 @@ import swiss.trustbroker.util.PropertyUtil;
 @Slf4j
 public class RelyingPartySetupUtil {
 
+	public static final String DEFINITION_PATH = "definition/";
+
 	private RelyingPartySetupUtil() {
 	}
 
@@ -79,36 +82,71 @@ public class RelyingPartySetupUtil {
 			}
 			catch (TechnicalException ex) {
 				log.error("Could not load base claim: {}", ex.getInternalMessage());
-				relyingParty.setEnabled(FeatureEnum.INVALID);
+				relyingParty.invalidate(ex);
 			}
 		}
 	}
 
 	private static void loadRelyingParty(String definitionPath, String pullConfigPath, RelyingParty relyingParty,
 			TrustBrokerProperties trustBrokerProperties, List<IdmService> idmServices) {
-		String baseRule = relyingParty.getBase();
-		String rulePath = definitionPath;
-		var baseInConfig = new File(definitionPath + baseRule);
-		var pullConfigDefinition = pullConfigPath + "definition/";
-		var baseInCache = new File(pullConfigDefinition + baseRule);
+		var baseRule = relyingParty.getBase();
 
 		if (!StringUtils.isBlank(baseRule)) {
-			boolean baseExistsInCache = !baseInConfig.exists() && baseInCache.exists();
-			boolean differentBase = baseInConfig.exists() && baseInCache.exists() &&
-					ClaimsProviderUtil.mustUpdate(pullConfigDefinition + baseRule, definitionPath + baseRule);
-			if (baseExistsInCache || differentBase) {
-				rulePath = pullConfigDefinition;
-			}
-			else if (!baseInConfig.exists() && !baseInCache.exists()) {
-				throw new TechnicalException(String.format("Provided base=%s does not exist (tried at %s)",
-						baseRule, baseInCache.getAbsolutePath()));
-			}
-			RelyingParty baseClaim = ClaimsProviderUtil.loadRelyingParty(rulePath + baseRule);
+			var rulePath = resolvePath(definitionPath, pullConfigPath, baseRule, relyingParty.getSubPath(), trustBrokerProperties);
+			var basePath = Path.of(rulePath, baseRule).toString();
+			var baseClaim = ClaimsProviderUtil.loadRelyingParty(basePath);
 			mergeRelyingParty(relyingParty, baseClaim, idmServices);
 			applyGlobalCertificates(relyingParty, trustBrokerProperties);
 		}
 
 		postInit(relyingParty);
+	}
+
+	private static String resolvePath(String definitionPath, String pullConfigPath, String baseRule, String subPath,
+			TrustBrokerProperties trustBrokerProperties) {
+		// see ReferenceHolder for the order
+		var pullConfigDefinition = pullConfigPath + DEFINITION_PATH;
+		if (StringUtils.isNotEmpty(subPath)) {
+			// 1. relative path in definition
+			var path = findInConfigOrCache(definitionPath + subPath, pullConfigDefinition + subPath, baseRule);
+			if (path != null) {
+				log.trace("Found baseRule={} in subPath={} : path={}", baseRule, subPath, path);
+				return path;
+			}
+		}
+		var globalProfilesPath = trustBrokerProperties != null ? trustBrokerProperties.getGlobalProfilesPath() : null;
+		if (StringUtils.isNotEmpty(globalProfilesPath)) {
+			// 2. global profile directory
+			var path = findInConfigOrCache(definitionPath + globalProfilesPath, pullConfigDefinition + globalProfilesPath, baseRule);
+			if (path != null) {
+				log.trace("Found baseRule={} in globalProfilesPath={} : path={}", baseRule, globalProfilesPath, path);
+				return path;
+			}
+		}
+		var path = findInConfigOrCache(definitionPath, pullConfigDefinition, baseRule);
+		if (path != null) {
+			log.trace("Found baseRule={} in definition path : path={}", baseRule, path);
+			return path;
+		}
+		throw new TechnicalException(String.format("Provided base=%s does not exist in definitions=%s or cache=%s directly, "
+								+ "or within globalProfilesPath=%s or subPath=%s",
+					baseRule, definitionPath, pullConfigPath, globalProfilesPath, subPath));
+	}
+
+	private static String findInConfigOrCache(String definitionPath, String pullConfigDefinition, String baseRule) {
+		var baseInConfig = Path.of(definitionPath, baseRule).toFile();
+		var baseInCache = Path.of(pullConfigDefinition, baseRule).toFile();
+		var baseInConfigExists = baseInConfig.exists();
+		var baseInCacheExists = baseInCache.exists();
+		var differentBase = baseInConfigExists && baseInCacheExists &&
+				DirectoryUtil.contentDiffers(baseInConfig, baseInCache);
+		if ((!baseInConfigExists && baseInCacheExists) || differentBase) {
+			return pullConfigDefinition;
+		}
+		if (baseInConfigExists) {
+			return definitionPath;
+		}
+		return null;
 	}
 
 	private static void postInit(RelyingParty relyingParty) {
@@ -124,7 +162,7 @@ public class RelyingPartySetupUtil {
 						log.error("Invalid rpIssuerId={} oidcClient={} - empty redirect URL list derived from "
 								+ "ACUrls={}", relyingParty.getId(), c.getId(), c.getRedirectUris().getAcUrls());
 							// such a client would fail when building the OIDC registry
-						relyingParty.setEnabled(FeatureEnum.INVALID);
+						relyingParty.invalidate("Empty redirect URL list derived from ACUrls");
 					}
 				}
 			});
@@ -218,7 +256,7 @@ public class RelyingPartySetupUtil {
 	}
 
 	private static void mergeMultiQueryPolicy(RelyingParty relyingParty, RelyingParty baseRelyingParty) {
-		String rpMultiQueryPolicy = relyingParty.getIdmLookup().getMultiQueryPolicy();
+		var rpMultiQueryPolicy = relyingParty.getIdmLookup().getMultiQueryPolicy();
 		var baseMultiQueryPolicy = baseRelyingParty.getIdmLookup().getMultiQueryPolicy();
 		if (rpMultiQueryPolicy == null && baseMultiQueryPolicy != null) {
 			relyingParty.getIdmLookup().setMultiQueryPolicy(baseMultiQueryPolicy);
@@ -227,7 +265,8 @@ public class RelyingPartySetupUtil {
 
 	// Make <Certificates/> optional using global settings as last resort for all SetupRP/ProfileRP files
 	private static void applyGlobalCertificates(RelyingParty relyingParty, TrustBrokerProperties trustBrokerProperties) {
-		if (trustBrokerProperties == null) {
+		if (trustBrokerProperties == null || trustBrokerProperties.getSigner() == null) {
+			// unit tests only
 			return;
 		}
 		if (relyingParty.getCertificates() == null) {

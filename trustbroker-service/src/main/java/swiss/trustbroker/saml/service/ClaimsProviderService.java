@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.saml.service;
@@ -41,7 +41,6 @@ import swiss.trustbroker.audit.service.OutboundAuditMapper;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlFactory;
-import swiss.trustbroker.common.saml.util.SamlUtil;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.SsoSessionIdPolicy;
@@ -186,26 +185,11 @@ public class ClaimsProviderService {
 		return useArtifactBinding;
 	}
 
-	// correlate SP AuthnRequest with IdP AuthnRequest for discontinued stealth processing only
-	public void saveCorrelatedIdpStateDataWithState(
-			String cpRelayState, // our own relay state
-			String cpIssuerId, // urn or url but it's just an ID
-			String deviceID,
-			StateData stateData) {
-
-		// check session validity
+	private void saveCorrelatedIdpStateDataWithState(String cpIssuerId, String deviceID, StateData stateData) {
+		// update session validity
 		var now = OffsetDateTime.now();
 		stateData.setIssueInstant(now.toString());
-		if (cpRelayState != null) {
-			stateData.setRelayState(cpRelayState);
-		}
 		stateData.setIssuer(cpIssuerId);
-
-		// for discontinued stealth processing we needed to set the relayState received from ADFS
-		if (cpRelayState != null && !cpRelayState.equals(stateData.getId())) {
-			SamlUtil.validateSessionId(cpRelayState, "CP Relay State used as session ID");
-			stateData.setId(cpRelayState);
-		}
 		if (deviceID != null) {
 			stateData.setDeviceId(deviceID);
 		}
@@ -218,8 +202,6 @@ public class ClaimsProviderService {
 
 		// save initial data to DB
 		stateCacheService.save(stateData, this.getClass().getSimpleName());
-		log.debug("Incoming RP authnRequestId={} correlated with outgoing CP={} using relayState={}",
-				stateData.getSpStateData().getId(), cpIssuerId, cpRelayState);
 	}
 
 	public void sendSamlToCpWithMandatoryIds(
@@ -250,7 +232,7 @@ public class ClaimsProviderService {
 			) {
 		// state from RP
 		var deviceId = WebSupport.getDeviceId(request);
-		saveCorrelatedIdpStateDataWithState(null, cpIssuer, deviceId, idpStateData);
+		saveCorrelatedIdpStateDataWithState(cpIssuer, deviceId, idpStateData);
 		var spStateData = idpStateData.getSpStateData();
 		var rpIssuer = spStateData.getIssuer();
 		var rpReferrer = spStateData.getReferer();
@@ -282,7 +264,7 @@ public class ClaimsProviderService {
 				.build();
 		// stateData may have overridden the SAML type if it contains an IDP Response:
 		auditDto.setEventType(EventType.AUTHN_REQUEST);
-		auditService.logOutboundSamlFlow(auditDto);
+		auditService.logOutboundFlow(auditDto);
 	}
 
 }

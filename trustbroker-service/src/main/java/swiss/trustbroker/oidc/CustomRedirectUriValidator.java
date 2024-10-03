@@ -43,7 +43,7 @@ import swiss.trustbroker.common.util.UrlAcceptor;
  * Partially copied from spring-security-oauth2-authorization-server:
  * org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationValidator
  * Javadoc of original class:
- * 
+ *
  * A {@code Consumer} providing access to the {@link OAuth2AuthorizationCodeRequestAuthenticationContext}
  * containing an {@link OAuth2AuthorizationCodeRequestAuthenticationToken}
  * and is the default {@link OAuth2AuthorizationCodeRequestAuthenticationProvider#setAuthenticationValidator(Consumer) authentication validator}

@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.tracing;
@@ -33,43 +33,43 @@ public class DefaultRequestContextFactory implements RequestContextFactory {
 		return create(
 				calledObject,
 				calledMethod,
-				createInitialTransferId(),
+				createInitialTraceId(),
 				null,
 				null
 		);
 	}
 
 	@Override
-	public RequestContext create(String calledObject, String calledMethod, String transferId, String principal,	String clientId) {
-		return create(calledObject, calledMethod, transferId, principal, clientId, null, null);
+	public RequestContext create(String calledObject, String calledMethod, String traceId, String principal,	String clientId) {
+		return create(calledObject, calledMethod, traceId, principal, clientId, null, null);
 	}
 
 	@Override
-	public RequestContext create(String calledObject, String calledMethod, String transferId, String principal, String clientId,
+	public RequestContext create(String calledObject, String calledMethod, String traceId, String principal, String clientId,
 			Object fullRequestContext, Object fullResponseContext) {
-		return create(calledObject, calledMethod, transferId, principal, clientId, new AtomicLong(),
+		return create(calledObject, calledMethod, traceId, principal, clientId, new AtomicLong(),
 				fullRequestContext, fullResponseContext);
 	}
 
 	@Override
 	public RequestContext create(String calledObject, String calledMethod, RequestContext context) {
-		return create(calledObject, calledMethod, context.getTransferId(), context.getPrincipal(), context.getClientId(),
+		return create(calledObject, calledMethod, context.getTraceId(), context.getPrincipal(), context.getClientId(),
 				context.getFanOutRequestCounter(), null, null);
 	}
 
 	@SuppressWarnings("java:S107")
-	private RequestContext create(String calledObject, String calledMethod, String transferId, String principal, String clientId,
+	private RequestContext create(String calledObject, String calledMethod, String traceId, String principal, String clientId,
 			AtomicLong fanOutRequestCounter, Object fullRequestContext, Object fullResponseContext) {
 		// make sure we can track the request, also when a logInitialEnter in a batch job did not detect an incoming one
-		if (transferId == null) {
-			transferId = createInitialTransferId();
+		if (traceId == null) {
+			traceId = createInitialTraceId();
 		}
 		var rc = DefaultRequestContext
 				.builder()
 				.calledObject(calledObject)
 				.calledMethod(calledMethod)
 				.clientId(clientId)
-				.transferId(transferId)
+				.traceId(traceId)
 				.principal(principal)
 				.fanOutRequestCounter(fanOutRequestCounter)
 				.fullRequestContext(fullRequestContext)
@@ -90,7 +90,7 @@ public class DefaultRequestContextFactory implements RequestContextFactory {
 		if (rc == null) {
 			throw new IllegalStateException("RequestContext missing in current thread due to missing logIntialEnter!");
 		}
-		var id = rc.getTransferId();
+		var id = rc.getTraceId();
 		var principal = rc.getPrincipal();
 		var clientId = rc.getClientId();
 		var fanOutRequestCounter = rc.getFanOutRequestCounter();
@@ -99,7 +99,7 @@ public class DefaultRequestContextFactory implements RequestContextFactory {
 				.calledObject(calledObject)
 				.calledMethod(calledMethod)
 				.clientId(clientId)
-				.transferId(id + "-" + createRequestGUID8())
+				.traceId(id + "-" + createRequestGUID8())
 				.principal(principal)
 				.fanOutRequestCounter(fanOutRequestCounter)
 				.build();
@@ -145,7 +145,7 @@ public class DefaultRequestContextFactory implements RequestContextFactory {
 		pushRequestContext(ctx);
 	}
 
-	public String createInitialTransferId() {
+	public String createInitialTraceId() {
 		return "00000000." + OpTraceUtil.PID_HEX_4 + "." + OpTraceUtil.HOST_IP_HEX_8 + "." + createRequestGUID8();
 	}
 

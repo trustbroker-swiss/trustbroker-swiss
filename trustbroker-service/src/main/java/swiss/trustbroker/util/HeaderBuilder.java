@@ -1,22 +1,24 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
+
 package swiss.trustbroker.util;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -100,14 +102,19 @@ public class HeaderBuilder {
 		return this;
 	}
 
-	public HeaderBuilder oidcCspFrameOptions() {
+	public HeaderBuilder oidcCspFrameOptions(Set<String> ownOrigins) {
 		var frameOptions = properties.getFrameOptions().getOidc();
 		var csp = properties.getCsp().getOidc();
-		return cspFrameOptions(csp, frameOptions);
+		return cspFrameOptions(csp, frameOptions, ownOrigins);
 	}
 
-	private HeaderBuilder cspFrameOptions(String csp, String frameOptions) {
+	private HeaderBuilder cspFrameOptions(String csp, String frameOptions, Set<String> ownOrigins) {
 		var frameAncestors = frameAncestorHandler.supportedFrameAncestors();
+		if (!CollectionUtils.isEmpty(ownOrigins)) {
+			// copy as it may be immutable
+			frameAncestors = new ArrayList<>(frameAncestors);
+			frameAncestors.addAll(ownOrigins);
+		}
 		var appliedFrameAncestors = new ArrayList<String>();
 		csp(csp, frameAncestors, appliedFrameAncestors);
 		frameAncestorHandler.appliedFrameAncestors(appliedFrameAncestors);

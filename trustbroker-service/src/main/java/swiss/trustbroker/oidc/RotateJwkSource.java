@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.oidc;
@@ -28,6 +28,7 @@ import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import lombok.extern.slf4j.Slf4j;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.sessioncache.dto.JwkCacheEntity;
 import swiss.trustbroker.sessioncache.service.JwkCacheService;
 
@@ -36,8 +37,11 @@ public class RotateJwkSource<C extends SecurityContext> implements JWKSource<C> 
 
 	private final JwkCacheService jwkCacheService;
 
-	public RotateJwkSource(JwkCacheService jwkCacheService) {
+	public final MetricsService metricsService;
+
+	public RotateJwkSource(JwkCacheService jwkCacheService, MetricsService metricsService) {
 		this.jwkCacheService = jwkCacheService;
+		this.metricsService = metricsService;
 	}
 
 	@Override
@@ -59,6 +63,8 @@ public class RotateJwkSource<C extends SecurityContext> implements JWKSource<C> 
 				.peek(jwkCacheEntity -> log.debug("Keep jwkCacheEntity={}", jwkCacheEntity)) // includes expirationTimestamp
 				.map(RotateJwkSource::getJWKFromEntity)
 				.toList();
+
+		metricsService.gauge(MetricsService.SESSION_LABEL + MetricsService.OIDC_LABEL + "keys", jwks.size());
 		log.debug("JWK query with selector={} returned jwkCount={} valid entries", jwkSelector, jwks.size());
 
 		// initially and adhoc create a new key when JwkCacheService did not yet kick in creating them scheduled

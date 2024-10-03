@@ -27,7 +27,7 @@ import { HeaderButton } from '../shared/enums/HeaderButton';
 
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
-	public static readonly defaultTheme = new Theme('xtb-default', false, false, true, false, true, true, 10);
+	public static readonly defaultTheme = new Theme('xtb-default', true, true, false, false, true, false, true, true, 10);
 
 	private static readonly variantSeparator = '-';
 
@@ -94,6 +94,8 @@ export class ThemeService {
 	private themeNamed(theme: string): Theme {
 		// The full range of options that are configurable in principle is not yet supported (button ordering, button types, features)
 		const hasHelpPanel = this.buttons.includes(HeaderButton.HELP_PANEL);
+		const hasHeader = this.features.includes(GuiFeature.HEADER);
+		const hasFooter = this.features.includes(GuiFeature.FOOTER);
 		const hasBackdrop = this.features.includes(GuiFeature.BACKDROP);
 		const fullLanguageName = this.buttons.includes(HeaderButton.LANGUAGE_LONG);
 		const helpIndex = Math.max(this.buttons.indexOf(HeaderButton.HELP_PANEL), this.buttons.indexOf(HeaderButton.HELP_LINK));
@@ -102,7 +104,7 @@ export class ThemeService {
 		const helpTabindex = helpIndex < languageSelectorIndex ? 10 : 30;
 		// NOSONAR
 		// console.debug('[ThemeService] Theme', theme, 'helpPanel:', hasHelpPanel, 'backdrop:', hasBackdrop, 'variants:', hasVariants, 'helpTabindex:', helpTabindex);
-		return new Theme(theme, hasBackdrop, themeSelectorIndex >= 0, languageSelectorIndex >= 0, fullLanguageName, helpIndex >= 0, hasHelpPanel, helpTabindex);
+		return new Theme(theme, hasHeader, hasFooter, hasBackdrop, themeSelectorIndex >= 0, languageSelectorIndex >= 0, fullLanguageName, helpIndex >= 0, hasHelpPanel, helpTabindex);
 	}
 
 	private loadConfig() {

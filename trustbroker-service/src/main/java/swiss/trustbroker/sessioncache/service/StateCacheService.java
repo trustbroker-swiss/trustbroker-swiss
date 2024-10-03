@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.sessioncache.service;
@@ -35,11 +35,13 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.ProcessUtil;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.SsoSessionIdPolicy;
 import swiss.trustbroker.exception.GlobalExceptionHandler;
+import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.sessioncache.dto.LifecycleState;
 import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.sessioncache.dto.StateEntity;
@@ -59,13 +61,16 @@ public class StateCacheService {
 
 	private final ObjectMapper objectMapper;
 
+	public final MetricsService metricsService;
+
 	public StateCacheService(StateCacheRepository stateCacheRepository,
 			TrustBrokerProperties trustBrokerProperties, GlobalExceptionHandler globalExceptionHandler,
-			Clock clock) {
+			Clock clock, MetricsService metricsService) {
 		this.stateCacheRepository = stateCacheRepository;
 		this.trustBrokerProperties = trustBrokerProperties;
 		this.globalExceptionHandler = globalExceptionHandler;
 		this.clock = clock;
+		this.metricsService = metricsService;
 		this.objectMapper = new ObjectMapper(); // trusted anything
 	}
 
@@ -102,9 +107,13 @@ public class StateCacheService {
 
 			encodeAndSaveStateData(stateEntity, stateData, actor, "SAVE");
 		}
-		catch (Exception e) {
-			throw new TechnicalException(String.format("State save failed. Details: stateId=%s exceptionMsg=%s",
-					stateData.getId(), e.getMessage()), e);
+		catch (TechnicalException ex) {
+			throw ex;
+		}
+		catch (Exception ex) {
+			throw new TechnicalException(
+					String.format("State save failed in call from actor=%s - Details: stateId=%s exceptionMsg=%s",
+					actor, stateData.getId(), ex.getMessage()), ex);
 		}
 	}
 
@@ -142,7 +151,7 @@ public class StateCacheService {
 					stateData.getLifecycle().getSsoEstablishedTime().toInstant().plusSeconds(maxSessionTimeSec);
 			expiration = now.plusSeconds(stateValiditySec);
 			if (expiration.isAfter(latestSessionEndTime)) {
-				log.debug("State EXPIRED before idle timout sessionId={} spSessionId={} oidcSessionId={} " 
+				log.debug("State EXPIRED before idle timout sessionId={} spSessionId={} oidcSessionId={} "
 								+ "latestSessionEndTime={} expirationTime={}",
 						stateData.getId(), stateEntity.getSpSessionId(), stateEntity.getOidcSessionId(),
 						latestSessionEndTime, expiration);
@@ -154,7 +163,7 @@ public class StateCacheService {
 		stateEntity.setExpirationTimestamp(expirationTimestamp);
 	}
 
-	private StateData extractStateData(StateEntity stateEntity, String actor) throws TechnicalException {
+	private StateData extractStateData(StateEntity stateEntity, String actor) {
 		try {
 			if (log.isDebugEnabled()) {
 				var expDuration = Duration.between(clock.instant(), stateEntity.getExpirationTimestamp().toInstant());
@@ -170,21 +179,27 @@ public class StateCacheService {
 							expDuration.toSeconds());
 				}
 			}
-			return objectMapper.readValue(stateEntity.getJsonData(), StateData.class);
+			var ret = objectMapper.readValue(stateEntity.getJsonData(), StateData.class);
+			TraceSupport.switchToConversation(ret.getLastConversationId());
+			return ret;
 		}
 		catch (JsonProcessingException ex) {
 			throw new TechnicalException(String.format(
-					"Unable to convert JSON to stateData. Details: stateId=%s exceptionMsg=%s",
-					stateEntity.getId(), ex.getMessage()), ex);
+					"Unable to convert JSON to stateData in call from actor=%s - Details: stateId=%s exceptionMsg=%s",
+					actor, stateEntity.getId(), ex.getMessage()), ex);
 		}
 	}
 
-	private void encodeAndSaveStateData(StateEntity stateEntity, StateData stateData, String actor, String event)
-			throws TechnicalException {
+	private void encodeAndSaveStateData(StateEntity stateEntity, StateData stateData, String actor, String event) {
 		try {
 			// propagate secondary keys
 			stateEntity.setSsoSessionId(stateData.getSsoSessionId()); // correlate SSO session secondary key (OIDC login)
 			stateEntity.setOidcSessionId(stateData.getOidcSessionId()); // correlate SSO session secondary key (OIDC logout)
+
+			// propagate traceparent if not yet done
+			if (stateData.getLastConversationId() == null) {
+				stateData.setLastConversationId(TraceSupport.getOwnTraceParent());
+			}
 
 			// propagate data
 			var jsonData = objectMapper.writeValueAsString(stateData);
@@ -211,21 +226,21 @@ public class StateCacheService {
 		}
 		catch (JsonProcessingException ex) {
 			throw new TechnicalException(String.format(
-					"Unable to convert stateData to JSON. Details: stateId=%s exceptionMsg=%s",
-					stateData.getId(), ex.getMessage()), ex);
+					"Unable to convert stateData to JSON in call from actor=%s - Details: stateId=%s exceptionMsg=%s",
+					actor, stateData.getId(), ex.getMessage()), ex);
 		}
 	}
 
 	// Exception if not found so no parameter required to back-track to session actor
-	public StateData find(String id, String actor) throws RequestDeniedException, TechnicalException {
-		var stateEntity = findBySessionId(id);
+	public StateData find(String id, String actor) {
+		var stateEntity = findBySessionId(id, actor);
 		return extractStateData(stateEntity, actor);
 	}
 
 	// Exception if not found so no parameter required to back-track to session actor
-	private StateEntity findBySessionId(String id) throws RequestDeniedException {
+	private StateEntity findBySessionId(String id, String actor) {
 		if (id == null) {
-			throw new RequestDeniedException("Missing state ID");
+			throw new RequestDeniedException(String.format("Missing state ID in call from actor=%s", actor));
 		}
 		var stateEntity = stateCacheRepository.findById(id);
 		if (stateEntity.isEmpty()) {
@@ -235,21 +250,37 @@ public class StateCacheService {
 	}
 
 	public Optional<StateData> findOptional(String id, String actor) {
+		if (id == null) {
+			log.info("Missing state ID in call from actor={}", actor);
+			return Optional.empty();
+		}
 		return findBySecondaryId(stateCacheRepository.findById(id).stream(), "sessionId", id, actor);
 	}
 
 	// spSessionId required for InResponseTo handling
 	public Optional<StateData> findBySpId(String id, String actor) {
+		if (id == null) {
+			log.info("Missing SP session ID in call from actor={}", actor);
+			return Optional.empty();
+		}
 		return findBySecondaryId(stateCacheRepository.findBySpSessionId(id).stream(), "spSessionId", id, actor);
 	}
 
 	// oidcSessionId required to track JESSIONID in spring-authorization-server
 	public Optional<StateData> findByOidcSessionId(String id, String actor) {
+		if (id == null) {
+			log.info("Missing OID session ID in call from actor={}", actor);
+			return Optional.empty();
+		}
 		return findBySecondaryId(stateCacheRepository.findByOidcSessionId(id).stream(), "oidcSessionId", id, actor);
 	}
 
 	// ssoSessionId required to correlate XTB OIDC with XTB SAML for participants
 	public Optional<StateData> findBySsoSessionId(String id, String actor) {
+		if (id == null) {
+			log.info("Missing SSO session ID in call from actor={}", actor);
+			return Optional.empty();
+		}
 		// findBySecondaryId with an additional check on isNotOidcSession because OIDC side uses SSO state as well
 		var stateDataList = stateCacheRepository.findBySsoSessionId(id).stream()
 				.map(
@@ -265,14 +296,14 @@ public class StateCacheService {
 		return checkAndReturnValidState(stateDataList, "ssoSessionId", id, actor);
 	}
 
-	public Optional<StateData> findSessionBySsoSessionIdResilient(String ssoSessionId) {
-		var ret = findBySsoSessionId(ssoSessionId, this.getClass().getSimpleName());
+	public Optional<StateData> findSessionBySsoSessionIdResilient(String ssoSessionId, String actor) {
+		var ret = findBySsoSessionId(ssoSessionId, actor);
 		// resilience workaround waiting for +/- 1.5 seconds for TX commit (until we have fixed AppController/RelyingPartyService
 		if (SsoSessionIdPolicy.isSsoSession(ssoSessionId)) {
 			for (var delay = 100; delay < 1000 && ret.isEmpty(); delay *= 2) { // 4 tries, 100ms, 200ms, 400ms, 800ms
-				log.error("No ssoSessionId={} found in DB (yet), retrying...", ssoSessionId);
+				log.error("No ssoSessionId={} found in DB (yet) in call from actor={} - retrying...", ssoSessionId, actor);
 				ProcessUtil.sleep(delay);
-				ret = findBySsoSessionId(ssoSessionId, this.getClass().getSimpleName());
+				ret = findBySsoSessionId(ssoSessionId, actor);
 			}
 		}
 		return ret;
@@ -319,8 +350,9 @@ public class StateCacheService {
 		}
 		if (stateDataList.size() > 1) {
 			throw new RequestDeniedException(String.format(
-					"State data created multiple times (possible re-posts). Details: stateId=%s repostCount=%d",
-					StringUtil.clean(id), stateDataList.size()));
+					"State data created multiple times for %s (possible re-posts) in call from actor=%s - "
+							+ "Details: stateId=%s repostCount=%d",
+					keyName, actor, StringUtil.clean(id), stateDataList.size()));
 		}
 		return Optional.of(stateDataList.get(0));
 	}
@@ -358,7 +390,8 @@ public class StateCacheService {
 	// Exception if not found so no parameter required to back-track to session actor
 	public StateData findMandatoryValidState(String id, String actor) {
 		return findValidState(id, actor)
-				.orElseThrow(() -> new RequestDeniedException(String.format("State not valid. Details: stateId=%s", id)));
+				.orElseThrow(() -> new RequestDeniedException(
+						String.format("State not valid in call from actor=%s - Details: stateId=%s", actor, id)));
 	}
 
 	public void tryInvalidate(StateData stateData, String actor) {
@@ -399,9 +432,11 @@ public class StateCacheService {
 
 	public void ssoEstablished(StateData stateData, String actor) {
 		if (!stateData.isValid()) {
-			throw new RequestDeniedException("State INVALID, cannot establish SSO. Details: stateId=" + stateData.getId());
+			throw new RequestDeniedException(
+					String.format("State INVALID in call from actor=%s - cannot establish SSO. Details: stateId=%s",
+							actor,stateData.getId()));
 		}
-		var stateEntity = findBySessionId(stateData.getId());
+		var stateEntity = findBySessionId(stateData.getId(), actor);
 		stateData.getLifecycle().setLifecycleState(LifecycleState.ESTABLISHED);
 		if (stateData.getSpStateData() != null) {
 			stateData.getSpStateData().getLifecycle().setLifecycleState(LifecycleState.ESTABLISHED);
@@ -439,6 +474,7 @@ public class StateCacheService {
 			long numEntries = stateCacheRepository.count();
 			long expired = reapExpiredSessions(start);
 			long collected = reapExpiringSessions(start, numEntries);
+			metricsService.gauge(MetricsService.SESSION_LABEL + "active", numEntries-expired);
 
 			// result with tuning recommendations when reaper needs to collect too many sessions
 			if (log.isErrorEnabled()) {

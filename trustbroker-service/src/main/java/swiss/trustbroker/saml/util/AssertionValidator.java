@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.saml.util;
@@ -845,11 +845,11 @@ public class AssertionValidator {
 		}
 		if (acWhiteList == null || acWhiteList.getAcUrls() == null) {
 			throw new RequestDeniedException(String.format(
-					"Empty ACWhiteList, deny all access including %s", assertionConsumerServiceUrl));
+					"Empty ACWhiteList, deny all access including acsUrl=%s", assertionConsumerServiceUrl));
 		}
 
 		if (assertionConsumerServiceUrl == null) {
-			log.debug("AssertionConsumerServiceURL is null, skip ACWHitelist check");
+			log.debug("AssertionConsumerServiceURL is null, skip ACWhitelist check");
 			return;
 		}
 
@@ -865,13 +865,13 @@ public class AssertionValidator {
 			final var incomingUrl = new URI(accessedUrl);
 			for (var check : acWhiteList.getAcNetUrls()) {
 				if (UrlAcceptor.isUrlOkForAccess(incomingUrl, check)) {
-					log.debug("Network access from {} matches ACWhitelist entry {}", accessedUrl, acWhiteList.getAcUrls());
+					log.debug("Network access from url={} matches ACWhitelistEntry={}", accessedUrl, acWhiteList.getAcUrls());
 					return;
 				}
 			}
 			var acWhitelistForLog = Arrays.toString(acWhiteList.getAcUrls().toArray());
 			throw new RequestDeniedException(String.format(
-					"Invalid URL %s not in ACWhitelist %s required by %s",
+					"Invalid url=%s not in ACWhitelist=%s required by %s",
 					accessedUrl, acWhitelistForLog, OpenSamlUtil.samlObjectToString(authRequest)));
 		}
 		catch (URISyntaxException e) {

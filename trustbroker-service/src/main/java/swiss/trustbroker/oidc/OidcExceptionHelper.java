@@ -54,6 +54,7 @@ import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.oidc.session.OidcSessionSupport;
+import swiss.trustbroker.oidc.tx.FragmentUtil;
 import swiss.trustbroker.saml.util.SamlStatusCode;
 import swiss.trustbroker.util.ApiSupport;
 
@@ -101,6 +102,10 @@ public class OidcExceptionHelper {
 	static final String CLIENT_AUTH_FAILED = "Client authentication failed: ";
 
 	static final String DEFAULT_ERROR_CODE = "access_denied";
+
+	public static final String ERROR_URI_PARAM = "error_uri";
+
+	public static final String ERROR_DESCRIPTION_PARAM = "error_description";
 
 	private OidcExceptionHelper() {
 	}
@@ -207,17 +212,18 @@ public class OidcExceptionHelper {
 
 	public static String getOidcErrorLocation(String baseUri, String errorCode, String description, String errorUri,
 			String errorBaseUri, String state) {
+		baseUri = FragmentUtil.discardAllErrorsInRedirect(baseUri); // client looping our own error
 		var builder = UriComponentsBuilder.fromUriString(baseUri);
 		builder.queryParam(OidcUtil.OIDC_ERROR, errorCode);
 		if (StringUtils.hasLength(state)) {
 			builder.queryParam(OidcUtil.OIDC_STATE_ID, state);
 		}
 		if (StringUtils.hasLength(description)) {
-			builder.queryParam("error_description", WebUtil.urlEncodeValue(description));
+			builder.queryParam(ERROR_DESCRIPTION_PARAM, WebUtil.urlEncodeValue(description));
 		}
 		if (StringUtils.hasLength(errorUri)) {
 			var absoluteUri = WebUtil.getAbsoluteUrl(errorBaseUri, errorUri);
-			builder.queryParam("error_uri", WebUtil.urlEncodeValue(absoluteUri));
+			builder.queryParam(ERROR_URI_PARAM, WebUtil.urlEncodeValue(absoluteUri));
 		}
 		// leave out error_description created by Spring Authorization Server, it is technical
 		return builder.build().toUriString();

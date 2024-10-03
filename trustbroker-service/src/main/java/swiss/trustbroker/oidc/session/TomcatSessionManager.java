@@ -1,17 +1,18 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
+
 package swiss.trustbroker.oidc.session;
 
 import java.io.ByteArrayInputStream;
@@ -36,6 +37,7 @@ import org.apache.commons.lang3.SerializationUtils;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.config.dto.TomcatSessionMode;
@@ -45,6 +47,7 @@ import swiss.trustbroker.oidc.tx.OidcTxRequestWrapper;
 import swiss.trustbroker.sessioncache.dto.Lifecycle;
 import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.sessioncache.service.StateCacheService;
+import swiss.trustbroker.sso.service.SsoService;
 import swiss.trustbroker.util.ApiSupport;
 import swiss.trustbroker.util.WebSupport;
 
@@ -60,6 +63,8 @@ public class TomcatSessionManager extends ManagerBase {
 	private static final long SESSION_CACHE_WARN_THRESHOLD = 1000;
 
 	private final StateCacheService stateCacheService;
+
+	private final SsoService ssoService;
 
 	private final RelyingPartyDefinitions relyingPartyDefinitions;
 
@@ -246,7 +251,7 @@ public class TomcatSessionManager extends ManagerBase {
 	}
 
 	private int getCacheTtl(long cacheTtl) {
-		return mode == TomcatSessionMode.IN_DB ? -1 : (int)cacheTtl;	// -1 means expiration is handled IN_DB only
+		return mode == TomcatSessionMode.IN_DB ? -1 : (int) cacheTtl; // -1 means expiration is handled IN_DB only
 	}
 
 	@Override
@@ -304,14 +309,14 @@ public class TomcatSessionManager extends ManagerBase {
 	public void remove(Session session, boolean update) {
 		logSession(session, "remove");
 		if (update && mode != TomcatSessionMode.IN_MEMORY) {
-			var sess = (TomcatSession)sessions.get(session.getId());
+			var sess = (TomcatSession) sessions.get(session.getId());
 			if (sess != null && sess.getStateData() != null) {
 				invalidateSessionState(sess.getStateData());
 			}
 		}
 		// remove from cache (super.remove actually does the same with update=false)
 		super.remove(session, update);
-		// save session will also be done invalidated as IN_DB we keep tracl with the StateCacheService reaper
+		// save session will also be done invalidated as IN_DB we keep track with the StateCacheService reaper
 	}
 
 	private void invalidateSessionState(StateData stateData) {
@@ -550,9 +555,13 @@ public class TomcatSessionManager extends ManagerBase {
 		session.setCreationTime(createTime.getTime());
 		session.setMaxInactiveInterval(getCacheTtl(ttl)); // -1 so we spare us the expire overhead
 
+		// attach conversation to thread (detach along traceId)
+		TraceSupport.switchToConversation(stateData.getLastConversationId());
+
+		// result debugging
 		var idle = session.getIdleTimeInternal() / 1000L;
-		log.debug("Applied timing to sessionId={} with createTime='{}' ttlSec={} idleSec={} attributes={}",
-				session.getId(), createTime, ttl, idle, session.getAttributeCount());
+		log.debug("Applied timing to sessionId={} with createTime='{}' ttlSec={} idleSec={} attributes={} conversationId={}",
+				session.getId(), createTime, ttl, idle, session.getAttributeCount(), stateData.getLastConversationId());
 		return session;
 	}
 
@@ -562,7 +571,7 @@ public class TomcatSessionManager extends ManagerBase {
 		if (context == null || session.getStateData() == null) {
 			return;
 		}
-		var sessionIds = OidcSessionSupport.getSessionIdsFromAuthentication(((SecurityContext)context).getAuthentication());
+		var sessionIds = OidcSessionSupport.getSessionIdsFromAuthentication(((SecurityContext) context).getAuthentication());
 		if (sessionIds != null && sessionIds.size() == 2) {
 			var ssoSessionId = sessionIds.get(0);
 			var oidcSessionId = sessionIds.get(1);
@@ -633,7 +642,7 @@ public class TomcatSessionManager extends ManagerBase {
 	void setFinalValuesFromAuthentication(TomcatSession session, Object context) {
 		logSession(session, "setFinalValuesFromAuthentication");
 		OidcSessionSupport.setFinalValuesFromAuthentication(session, context,
-				relyingPartyDefinitions, trustBrokerProperties, stateCacheService);
+				relyingPartyDefinitions, trustBrokerProperties, stateCacheService, ssoService);
 	}
 
 	void clearDerivedValuesFromAuthentication(TomcatSession session, Object context) {

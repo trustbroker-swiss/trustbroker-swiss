@@ -1,17 +1,18 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
+
 package swiss.trustbroker.oidc;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -38,13 +39,13 @@ import org.springframework.security.saml2.core.Saml2Error;
 import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticationException;
 import org.springframework.security.web.WebAttributes;
 import org.springframework.security.web.savedrequest.SavedRequest;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
-import swiss.trustbroker.util.WebSupport;
 
 class CustomFailureHandlerTest {
 
@@ -86,7 +87,7 @@ class CustomFailureHandlerTest {
 		var rp = RelyingParty.builder().id("rpId").build();
 		var clientId = "client1";
 		var request = new MockHttpServletRequest();
-		WebSupport.setTraceContext(request);
+		TraceSupport.setMdcTraceContext(request);
 		request.setParameter(OidcUtil.OIDC_CLIENT_ID, clientId);
 		request.addHeader(HttpHeaders.REFERER, "https://localhost");
 		if (redirectUri != null) {

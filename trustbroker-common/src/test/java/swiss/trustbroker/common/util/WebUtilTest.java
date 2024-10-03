@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.util;
@@ -20,6 +20,7 @@ import static org.hamcrest.Matchers.is;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.hamcrest.CoreMatchers;
@@ -37,7 +38,7 @@ class WebUtilTest {
 
 	private static final String TEST_QUERY = "one=uno&two=due&three=tre&two=deux";
 
-	private static final String TEST_URL_WITH_QUERY = TEST_URL + '?' + TEST_QUERY ;
+	private static final String TEST_URL_WITH_QUERY = TEST_URL + '?' + TEST_QUERY;
 
 	@Test
 	void getUrlWithQuery() {
@@ -80,8 +81,8 @@ class WebUtilTest {
 	}
 
 	@ParameterizedTest
-	@CsvSource(value =  {
-		"null,null",
+	@CsvSource(value = {
+			"null,null",
 			"https://example.trustbroker.swiss:8080/path?query=123,example.trustbroker.swiss",
 			"https:localhost/bla,null"
 	}, nullValues = "null")
@@ -140,15 +141,14 @@ class WebUtilTest {
 				{ null, null, null },
 				{ null, paramMap2, "?a=&b=" },
 				{ TEST_URL, Collections.emptyMap(), TEST_URL },
-				{ "https://localhost/test", paramMap1 , "https://localhost/test?key1=value1&key%2B=this%26that" },
+				{ "https://localhost/test", paramMap1, "https://localhost/test?key1=value1&key%2B=this%26that" },
 				{ "https://localhost/test?foo=bar", paramMap2, "https://localhost/test?foo=bar&a=&b=" }
 		};
 	}
 
 	@ParameterizedTest
 	@CsvSource(value = {
-			"persistentCookie,sessionId1,300,true,true,domain.org,/foo,null,persistentCookie,sessionId1,300,true,true,domain.org,"
-					+ "/foo",
+			"persistentCookie,sessionId1,300,true,true,domain.org,/foo,null,persistentCookie,sessionId1,300,true,true,domain.org,/foo",
 			"sessionCookie,sessionId2,null,false,false,null,null,LAX,sessionCookie,sessionId2,-1,false,false,null,/",
 			"sessionCookie,sessionId2,-1,false,false,null,,STRICT,sessionCookie,sessionId2,-1,false,false,null,/",
 			"sessionCookie,sessionId2,-1,false,false,,/path/to/app,NONE,sessionCookie,sessionId2,-1,false,false,null,/path/to/app"
@@ -245,4 +245,32 @@ class WebUtilTest {
 		var result = WebUtil.getCookieSameSite(perimeterUrl, requestUrl);
 		assertThat(result, is(expected));
 	}
+
+	@Test
+	void testClientIp() {
+		var singleIp = new MockHttpServletRequest();
+		singleIp.addHeader(WebUtil.HTTP_HEADER_X_ORIGINAL_FORWARDED_FOR, "10.0.0.1");
+		assertThat(WebUtil.getClientIp(singleIp), is("10.0.0.1/XOFF"));
+
+		var proxyIps = new MockHttpServletRequest();
+		proxyIps.addHeader(WebUtil.HTTP_HEADER_X_ORIGINAL_FORWARDED_FOR, "10.0.0.1, 10.0.0.2");
+		assertThat(WebUtil.getClientIp(proxyIps, false), is("10.0.0.1"));
+
+		var gatewayIp = new MockHttpServletRequest();
+		gatewayIp.addHeader(WebUtil.HTTP_HEADER_X_ORIGINAL_FORWARDED_FOR, "10.0.0.1, 10.0.0.2");
+		assertThat(WebUtil.getGatewayIp(gatewayIp), is("10.0.0.2"));
+		assertThat(WebUtil.getGatewayIps(gatewayIp), is(List.of("10.0.0.1", "10.0.0.2")
+															.toArray()));
+		// override with simulation
+		gatewayIp.addHeader(WebUtil.HTTP_HEADER_X_SIMULATED_FORWARDED_FOR, "10.0.0.3");
+		assertThat(WebUtil.getGatewayIps(gatewayIp), is(List.of("10.0.0.3")
+															.toArray()));
+		assertThat(WebUtil.getClientIps(gatewayIp, false), is(List.of("10.0.0.1", "10.0.0.2")
+																  .toArray()));
+
+		var noIp = new MockHttpServletRequest();
+		assertThat(WebUtil.getGatewayIp(noIp), is("127.0.0.1"));
+		assertThat(WebUtil.getClientIp(noIp), is("127.0.0.1/SRA"));
+	}
+
 }

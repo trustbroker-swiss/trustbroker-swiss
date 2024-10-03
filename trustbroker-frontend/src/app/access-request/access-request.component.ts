@@ -27,17 +27,22 @@ export class AccessRequestComponent implements OnInit {
 	private readonly baseUrl = environment.apiUrl;
 	private sessionId: string;
 	private _state: string;
-	private _showInitiateButtons: boolean;
-	private _showLoginButtons: boolean;
+	private _showContinueButton: boolean;
+	private _showAbortButton: boolean;
+	private _showLoginButton: boolean;
 
 	constructor(private readonly route: ActivatedRoute, private readonly router: Router) {}
 
-	get showInitiateButtons(): boolean {
-		return this._showInitiateButtons;
+	get showContinueButton(): boolean {
+		return this._showContinueButton;
 	}
 
-	get showLoginButtons(): boolean {
-		return this._showLoginButtons;
+	get showAbortButton(): boolean {
+		return this._showAbortButton;
+	}
+
+	get showLoginButton(): boolean {
+		return this._showLoginButton;
 	}
 
 	get state(): string {
@@ -48,8 +53,9 @@ export class AccessRequestComponent implements OnInit {
 		this.route.params.subscribe((params: Params) => {
 			this.sessionId = params.sessionId;
 			this._state = params.state;
-			this._showInitiateButtons = this._state === 'initiate';
-			this._showLoginButtons = this._state === 'confirm';
+			this._showContinueButton = this._state === 'initiate';
+			this._showAbortButton = this._state === 'initiate' || this._state === 'abort';
+			this._showLoginButton = this._state === 'confirm';
 		});
 	}
 

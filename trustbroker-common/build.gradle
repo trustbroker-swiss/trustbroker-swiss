@@ -47,4 +47,7 @@ dependencies {
 	// spring-test baseline
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework:spring-web'
+
+	// monitoring
+	implementation 'io.micrometer:micrometer-registry-prometheus'
 }

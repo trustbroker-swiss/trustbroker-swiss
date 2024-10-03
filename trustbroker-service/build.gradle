@@ -49,6 +49,9 @@ dependencies {
 
 	implementation 'org.opensaml:opensaml-core-impl'
 	implementation 'org.opensaml:opensaml-core-api'
+
+	// monitoring
+	implementation 'io.micrometer:micrometer-registry-prometheus'
 }
 
 def dtoDir = 'src/main/java/swiss/trustbroker/federation/xmlconfig'

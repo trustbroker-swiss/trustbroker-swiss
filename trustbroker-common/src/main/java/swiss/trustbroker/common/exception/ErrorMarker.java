@@ -13,18 +13,21 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.federation.xmlconfig;
+package swiss.trustbroker.common.exception;
+
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import org.slf4j.event.Level;
 
 /**
- * Policy for handling identical attributes returned from multiple IDM lookups.
+ * Static error marker.
  */
-public enum MultiQueryPolicy {
-	/**
-	 * Overwrite the result.
-	 */
-	OVERWRITE,
-	/**
-	 * Merge the resulting lists.
-	 */
-	MERGE
+@AllArgsConstructor(access = AccessLevel.PACKAGE)
+@Getter
+public enum ErrorMarker {
+	DEFAULT(Level.ERROR),
+	BROKEN_PIPE(Level.WARN);
+
+	private final Level level;
 }

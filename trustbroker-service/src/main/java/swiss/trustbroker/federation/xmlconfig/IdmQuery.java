@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.federation.xmlconfig;
@@ -30,7 +30,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.apache.commons.lang3.EnumUtils;
 import swiss.trustbroker.api.idm.dto.IdmRequest;
 import swiss.trustbroker.api.sessioncache.dto.AttributeName;
 
@@ -110,7 +109,7 @@ public class IdmQuery implements Serializable, IdmRequest {
 	@JsonIgnore
 	@Override
 	public boolean isFetchActiveOnly() {
-		return statusPolicy == StatusPolicy.FETCH_ACTIVE_ONLY;
+		return statusPolicyWithDefault() == StatusPolicy.FETCH_ACTIVE_ONLY;
 	}
 
 	@JsonIgnore
@@ -161,19 +160,20 @@ public class IdmQuery implements Serializable, IdmRequest {
 				.subjectNameId(subjectNameIdAttribute != null ? subjectNameIdAttribute.getName() : null)
 				.clientExtId(idmRequest.getClientExtId())
 				.appFilter(idmRequest.getAppFilter())
-				.statusPolicy(EnumUtils.getEnum(StatusPolicy.class, idmRequest.getUserStatusPolicy()))
+				.statusPolicy(StatusPolicy.of(idmRequest.getUserStatusPolicy()))
 				.build();
-		copyUserDetailsSelection(idmRequest.getAttributeSelection());
+		copyUserDetailsSelection(idmRequest.getAttributeSelection(), result);
 		return result;
 	}
 
-	private static void copyUserDetailsSelection(List<AttributeName> attributeNames) {
+	private static void copyUserDetailsSelection(List<AttributeName> attributeNames, IdmQuery result) {
 		if (attributeNames != null) {
 			var userDetailsSelection = new AttributesSelection();
 			userDetailsSelection.setDefinitions(new ArrayList<>());
 			for (var attributeName : attributeNames) {
 				userDetailsSelection.getDefinitions().add(new Definition(attributeName));
 			}
+			result.setUserDetailsSelection(userDetailsSelection);
 		}
 	}
 }

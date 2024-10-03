@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.federation.service;
@@ -81,6 +81,7 @@ public class FederationMetadataService {
 
 		// signer
 		signer = CredentialReader.createCredential(trustBrokerProperties.getSigner()); // sign
+		log.info("Loaded active metaDataSignerTrust={}", trustBrokerProperties.getSigner().getSignerCert());
 		allSigners = loadTrustableCerts(trustBrokerProperties.getRolloverSigner()); // trust
 		cpEncryptionCreds = relyingPartySetupService.getCpsEncryptionTrustCredentials(); // cp credentials
 		rpEncryptionCreds = relyingPartySetupService.getRpsEncryptionCredentials(); // rp credentials
@@ -99,8 +100,11 @@ public class FederationMetadataService {
 						keystoreProperties.getPassword(),
 						keystoreProperties.getKeyEntryId()
 				));
+				log.info("Loaded rollover metaDataSignerTrust={} trustCount={}", keystoreProperties.getSignerCert(), ret.size());
 			}
-			log.info("Loaded metaDataSignerTrust={} trustCount={}", keystoreProperties.getSignerCert(), ret.size());
+			else {
+				log.info("No rollover metaDataSignerTrust={}", keystoreProperties.getSignerCert());
+			}
 		}
 		catch (TechnicalException ex) {
 			log.error("Rollover signer certificate loading from file={} failed with message={}",

@@ -1,17 +1,18 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
+
 package swiss.trustbroker.federation.xmlconfig;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -100,6 +101,22 @@ class OidcMapperTest {
 				{ Collections.emptyList(), Collections.emptyList() },
 				{ List.of("test", "1973-03-03T09:46:40Z", Instant.ofEpochMilli(123_456_789l), Integer.MAX_VALUE),
 						List.of("test", 100_000_000l, 123_456l, Integer.MAX_VALUE) }
+		};
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void mapObjectListEmail(List<Object> input, Object expected) {
+		assertThat(OidcMapper.EMAIL.map(input), is(expected));
+	}
+
+	static Object[][] mapObjectListEmail() {
+		return new Object[][] {
+				{ null, null },
+				{ Collections.emptyList(), Collections.emptyList() },
+				{ List.of("name.name@domain", "name.other@domain"),	List.of("name.name@domain", "name.other@domain") },
+				{ List.of("name.name@domain", "Name.Name@domain"),	List.of("name.name@domain") },
+				{ List.of("Name.Name@domain", "name.name@domain"),	List.of("name.name@domain") }
 		};
 	}
 

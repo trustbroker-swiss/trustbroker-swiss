@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.monitoring;
+package swiss.trustbroker.monitoring.controller;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,6 +56,7 @@ import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.monitoring.dto.Status;
 import swiss.trustbroker.saml.dto.RpRequest;
 import swiss.trustbroker.saml.dto.UiObject;
 import swiss.trustbroker.saml.service.AssertionConsumerService;
@@ -114,7 +115,7 @@ class MonitoringControllerTest {
 		this.mockMvc.perform(get(apiSupport.getMonitoringAcsUrl()))
 				.andExpect(status().isOk())
 				.andExpect(content().contentType(MediaType.APPLICATION_JSON))
-				.andExpect(content().string(containsString(MonitoringController.Status.INVALID.name())));
+				.andExpect(content().string(containsString(Status.INVALID.name())));
 	}
 
 	@Test
@@ -122,7 +123,7 @@ class MonitoringControllerTest {
 		this.mockMvc.perform(get(apiSupport.getMonitoringAcsUrl("dummy")))
 				.andExpect(status().isOk())
 				.andExpect(content().contentType(MediaType.APPLICATION_JSON))
-				.andExpect(content().string(containsString(MonitoringController.Status.INVALID.name())));
+				.andExpect(content().string(containsString(Status.INVALID.name())));
 	}
 
 	@Test
@@ -137,7 +138,7 @@ class MonitoringControllerTest {
 		this.mockMvc.perform(get(apiSupport.getMonitoringAcsUrl(RP_URN, CP_URN)))
 				.andExpect(status().isOk())
 				.andExpect(content().contentType(MediaType.APPLICATION_JSON))
-				.andExpect(content().string(containsString(MonitoringController.Status.INVALID.name())));
+				.andExpect(content().string(containsString(Status.INVALID.name())));
 	}
 
 	@Test
@@ -152,7 +153,7 @@ class MonitoringControllerTest {
 		this.mockMvc.perform(get(apiSupport.getMonitoringAcsUrl(RP_URN)))
 				.andExpect(status().isOk())
 				.andExpect(content().contentType(MediaType.APPLICATION_JSON))
-				.andExpect(content().string(containsString(MonitoringController.Status.INVALID.name())));
+				.andExpect(content().string(containsString(Status.INVALID.name())));
 	}
 
 	@Test
@@ -216,7 +217,7 @@ class MonitoringControllerTest {
 						.param(SamlIoUtil.SAML_RESPONSE_NAME, responseStrEncoded)
 				)
 				.andExpect(status().isOk())
-				.andExpect(content().string(containsString(MonitoringController.Status.UP.name())));
+				.andExpect(content().string(containsString(Status.UP.name())));
 	}
 
 	@Test
@@ -228,7 +229,7 @@ class MonitoringControllerTest {
 						.param(SamlIoUtil.SAML_RESPONSE_NAME, responseStrEncoded)
 				)
 				.andExpect(status().isOk())
-				.andExpect(content().string(containsString(MonitoringController.Status.DOWN.name())));
+				.andExpect(content().string(containsString(Status.DOWN.name())));
 	}
 
 	private void mockDisabledSecurity() {

@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.oidc;
@@ -33,13 +33,10 @@ import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
-import swiss.trustbroker.federation.xmlconfig.RelyingParty;
-import swiss.trustbroker.oidc.session.HttpExchangeSupport;
 import swiss.trustbroker.oidc.session.OidcSessionSupport;
 import swiss.trustbroker.saml.util.ResponseFactory;
 import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.sso.service.SsoService;
-import swiss.trustbroker.util.WebSupport;
 
 // Documentation https://openid.net/specs/openid-connect-rpinitiated-1_0.html
 @Component
@@ -97,9 +94,9 @@ public class CustomLogoutSuccessHandler extends SimpleUrlLogoutSuccessHandler {
 		// INFO log how good the logout worked (on valid session we should get userPrincipal too)
 		if (log.isInfoEnabled()) {
 			log.info("Logout userPrincipal='{}' from clientId={} clientIP={} redirectUrl='{}' httpStatus={} "
-					+ "oidcSessionId={} ssoSessionId={}",
-					userPrincipalName != null ? userPrincipalName : "ANONYUMOUS",
-					clientId, WebSupport.getClientIp(request),
+							+ "oidcSessionId={} ssoSessionId={}",
+					userPrincipalName != null ? userPrincipalName : "ANONYMOUS",
+					clientId, WebUtil.getClientIp(request),
 					redirectUrl, response.getStatus(),
 					oidcSessionId, ssoSessionId // null when called by logout handler (invalidated already)
 			);
@@ -108,9 +105,10 @@ public class CustomLogoutSuccessHandler extends SimpleUrlLogoutSuccessHandler {
 
 	private void renderResponse(String clientId, String redirectUrl, String ssoSessionId, String oidcSessionId,
 			HttpServletRequest request, HttpServletResponse response) throws IOException {
-		StateData stateData = HttpExchangeSupport.getRunningSsoState();
-		RelyingParty relyingParty = null;
+		var relyingParty = relyingPartyDefinitions.getRelyingPartyByOidcClientId(clientId, null, properties, false);
+		var stateData = OidcSessionSupport.getSsoStateDataForClient(ssoService, request, relyingParty, clientId);
 		if (stateData != null && stateData.hasSsoState()) {
+			discardSsoCookie(response, stateData);
 			// for invalid/missing redirectUrl we could get it from the RP config SloResponse
 			var nameId = ResponseFactory.createNameId(stateData.getCpResponse());
 			var ssoSessionParticipants = stateData.getSsoState().getSsoParticipants();
@@ -118,7 +116,6 @@ public class CustomLogoutSuccessHandler extends SimpleUrlLogoutSuccessHandler {
 			log.debug("Rendering OIDC SLO response page for clientId={} ssoSessionId={} oidcSessionId={} redirectUrl={}"
 							+ " referer={}  cpNameId={} ssoSessionParticipants={}",
 					clientId, ssoSessionId, oidcSessionId, redirectUrl, referer, nameId, ssoSessionParticipants);
-			relyingParty = relyingPartyDefinitions.getRelyingPartyByOidcClientId(clientId, null, properties, false);
 			redirectUrl = ssoService.computeOidcSingleLogoutUrl(redirectUrl, referer, relyingParty);
 			var params = ssoService.buildSloVelocityParameters(
 					relyingParty, referer, ssoSessionParticipants, nameId, oidcSessionId, redirectUrl);
@@ -131,15 +128,19 @@ public class CustomLogoutSuccessHandler extends SimpleUrlLogoutSuccessHandler {
 		}
 
 		// correlated with initial OIDC session
-		var convId = OidcSessionSupport.getOrCreatedOidcConversationId(null, relyingPartyDefinitions, properties.getNetwork());
 		var oidcAuditData = OidcAuditData.builder()
 										 .oidcClientId(clientId)
 										 .ssoSessionId(ssoSessionId)
 										 .oidcSessionId(oidcSessionId)
-										 .conversationId(convId)
-										 .oidcLogoutUrl(redirectUrl != null ? redirectUrl : "missing-form-client")
+										 .oidcLogoutUrl(redirectUrl != null ? redirectUrl : "missing-from-client")
 										 .build();
 		ssoService.auditLogoutRequestFromRp(request, null, stateData, relyingParty, oidcAuditData);
+	}
+
+	private void discardSsoCookie(HttpServletResponse response, StateData stateData) {
+		var expiredCookie = ssoService.generateExpiredCookie(stateData);
+		response.addCookie(expiredCookie);
+		log.debug("Discarding SSO cookie={} for OIDC domain", expiredCookie.getName());
 	}
 
 	private static void handleRedirectResponse(String redirectUrl, HttpServletResponse response) throws IOException {

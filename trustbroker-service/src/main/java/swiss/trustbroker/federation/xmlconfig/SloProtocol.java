@@ -33,8 +33,8 @@ public enum SloProtocol {
 	/**
 	 * OIDC logout response to an incoming logout request or notification via OIDC logout.
 	 *
-	 * @See https://openid.net/specs/openid-connect-frontchannel-1_0.html
-	 * @See https://openid.net/specs/openid-connect-backchannel-1_0.html
+	 * @see <a href="https://openid.net/specs/openid-connect-frontchannel-1_0.html">OpenID Connect Front-Channel Logout</a>
+	 * @see <a href="https://openid.net/specs/openid-connect-backchannel-1_0.html">OpenID Connect Back-Channel Logout</a>
 	 */
 	OIDC(false),
 

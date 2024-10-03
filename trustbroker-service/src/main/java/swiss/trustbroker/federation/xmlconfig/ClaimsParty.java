@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.federation.xmlconfig;
@@ -51,7 +51,7 @@ import swiss.trustbroker.common.saml.dto.SignatureParameters;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ClaimsParty implements Serializable {
+public class ClaimsParty implements Serializable, PathReference {
 
 	/**
 	 * Issuer ID of the claims provider that need to match ClaimsProvider entries in ClaimsProviderDefinitions for HRD display
@@ -174,6 +174,11 @@ public class ClaimsParty implements Serializable {
 
 	private transient List<Credential> cpEncryptionTrustCredentials;
 
+	private transient String subPath;
+
+	@Builder.Default
+	private transient ValidationStatus validationStatus = new ValidationStatus();
+
 	// XmlTransient not allowed on transient field (the Javadoc does not say transient is considered XmlTransient)
 	@XmlTransient
 	public List<Credential> getCpTrustCredential() {
@@ -183,6 +188,18 @@ public class ClaimsParty implements Serializable {
 	@XmlTransient
 	public List<Credential> getCpEncryptionTrustCredentials() {
 		return cpEncryptionTrustCredentials;
+	}
+
+	@XmlTransient
+	@Override
+	public String getSubPath() { return subPath; }
+
+	@Override
+	public void setSubPath(String subPath) { this.subPath = subPath; }
+
+	@XmlTransient
+	public ValidationStatus getValidationStatus() {
+		return validationStatus;
 	}
 
 	// NP safe accessor
@@ -239,6 +256,27 @@ public class ClaimsParty implements Serializable {
 			return defaultIssuerId;
 		}
 		return authnRequestIssuerId;
+	}
+
+	public void invalidate(Throwable ex) {
+		enabled = FeatureEnum.INVALID;
+		initializedValidationStatus().addException(ex);
+	}
+
+	public void invalidate(String error) {
+		enabled = FeatureEnum.INVALID;
+		initializedValidationStatus().addError(error);
+	}
+
+	public ValidationStatus initializedValidationStatus() {
+		if (validationStatus == null) {
+			validationStatus = new ValidationStatus();
+		}
+		return validationStatus;
+	}
+
+	public boolean isValid() {
+		return enabled != FeatureEnum.INVALID;
 	}
 
 }

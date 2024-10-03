@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.saml.service;
@@ -22,6 +22,7 @@ import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -98,6 +99,7 @@ import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlFactory;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.config.TrustBrokerConfiguration;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.ArtifactResolution;
@@ -119,8 +121,6 @@ import swiss.trustbroker.federation.xmlconfig.Saml;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.federation.xmlconfig.SloResponse;
 import swiss.trustbroker.federation.xmlconfig.Sso;
-import swiss.trustbroker.federation.xmlconfig.SubjectName;
-import swiss.trustbroker.federation.xmlconfig.SubjectNameMappings;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.homerealmdiscovery.util.DefaultIdmStatusPolicyCallback;
 import swiss.trustbroker.qoa.dto.NoOpQoa;
@@ -138,7 +138,6 @@ import swiss.trustbroker.sso.service.SsoService;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
 import swiss.trustbroker.util.ApiSupport;
 import swiss.trustbroker.util.HrdSupport;
-import swiss.trustbroker.util.WebSupport;
 
 @SpringBootTest
 @ContextConfiguration(classes = {
@@ -299,6 +298,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 
 		int initialPropertiesSize = cpResponse.getProperties().size();
 		var stateDate = StateData.builder().id("test-sess-id").ssoSessionId(ssoSessionIdValue).build();
+		TraceSupport.switchToConversation("conversationId");
 		relyingPartyService.setProperties(cpResponse);
 		RelyingPartyService.adjustSsoSessionIdProperty(stateDate, cpResponse);
 
@@ -307,7 +307,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 
 		assertEquals(0, initialPropertiesSize);
 		assertTrue(propertiesSize > initialPropertiesSize);
-		assertEquals(5, propertiesSize);
+		assertEquals(6, propertiesSize);
 
 		String attributeHomeRealm = cpResponse.getProperty(CoreAttributeName.HOME_REALM.getNamespaceUri());
 		String attributeHomeName = cpResponse.getProperty(CoreAttributeName.HOME_NAME.getNamespaceUri());
@@ -377,14 +377,16 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var url = fallback ? "https://localhost/initiate" : null;
 		var httpData = AccessRequestHttpData.of(request);
 
-		doReturn(AccessRequestResult.of(true, false, null))
-				.when(accessRequestService).performAccessRequestIfRequired(httpData, relyingParty, stateData);
-		doReturn(AccessRequestResult.of(false, false, url))
-				.when(accessRequestService).performFallbackAccessRequestIfRequired(httpData, relyingParty, stateData);
+		var idmRefreshCallback = ArgumentCaptor.forClass(Runnable.class);
+		doReturn(AccessRequestResult.of(false,  url))
+				.when(accessRequestService).performAccessRequestIfRequired(eq(httpData), eq(relyingParty), eq(stateData),
+						idmRefreshCallback.capture());
 
-		// url is returned by fallback
+		// url is returned by AR
 		assertThat(relyingPartyService.performAccessRequestIfRequired(request, relyingParty, stateData, null),
 				is(url));
+		assertThat(idmRefreshCallback.getValue(), is(not(nullValue())));
+		idmRefreshCallback.getValue().run(); // would have been called by the real method
 
 		// initial refresh and refresh after AR
 		var relyingPartyConfig = ArgumentCaptor.forClass(RelyingPartyConfig.class);
@@ -414,8 +416,8 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var relyingParty = RelyingParty.builder().id(ISSUER_ID).build();
 		var httpData = AccessRequestHttpData.of(request);
 
-		doReturn(AccessRequestResult.of(false, retainSession, url))
-				.when(accessRequestService).performAccessRequestIfRequired(httpData, relyingParty, stateData);
+		doReturn(AccessRequestResult.of(retainSession, url))
+				.when(accessRequestService).performAccessRequestIfRequired(eq(httpData), eq(relyingParty), eq(stateData), any());
 
 		assertThat(relyingPartyService.performAccessRequestIfRequired(request, relyingParty, stateData, null), is(url));
 		if (retainSession) {
@@ -445,8 +447,8 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		request.addHeader(HrdSupport.HTTP_URLTESTER_CP, "anycp");
 		var httpData = AccessRequestHttpData.of(request);
 
-		doReturn(AccessRequestResult.of(false, false, DESTINATION_URL))
-				.when(accessRequestService).performAccessRequestIfRequired(httpData, relyingParty, stateData);
+		doReturn(AccessRequestResult.of(false, DESTINATION_URL))
+				.when(accessRequestService).performAccessRequestIfRequired(eq(httpData), eq(relyingParty), eq(stateData), any());
 
 		assertThat(relyingPartyService.performAccessRequestIfRequired(request, relyingParty, stateData, null), nullValue());
 	}
@@ -459,8 +461,8 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var relyingParty = RelyingParty.builder().id(ISSUER_ID).build();
 		var httpData = AccessRequestHttpData.of(request);
 
-		doReturn(AccessRequestResult.of(false, false, null))
-				.when(accessRequestService).performAccessRequestIfRequired(httpData, relyingParty, stateData);
+		doReturn(AccessRequestResult.of(false, null))
+				.when(accessRequestService).performAccessRequestIfRequired(eq(httpData), eq(relyingParty), eq(stateData), any());
 
 		assertThat(relyingPartyService.performAccessRequestIfRequired(request, relyingParty, stateData, null),
 				is(nullValue()));
@@ -534,15 +536,19 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var cpResponse = givenCpResponse(CP_ISSUER_ID, CLIENT_EXT_ID, HOME_NAME, USER_NAME_ID, false);
 		cpResponse.setStatusCode("responderCode");
 		cpResponse.setFlowPolicy(Flow.builder().id("denied").appContinue(true).build());
-		WebSupport.setTraceContext("traceId");
+		var mockHttpRequest = new MockHttpServletRequest();
+		var requestId = "000102030405060708090a0b0c0d0e0f";
+		mockHttpRequest.addHeader("X-Request-Id", requestId);
+		TraceSupport.setMdcTraceContext(mockHttpRequest);
+		var traceId = TraceSupport.getOwnTraceParent();
+		assertThat(traceId, startsWith(requestId));
+		assertThat(traceId.length(), is(49));
 		var stateData = givenState(RP_ISSUER_ID);
 		doReturn(stateData).when(stateCacheService).find(RELAY_STATE, RelyingPartyService.class.getSimpleName());
-		var mockHttpRequest = new MockHttpServletRequest();
 		var mockHttpResponse = new MockHttpServletResponse();
 		var result = relyingPartyService.sendSuccessSamlResponseToRp(outputService, responseData, cpResponse, stateData,
-				mockHttpRequest,
-				mockHttpResponse, null);
-		assertThat(result, is("/app/failure/denied/traceId/" + ApiSupport.encodeUrlParameter("sessionId") + "/continue"));
+				mockHttpRequest, mockHttpResponse, null, null);
+		assertThat(result, is("/app/failure/denied/" + traceId + "/" + ApiSupport.encodeUrlParameter("sessionId") + "/continue"));
 	}
 
 	@Test
@@ -563,7 +569,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		doReturn(stateData).when(stateCacheService).find(RELAY_STATE, RelyingPartyService.class.getSimpleName());
 		mockSecurityChecks();
 		var result = relyingPartyService.sendSuccessSamlResponseToRp(outputService, responseData, cpResponse, stateData,
-				mockHttpRequest, mockHttpResponse, null);
+				mockHttpRequest, mockHttpResponse, null, null);
 		assertThat(result, is(nullValue()));
 		var response = samlTestUtil.extractSamlPostResponse(mockHttpResponse.getContentAsString());
 		assertThat(response.getStatus().getStatusCode().getValue(), is(StatusCode.RESPONDER));
@@ -586,14 +592,16 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var mockHttpResponse = new MockHttpServletResponse();
 		mockSecurityChecks();
 		givenMockedClaimsParty();
-		var arResult = AccessRequestResult.of(false, false, null);
+		var arResult = AccessRequestResult.of(false, null);
 		var httpData = AccessRequestHttpData.of(mockHttpRequest);
-		doReturn(arResult).when(accessRequestService).performAccessRequestIfRequired(httpData, relyingParty, stateData);
+		doReturn(arResult)
+				.when(accessRequestService).performAccessRequestIfRequired(eq(httpData), eq(relyingParty), eq(stateData), any());
+
 		doReturn(ProfileSelectionResult.empty()).when(profileSelectionService).doInitialProfileSelection(
 				ProfileSelectionData.builder().exchangeId(RELAY_STATE).oidcClientId(CLIENT_ID).build(),
 				relyingParty, cpResponse, stateData);
 		var result = relyingPartyService.sendSuccessSamlResponseToRp(outputService, responseData, cpResponse, stateData,
-				mockHttpRequest, mockHttpResponse, null);
+				mockHttpRequest, mockHttpResponse, null, null);
 		assertThat(result, is(nullValue()));
 		validateResponse(useArtifactBinding, StatusCode.SUCCESS, mockHttpResponse);
 	}
@@ -696,9 +704,10 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		givenMockedClaimsParty();
 		var mockHttpRequest = new MockHttpServletRequest();
 		var mockHttpResponse = new MockHttpServletResponse();
-		var arResult = AccessRequestResult.of(false, false, null);
+		var arResult = AccessRequestResult.of(false, null);
 		var httpData = AccessRequestHttpData.of(mockHttpRequest);
-		doReturn(arResult).when(accessRequestService).performAccessRequestIfRequired(httpData, relyingParty, stateData);
+		doReturn(arResult)
+				.when(accessRequestService).performAccessRequestIfRequired(eq(httpData), eq(relyingParty), eq(stateData), any());
 		doReturn(ProfileSelectionResult.empty()).when(profileSelectionService).doInitialProfileSelection(
 				ProfileSelectionData.builder().exchangeId(RELAY_STATE).oidcClientId(CLIENT_ID).build(),
 				relyingParty, cpResponse, stateData);
@@ -709,83 +718,16 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 	}
 
 	@Test
-	void reloadIdmDataAndValidateAccessRequestSuccess() {
+	void reloadIdmData() {
 		var relyingParty = givenMockedRelyingParty(false);
 		var stateData = givenStateDataWithCpResponse();
-		doReturn(Optional.of(new IdmResult())).when(idmService).getAttributesFromIdm(any(), any(), any(), any());
+		var value = "first1";
+		var idmResult = IdmResult.builder().userDetails(Map.of(CoreAttributeName.FIRST_NAME, List.of(value))).build();
+		doReturn(Optional.of(idmResult)).when(idmService).getAttributesFromIdm(any(), any(), any(), any());
 
-		relyingPartyService.reloadIdmDataAndValidateAccessRequestSuccess(relyingParty, stateData);
+		relyingPartyService.reloadIdmData(relyingParty, stateData);
 
-		verify(accessRequestService).requireAccessRequest(relyingParty, stateData);
-	}
-
-	@Test
-	void reloadIdmDataAndValidateAccessRequestFailure() {
-		var relyingParty = givenMockedRelyingParty(false);
-		var stateData = givenStateDataWithCpResponse();
-		doReturn(Optional.of(new IdmResult())).when(idmService).getAttributesFromIdm(any(), any(), any(), any());
-		doReturn(true).when(accessRequestService).requireAccessRequest(relyingParty, stateData);
-
-		assertThrows(RequestDeniedException.class,
-				() -> relyingPartyService.reloadIdmDataAndValidateAccessRequestSuccess(relyingParty, stateData));
-	}
-
-	@Test
-	void adjustSubjectNameId() {
-		var expectedSubjectNameIdFrom = CoreAttributeName.EMAIL.getNamespaceUri();
-		var cpIssuer = "cpIssuer1";
-		var subjectNameMappings =
-				SubjectNameMappings.builder()
-								   .subjects(List.of(
-										   SubjectName.builder()
-													  .issuer(cpIssuer) // mapped if from this CP
-													  .source(expectedSubjectNameIdFrom)
-													  .format("from-config-0")
-													  .build(),
-										   SubjectName.builder()
-													  .issuer(null) // mapped from any CP
-													  .source("source-without-value")
-													  .format("from-config-1")
-													  .build(),
-										   SubjectName.builder()
-													  .issuer("cpIssuer2")
-													  .issuer(null)
-													  .source(expectedSubjectNameIdFrom)
-													  .format("from-config-2")
-													  .build())
-								   )
-								   .build();
-		var relyingParty = RelyingParty.builder()
-									   .id("rpIssuer1")
-									   .subjectNameMappings(subjectNameMappings)
-									   .build();
-		var userDetails = Map.of(Definition.builder()
-										   .name("anyAuditName")
-										   .namespaceUri(expectedSubjectNameIdFrom)
-										   .build(), List.of("me@trustbroker.swiss"));
-		// modified and logged
-		var cpResponse0 = CpResponse.builder()
-									.issuer("cpIssuer1")
-									.originalNameId("initial")
-									.nameId("initial")
-									.nameIdFormat("from-idp")
-									.userDetails(userDetails)
-									.build();
-		relyingPartyService.adjustSubjectNameId(cpResponse0, relyingParty);
-		assertThat(cpResponse0.getNameId(), is("me@trustbroker.swiss"));
-		assertThat(cpResponse0.getNameIdFormat(), is("from-config-0"));
-
-		// not modified as already manipulated but manipulation is logged
-		var cpResponse1 = CpResponse.builder()
-									.issuer("cpIssuer2")
-									.originalNameId("initial")
-									.nameId("modified-by-idm")
-									.nameIdFormat("from-idp")
-									.userDetails(userDetails)
-									.build();
-		relyingPartyService.adjustSubjectNameId(cpResponse1, relyingParty);
-		assertThat(cpResponse1.getNameId(), is("modified-by-idm"));
-		assertThat(cpResponse1.getNameIdFormat(), is("from-idp"));
+		assertThat(stateData.getCpResponse().getUserDetail(CoreAttributeName.FIRST_NAME.getName()), is(value));
 	}
 
 	private StateData givenStateDataWithCpResponse() {

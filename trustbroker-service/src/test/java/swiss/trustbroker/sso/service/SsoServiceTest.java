@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.sso.service;
@@ -25,6 +25,7 @@ import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -54,7 +55,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import jakarta.servlet.http.Cookie;
-import net.shibboleth.shared.security.impl.RandomIdentifierGenerationStrategy;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -94,7 +94,6 @@ import swiss.trustbroker.common.saml.util.SamlContextClass;
 import swiss.trustbroker.common.saml.util.SamlFactory;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
-import swiss.trustbroker.common.saml.util.SamlUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
@@ -136,7 +135,7 @@ class SsoServiceTest {
 
 	private static final String OIDC_PREFIX = "oidc_";
 
-	private static enum MockQoa implements QualityOfAuthentication {
+	private enum MockQoa implements QualityOfAuthentication {
 
 		MOBILE_ONE_FACTOR_UNREGISTERED(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, 10),
 		PASSWORD_PROTECTED_TRANSPORT(SamlContextClass.PASSWORD_PROTECTED_TRANSPORT, 20),
@@ -156,7 +155,7 @@ class SsoServiceTest {
 
 		private final int level;
 
-		private MockQoa(String name, int level) {
+		MockQoa(String name, int level) {
 			this.name = name;
 			this.level = level;
 		}
@@ -193,9 +192,8 @@ class SsoServiceTest {
 			}
 			var result = Arrays.stream(MockQoa.values())
 							.filter(qoa -> qoa.getName().equals(qualityOfAuthentication))
-							.findFirst()
-							.orElse(null);
-			return result != null ? result : UNSPECIFIED;
+							.findFirst();
+			return result.orElse(UNSPECIFIED);
 		}
 
 		static MockQoa forLevel(int level) {
@@ -204,9 +202,8 @@ class SsoServiceTest {
 			}
 			var result = Arrays.stream(MockQoa.values())
 					.filter(qoa -> qoa.getLevel() == level)
-					.findFirst()
-					.orElse(null);
-			return result != null ? result : UNSPECIFIED;
+					.findFirst();
+			return result.orElse(UNSPECIFIED);
 		}
 	}
 
@@ -261,8 +258,6 @@ class SsoServiceTest {
 
 	private static final String ACS_URL = "https://localhost/acs";
 
-	private static final String ISS_SID = "?iss=" + ISSUER + "&sid=" + OIDC_SESSION_ID;
-
 	private static final String ISS_SID_ENCODED = "&#x3f;iss&#x3d;" + ISSUER + "&amp;sid&#x3d;" + OIDC_SESSION_ID;
 
 	private static final String ACS_URL_ENCODED = "https&#x3a;&#x2f;&#x2f;localhost&#x2f;acs";
@@ -301,9 +296,6 @@ class SsoServiceTest {
 
 	@MockBean
 	private RelyingPartySetupService relyingPartySetupService;
-
-	@MockBean
-	private RandomIdentifierGenerationStrategy random;
 
 	@MockBean
 	private StateCacheService stateCacheService;
@@ -345,24 +337,6 @@ class SsoServiceTest {
 	@BeforeAll
 	static void setUp() {
 		SamlInitializer.initSamlSubSystem();
-	}
-
-	@Test
-	void createRelayState() {
-		// mock random generator with a predefined value
-		String randomId = "_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghihklmnopqrstuvwxyz1234567";
-		doReturn(randomId).when(random).generateIdentifier();
-		var relayState = ssoService.generateRelayState();
-		assertThat(relayState, is(SamlUtil.XTB_RELAY_STATE_PREFIX + randomId));
-	}
-
-	@Test
-	void createRelayStateTruncated() {
-		// mock random generator with a predefined value
-		String randomId = "_1234567890123456789012345678901234567890123456789012345678901234567890123456";
-		doReturn(randomId + "tobetruncated").when(random).generateIdentifier();
-		var relayState = ssoService.generateRelayState();
-		assertThat(relayState, is(SamlUtil.XTB_RELAY_STATE_PREFIX + randomId));
 	}
 
 	@Test
@@ -1794,7 +1768,7 @@ class SsoServiceTest {
 		var oidcPrincipal = "oidcPrincipal";
 		var oidcSessionId = "oidcSessionId";
 		var stateData = buildStateDataByAuthnReq();
-		assertThat(SsoService.isOidcPrincipalAllowedToJoinSsoSession(stateData, oidcPrincipal, oidcSessionId), is(false));
+		assertThat(ssoService.isOidcPrincipalAllowedToJoinSsoSession(stateData, oidcPrincipal, oidcSessionId), is(false));
 
 		// established SSO session (minimal flags)
 		var cpResponse = CpResponse.builder().build();
@@ -1804,12 +1778,12 @@ class SsoServiceTest {
 		stateData.initializedSsoState();
 		stateData.setLifecycle(Lifecycle.builder().lifecycleState(LifecycleState.ESTABLISHED).build());
 
-		assertThat(SsoService.isOidcPrincipalAllowedToJoinSsoSession(stateData, oidcPrincipal, oidcSessionId), is(true));
+		assertThat(ssoService.isOidcPrincipalAllowedToJoinSsoSession(stateData, oidcPrincipal, oidcSessionId), is(true));
 
 		// no subject name ID change
 		setNameId(stateData.getCpResponse(), "otherNameId2", "otherNameId2");
 		assertThrows(TechnicalException.class, () ->
-				SsoService.isOidcPrincipalAllowedToJoinSsoSession(stateData, oidcPrincipal, oidcSessionId));
+				ssoService.isOidcPrincipalAllowedToJoinSsoSession(stateData, oidcPrincipal, oidcSessionId));
 	}
 
 	@Test
@@ -2006,7 +1980,6 @@ class SsoServiceTest {
 		var referer1 = "https://referer1";
 		request.addHeader(HttpHeaders.REFERER, referer1);
 
-		doReturn("randomRelayState").when(random).generateIdentifier();
 		var authState = assertionConsumerService.saveState(authnRequest, request, relyingParty, Optional.empty(),
 				SamlBinding.POST);
 		// CpResponse with name ID is required for establishing SSO and copying
@@ -2189,15 +2162,12 @@ class SsoServiceTest {
 		}
 		relyingParty.setSecurityPolicies(SecurityPolicies.builder().requireSignedLogoutRequest(signed).build());
 		var nameId = buildNameId();
-		var relayState = "randomRelayState";
-		doReturn(relayState).when(random).generateIdentifier();
-
 		var result = ssoService.buildSloNotification(relyingParty, sloResponse, null, nameId, SESSION_ID);
 
 		assertThat(result.getSlo(), is(sloResponse));
 		assertThat(result.getEncodedUrl(), is(DESTINATION_ENCODED));
-		assertThat(result.getSamlRelayState(), is(SamlUtil.XTB_RELAY_STATE_PREFIX + relayState));
 		assertThat(result.getSamlLogoutRequest(), is(not(nullValue())));
+		assertThat(result.getSamlRelayState(), is(notNullValue()));
 
 		var xmlObj = SamlIoUtil.decodeSamlPostData(result.getSamlLogoutRequest());
 		assertThat(xmlObj, instanceOf(LogoutRequest.class));
@@ -2253,7 +2223,6 @@ class SsoServiceTest {
 
 	@Test
 	void addSloNotifications() {
-		doReturn("relayState1").when(random).generateIdentifier();
 		var relyingParty = buildRelyingParty(true);
 		relyingParty.setRpSigner(SamlTestBase.dummyCredential());
 		var rpSloUrl = "https://rp1.localdomain";

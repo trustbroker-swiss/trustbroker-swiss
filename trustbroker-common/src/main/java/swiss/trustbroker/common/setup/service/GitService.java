@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.setup.service;
@@ -21,6 +21,7 @@ import java.io.OutputStream;
 import java.util.Collection;
 import java.util.List;
 
+import io.micrometer.core.annotation.Timed;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.lang3.StringUtils;
@@ -39,7 +40,7 @@ import swiss.trustbroker.common.util.DirectoryUtil;
 @SuppressWarnings("java:S1075") // our config structure is defined, no need for configuration
 @Slf4j
 public class GitService {
-	
+
 	public static final String CONFIGURATION_PATH_SUB_DIR_LATEST = "/latest/";
 
 	private static final String CONFIGURATION_PATH_SUB_DIR_NEW = "/new/";
@@ -80,6 +81,7 @@ public class GitService {
 	}
 
 	@Traced
+	@Timed("git_fetch")
 	public boolean remoteHasChanges() {
 		if (hasRemoteConfigVeto()) {
 			log.debug("Assume remote change, local changes are directly checked and consumed");
@@ -103,6 +105,7 @@ public class GitService {
 	// The scheduler itself has a top-level catcher handling _all_ exceptions, so we do not differentiate here between
 	// all the possible error cases JGit provides. We just make sure full context is on the exception message in the logs.
 	@Traced
+	@Timed("git_pull")
 	public void pullConfiguration() {
 		log.debug("Start GIT pull process");
 		var configCache = getConfigCachePath();
@@ -220,7 +223,8 @@ public class GitService {
 		pullCommand.call();
 	}
 
-	private void cloneConfig(File workingDir, String gitRepoUrl, String configBranch)
+	@Timed("git_clone")
+	public void cloneConfig(File workingDir, String gitRepoUrl, String configBranch)
 			throws GitAPIException {
 		var start = System.currentTimeMillis();
 		var status = "NOK";

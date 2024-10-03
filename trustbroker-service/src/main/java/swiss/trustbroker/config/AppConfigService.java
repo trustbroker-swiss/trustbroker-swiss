@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.config;
@@ -23,7 +23,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -40,12 +39,13 @@ import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CredentialReader;
 import swiss.trustbroker.common.setup.config.BootstrapProperties;
 import swiss.trustbroker.common.setup.service.GitService;
+import swiss.trustbroker.common.util.DirectoryUtil;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.federation.service.XmlConfigStatusService;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderDefinitions;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
-import swiss.trustbroker.federation.xmlconfig.FeatureEnum;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.RelyingPartySetup;
 import swiss.trustbroker.federation.xmlconfig.SignerKeystore;
@@ -53,6 +53,7 @@ import swiss.trustbroker.federation.xmlconfig.SignerTruststore;
 import swiss.trustbroker.federation.xmlconfig.SsoGroupSetup;
 import swiss.trustbroker.homerealmdiscovery.util.ClaimsProviderUtil;
 import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
+import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.oidc.ClientConfigInMemoryRepository;
 import swiss.trustbroker.script.service.ScriptService;
 
@@ -65,6 +66,9 @@ public class AppConfigService {
 	private static final String CONFIG_CACHE_PATH = "/configCache/trustbroker-inventories/";
 
 	private static final String CONFIG_CACHE_KEYSTORE_SUBPATH = GitService.CONFIGURATION_PATH_SUB_DIR_LATEST + "keystore/";
+
+	private static final String CONFIG_CACHE_DEFINITION_SUBPATH =
+			GitService.CONFIGURATION_PATH_SUB_DIR_LATEST + RelyingPartySetupUtil.DEFINITION_PATH;
 
 	private final ApplicationEventPublisher eventPublisher;
 
@@ -80,6 +84,11 @@ public class AppConfigService {
 
 	private final List<IdmService> idmServices;
 
+	private final MetricsService metricsService;
+
+	private final XmlConfigStatusService xmlConfigStatusService;
+
+
 	public int checkAndUpdate() {
 		var changed = mustUpdateFiles();
 		if (changed != 0) {
@@ -89,45 +98,56 @@ public class AppConfigService {
 			checkAndUpdateMapping();
 			checkAndUpdateOidcRegistry(relyingPartyDefinitions.getRelyingPartySetup());
 			scriptService.refresh();
+			updateMetrics();
+
 		}
 		return changed;
 	}
 
+	public void updateMetrics() {
+		var configStatus = xmlConfigStatusService.getConfigStatus();
+		metricsService.gauge(MetricsService.CONFIG_STATUS_LABEL + "cp", configStatus.getClaimsProviders().size());
+		metricsService.gauge(MetricsService.CONFIG_STATUS_LABEL + "rp", configStatus.getRelyingParties().size());
+	}
+
 	public void checkClaimAndRpMatch(ClaimsProviderDefinitions claimsProviderDefinitions,
 			ClaimsProviderSetup claimsProviderSetup, RelyingPartySetup relyingPartySetup, SsoGroupSetup ssoGroupSetup) {
-
-		Set<String> claimIdsInSetup = claimsProviderSetup.getClaimsParties().stream()
-				.filter(claimsParty -> !FeatureEnum.INVALID.equals(claimsParty.getEnabled()))
-				.map(ClaimsParty::getId)
-				.collect(Collectors.toSet());
-
-		checkCpConfigIntegrity(claimsProviderDefinitions, claimIdsInSetup);
+		checkCpConfigIntegrity(claimsProviderDefinitions, claimsProviderSetup);
 
 		checkRpSsoIntegrity(relyingPartySetup, ssoGroupSetup);
 	}
 
-	private static void checkCpConfigIntegrity(ClaimsProviderDefinitions claimsProviderDefinitions,
-			Set<String> claimIdsInSetup) {
+	static void checkCpConfigIntegrity(ClaimsProviderDefinitions claimsProviderDefinitions,
+			ClaimsProviderSetup claimsProviderSetup) {
+		var claimIdsInSetup = claimsProviderSetup.getClaimsParties().stream()
+				.filter(ClaimsParty::isValid)
+				.map(ClaimsParty::getId)
+				.collect(Collectors.toSet());
 		for (ClaimsProvider claimsProvider : claimsProviderDefinitions.getClaimsProviders()) {
 			if (claimsProvider.getId() == null) {
 				log.error("Missing ID for ClaimProvider with cpDescription={}", claimsProvider.getDescription());
 			}
 			else if (!claimIdsInSetup.contains(claimsProvider.getId())) {
 				log.error("Missing or invalid ClaimsProviderSetup for ClaimProvider with cpId={}", claimsProvider.getId());
+				ClaimsProviderUtil.addInvalidClaimsParty(claimsProviderSetup, claimsProvider.getId(), null,
+						"Missing SetupCP.xml for ClaimsProvider referenced by ClaimsProviderDefinitions");
 			}
 		}
 	}
 
-	private static void checkRpSsoIntegrity(RelyingPartySetup relyingPartySetup, SsoGroupSetup ssoGroupSetup) {
+	static void checkRpSsoIntegrity(RelyingPartySetup relyingPartySetup, SsoGroupSetup ssoGroupSetup) {
 		for (RelyingParty rp : relyingPartySetup.getRelyingParties()) {
 			if (rp.isSsoEnabled()) {
 				var ssoGroupName = rp.getSso().getGroupName();
 				if (StringUtils.isEmpty(ssoGroupName)) {
 					log.error("RelyingParty with rpId={} enables SSO without an SSO group", rp.getId());
+					rp.initializedValidationStatus().addError("RelyingParty enables SSO without an SSO group");
 				}
 				else if (groupMissing(ssoGroupSetup, ssoGroupName)) {
 					log.error("SSO definition for ssoGroupName={} required for RelyingParty with rpId={} not found",
 							ssoGroupName, rp.getId());
+					rp.initializedValidationStatus().addError(
+							String.format("SSO definition for ssoGroupName=%s required for RelyingParty not found", ssoGroupName));
 				}
 			}
 		}
@@ -190,8 +210,7 @@ public class AppConfigService {
 		if (relyingPartySetup != null) {
 			Collection<RelyingParty> claimRules = relyingPartySetup.getRelyingParties();
 			RelyingPartySetupUtil.loadRelyingParty(claimRules, trustBrokerProperties.getConfigurationPath()
-							+ GitService.CONFIGURATION_PATH_SUB_DIR_LATEST + "definition/", newConfigPath,
-					trustBrokerProperties, idmServices);
+							+ CONFIG_CACHE_DEFINITION_SUBPATH, newConfigPath, trustBrokerProperties, idmServices);
 			checkAndLoadRelyingPartyCertificates(relyingPartySetup);
 			checkRpSsoIntegrity(relyingPartySetup, ssoGroupSetup);
 			filterInvalidRelyingParties(relyingPartySetup);
@@ -213,7 +232,7 @@ public class AppConfigService {
 				}
 				catch (RuntimeException ex) {
 					log.error("Invalid RP={} oidcClientId={}: {}", relyingParty.getId(), oidcClient.getId(), ex);
-					relyingParty.setEnabled(FeatureEnum.INVALID);
+					relyingParty.invalidate(ex);
 				}
 			}
 		}
@@ -227,7 +246,7 @@ public class AppConfigService {
 			}
 			catch (TechnicalException ex) {
 				log.error("Invalid CP={}: {}", claimsParty.getId(), ex.getInternalMessage());
-				claimsParty.setEnabled(FeatureEnum.INVALID);
+				claimsParty.invalidate(ex);
 			}
 		}
 	}
@@ -237,18 +256,19 @@ public class AppConfigService {
 			return;
 		}
 		var signerTruststore = claimsParty.getCertificates().getSignerTruststore();
-		var credentials = checkAndLoadTrustCredential(signerTruststore, claimsParty.getId());
+		var credentials = checkAndLoadTrustCredential(signerTruststore, claimsParty.getId(), claimsParty.getSubPath());
 		claimsParty.setCpTrustCredential(credentials);
 
 		var encryptionTruststore = claimsParty.getCertificates().getEncryptionTruststore();
 		List<Credential> encryptionTrustCreds = new ArrayList<>();
 		if (encryptionTruststore != null) {
-			encryptionTrustCreds.addAll(checkAndLoadTrustCredential(encryptionTruststore, claimsParty.getId()));
+			encryptionTrustCreds.addAll(
+					checkAndLoadTrustCredential(encryptionTruststore, claimsParty.getId(), claimsParty.getSubPath()));
 		}
 
 		var encryptionKeystore = claimsParty.getCertificates().getEncryptionKeystore();
 		if (encryptionKeystore != null && encryptionTrustCreds.isEmpty()) {
-			var credential = checkAndLoadCert(encryptionKeystore, claimsParty.getId());
+			var credential = checkAndLoadCert(encryptionKeystore, claimsParty.getId(), claimsParty.getSubPath());
 			encryptionTrustCreds.add(credential);
 			log.info("Using EncryptionKeystore as a Truststore for claim={}. Check and replace "
 					+ "ClaimParty.Certificates.EncryptionKeystore with ClaimParty.Certificates.EncryptionTruststore",
@@ -265,11 +285,11 @@ public class AppConfigService {
 			}
 			catch (TechnicalException ex) {
 				log.error("Invalid RelyingParty={}: {}", relyingParty.getId(), ex.getInternalMessage());
-				relyingParty.setEnabled(FeatureEnum.INVALID);
+				relyingParty.invalidate(ex);
 			}
 			catch (Exception ex) {
 				log.error("Invalid RelyingParty={}: {}", relyingParty.getId(), ex.getMessage());
-				relyingParty.setEnabled(FeatureEnum.INVALID);
+				relyingParty.invalidate(ex);
 			}
 		}
 	}
@@ -288,11 +308,12 @@ public class AppConfigService {
 			return;
 		}
 
-		var credential = checkAndLoadCert(rpCerts.getSignerKeystore(), relyingParty.getId());
+		var credential = checkAndLoadCert(rpCerts.getSignerKeystore(), relyingParty.getId(), relyingParty.getSubPath());
 		relyingParty.setRpSigner(credential);
 		loadSloSignerCertificates(relyingParty);
 
-		var credentials = checkAndLoadTrustCredential(rpCerts.getSignerTruststore(), relyingParty.getId());
+		var credentials = checkAndLoadTrustCredential(rpCerts.getSignerTruststore(), relyingParty.getId(),
+				relyingParty.getSubPath());
 		if (!relyingParty.getOidcClients().isEmpty()) {
 			var selfSigner = trustBrokerProperties.getSigner();
 			var selfCert = getSelfCert();
@@ -304,12 +325,12 @@ public class AppConfigService {
 
 		var encryptionKeystore = rpCerts.getEncryptionKeystore();
 		if (encryptionKeystore != null) {
-			var encryptionCredential = checkAndLoadCert(encryptionKeystore, relyingParty.getId());
+			var encryptionCredential = checkAndLoadCert(encryptionKeystore, relyingParty.getId(), relyingParty.getSubPath());
 			relyingParty.setRpEncryptionCred(encryptionCredential);
 		}
 	}
 
-	private List<Credential> checkAndLoadTrustCredential(SignerTruststore signerTruststore, String urn) {
+	private List<Credential> checkAndLoadTrustCredential(SignerTruststore signerTruststore, String urn, String subPath) {
 		if (signerTruststore == null) {
 			throw new TechnicalException(String.format("Certificate invalid: Missing SignerTruststore for urn=%s", urn));
 		}
@@ -318,7 +339,8 @@ public class AppConfigService {
 				signerTruststore.getCertPath(),
 				signerTruststore.getPassword(),
 				signerTruststore.getCertType(),
-				signerTruststore.getAlias());
+				signerTruststore.getAlias(),
+				subPath);
 	}
 
 	private void loadSloSignerCertificates(RelyingParty relyingParty) {
@@ -326,14 +348,14 @@ public class AppConfigService {
 			for (var sloConfig : relyingParty.getSso().getSloResponse()) {
 				var sloSignerKeystore = sloConfig.getSignerKeystore();
 				if (sloSignerKeystore != null) {
-					var sloCredential = checkAndLoadCert(sloSignerKeystore, relyingParty.getId());
+					var sloCredential = checkAndLoadCert(sloSignerKeystore, relyingParty.getId(), relyingParty.getSubPath());
 					sloConfig.setSloSigner(sloCredential);
 				}
 			}
 		}
 	}
 
-	private Credential checkAndLoadCert(SignerKeystore signerKeystore, String urn) {
+	private Credential checkAndLoadCert(SignerKeystore signerKeystore, String urn, String subPath) {
 		if (signerKeystore == null) {
 			throw new TechnicalException(String.format("Certificate invalid: Missing Signer Keystore for urn=%s", urn));
 		}
@@ -343,21 +365,59 @@ public class AppConfigService {
 				signerKeystore.getPassword(),
 				signerKeystore.getCertType(),
 				signerKeystore.getAlias(),
-				signerKeystore.getKeyPath());
+				signerKeystore.getKeyPath(),
+				subPath);
 	}
 
 	@SuppressWarnings("java:S2209") // credential reader should be a service
-	private Credential checkAndLoadCert(String certPath, String password, String certType, String alias, String keyPath) {
-		certPath = trustBrokerProperties.getConfigurationPath() + CONFIG_CACHE_KEYSTORE_SUBPATH + certPath;
+	private Credential checkAndLoadCert(String certPath, String password, String certType, String alias, String keyPath,
+			String subPath) {
+		var basePath = resolvePath(certPath, subPath);
+		certPath = basePath + certPath;
 		if (keyPath != null) {
-			keyPath = trustBrokerProperties.getConfigurationPath() + CONFIG_CACHE_KEYSTORE_SUBPATH + keyPath;
+			// key is always loaded from the same path as cert
+			keyPath = basePath + keyPath;
 		}
 		return CredentialReader.getCredential(certPath, certType, password, alias, keyPath);
 	}
 
-	private List<Credential> loadTrustCredential(String certPath, String password, String certType, String alias) {
-		certPath = trustBrokerProperties.getConfigurationPath() + CONFIG_CACHE_KEYSTORE_SUBPATH + certPath;
+	private List<Credential> loadTrustCredential(String certPath, String password, String certType, String alias, String subPath) {
+		var basePath = resolvePath(certPath, subPath);
+		certPath = basePath + certPath;
 		return CredentialReader.readTrustCredentials(certPath, certType, password, alias);
+	}
+
+	private String resolvePath(String certPath, String subPath) {
+		// see ReferenceHolder for the order
+		var configPath = trustBrokerProperties.getConfigurationPath();
+		if (StringUtils.isNotEmpty(subPath)) {
+			// 1. relative path in definition
+			var path = configPath + CONFIG_CACHE_DEFINITION_SUBPATH + subPath;
+			if (certificateExists(certPath, path)) {
+				return path;
+			}
+			// 2. relative path in keystore
+			path = configPath + CONFIG_CACHE_KEYSTORE_SUBPATH + subPath;
+			if (certificateExists(certPath, path)) {
+				return path;
+			}
+		}
+		// 3. default directory
+		var path = configPath + CONFIG_CACHE_KEYSTORE_SUBPATH;
+		if (certificateExists(certPath, path)) {
+			return path;
+		}
+		throw new TechnicalException(String.format("Failed to load cert='%s' in path='%s' or subPath='%s'",
+				certPath, path, subPath));
+	}
+
+	private static boolean certificateExists(String certPath, String path) {
+		var certFile = Path.of(path, certPath).toString();
+		if (DirectoryUtil.existsOnFilesystemOrClasspath(certFile)) {
+			log.trace("Found cert={} on path={}", certPath, path);
+			return true;
+		}
+		return false;
 	}
 
 	private static void checkCertPath(String path, String urn) {
@@ -446,10 +506,11 @@ public class AppConfigService {
 	public void filterInvalidRelyingParties(RelyingPartySetup relyingPartySetup) {
 		// remove invalid RPs
 		var validRps = relyingPartySetup.getRelyingParties().stream()
-				.filter(relyingParty -> !FeatureEnum.INVALID.equals(relyingParty.getEnabled())).toList();
+				.filter(RelyingParty::isValid).toList();
 		if (validRps.size() != relyingPartySetup.getRelyingParties().size()) {
 			log.error("Ignoring ignoreCount={} invalid RelyingParties",
 					relyingPartySetup.getRelyingParties().size() - validRps.size());
+			relyingPartySetup.setUnfilteredRelyingParties(relyingPartySetup.getRelyingParties());
 			relyingPartySetup.setRelyingParties(validRps);
 		}
 	}
@@ -457,10 +518,11 @@ public class AppConfigService {
 	public void filterInvalidClaimsParties(ClaimsProviderSetup claimsProviderSetup) {
 		// remove invalid CPs
 		var validCps = claimsProviderSetup.getClaimsParties().stream()
-				.filter(claimsParty -> !FeatureEnum.INVALID.equals(claimsParty.getEnabled())).toList();
+				.filter(ClaimsParty::isValid).toList();
 		if (validCps.size() != claimsProviderSetup.getClaimsParties().size()) {
 			log.error("Ignoring ignoreCount={} invalid ClaimsParties",
 					claimsProviderSetup.getClaimsParties().size() - validCps.size());
+			claimsProviderSetup.setUnfilteredClaimsParties(claimsProviderSetup.getClaimsParties());
 			claimsProviderSetup.setClaimsParties(validCps);
 		}
 	}

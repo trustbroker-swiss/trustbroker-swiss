@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.tracing;
@@ -18,10 +18,15 @@ package swiss.trustbroker.common.tracing;
 import java.util.regex.Pattern;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Slf4j
 public final class StaticOptraceHelper {
+
+	@SuppressWarnings("java:S1312")
+	private static final Logger HTTP_LOG_DETAILS = LoggerFactory.getLogger(OpTraceConfiguration.getLoggerName() + ".http");
 
 	private static final String STRING_NOK = "EXCEPTION";
 
@@ -39,13 +44,13 @@ public final class StaticOptraceHelper {
 
 	private static final String STATUS_CODE_NAME = "sC";
 
-	private static final String DURATION_NAME = "dT";
+	private static final String DURATION_NAME = "dTms";
 
 	private static final String OBJECT_NAME = "obj";
 
 	private static final String METHOD_NAME = "mth";
 
-	private static final String TRANSFERID_NAME = "tID";
+	private static final String TRANSFERID_NAME = "tID"; // traceId (historically transferId)
 
 	private static final String CLIENTID_NAME = "clID";
 
@@ -57,9 +62,11 @@ public final class StaticOptraceHelper {
 
 	public static final String MEM_FREE = "freeMem";
 
-	private static final String P_CTX_STRING = P_CTX_NAME + "=" + OpTraceUtil.HOST_IP_HEX_8 + "/" + OpTraceUtil.PID_HEX_4;
+	static final String CONVERSATION_ID = "conversationId";
 
-	private static final String RT_CTX_STRING = RT_CTX_NAME + "=" + PKG_NAME + "/" + PKG_VERSION + "/" + INSTANCE_NAME;
+	private static final String P_CTX_STRING = P_CTX_NAME + "=" + OpTraceUtil.HOST_IP_HEX_8 + "-" + OpTraceUtil.PID_HEX_4;
+
+	private static final String RT_CTX_STRING = RT_CTX_NAME + "=" + PKG_NAME + PKG_VERSION + INSTANCE_NAME;
 
 	private static final Pattern SIMPLE_VALUE_PATTERN = Pattern.compile("\\w*");
 
@@ -72,11 +79,16 @@ public final class StaticOptraceHelper {
 		var builder = getFirstPartOfEntry(new StringBuilder(256), direction, rc);
 		appendParams(builder, optionalInternal);
 		appendParams(builder, optional);
-		//the new field clientID is appended to the end to make sure that old scripts still work
+
+		// identify client device if possible
 		appendClientId(builder, rc.getClientId());
+
+		// protocol details
 		if (opLog.isTraceEnabled() && rc.getFullRequestContext() != null) {
 			appendParams(builder, rc.getFullRequestContext());
 		}
+
+		// incoming output only in DEBUG
 		if (opLog.isDebugEnabled()) {
 			opLog.debug(builder.toString());
 		}
@@ -85,61 +97,91 @@ public final class StaticOptraceHelper {
 	static void logExit(Logger opLog, String direction, RequestContext rc, Object exception,
 			Object[][] optionalInternal, Object[][] optional, LogParameter... extraParameters) {
 
-		var state = (exception == null) ? STRING_OK : STRING_NOK;
 		var builder = getFirstPartOfEntry(new StringBuilder(256), direction, rc);
+
+		var state = (exception == null) ? STRING_OK : STRING_NOK;
 		builder.append(", " + STATUS_CODE_NAME + "=")
 			   .append(state);
+
 		var time = System.currentTimeMillis() - rc.getStart();
 		builder.append(", " + DURATION_NAME + "=")
-			   .append(time)
-			   .append("ms");
+			   .append(time);
+
 		appendParams(builder, optionalInternal);
 		appendParams(builder, optional);
+
 		appendClientId(builder, rc.getClientId());
 		appendExtraParameters(builder, extraParameters);
-		if (opLog.isTraceEnabled() && rc.getFullResponseContext() != null) {
-			appendParams(builder, rc.getFullResponseContext());
-		}
+
+		// HTTP req(uest) / res(ponse) / param(eters) protocol debugging attaching everything to response line
+		var protocolContext = logProtocolDetails(rc);
+		appendParams(builder, protocolContext);
+
 		if (opLog.isInfoEnabled()) {
 			opLog.info(builder.toString());
 		}
 	}
 
+	private static Object[][] logProtocolDetails(RequestContext rc) {
+		// WIth TRACE we log everything, with DEBUG only conversational access
+		if (HTTP_LOG_DETAILS.isTraceEnabled()
+				|| (HTTP_LOG_DETAILS.isDebugEnabled() && !rc.getTraceId().equals(rc.getConversationId()))) { //
+			return rc.getFullResponseContext();
+		}
+		return new Object[0][];
+	}
+
 	private static StringBuilder getFirstPartOfEntry(StringBuilder sb, String direction, RequestContext rc) {
 		var calledObject = rc.getCalledObject();
 		var calledMethod = quoteIfNecessary(rc.getCalledMethod());
-		var tid = rc.getTransferId();
+		var tid = rc.getTraceId();
 		var principal = rc.getPrincipal();
 
 		sb.append(OpTraceConfiguration.getOptraceVersion());
 		sb.append(" ")
 		  .append(direction);
 
-		//rtCtx='...'
+		// observed on intercepted object (obj)....
 		sb.append(" ")
-		  .append(RT_CTX_STRING);
-		//construct pCtx='...'
-		sb.append(", ")
-		  .append(P_CTX_STRING)
-		  .append("/")
-		  .append(OpTraceUtil.getThreadHex8());
-
-		sb.append(", ")
 		  .append(OBJECT_NAME)
 		  .append("=")
 		  .append(calledObject);
+		// ...and  method (mth)
 		sb.append(", ")
 		  .append(METHOD_NAME)
 		  .append("=")
 		  .append(calledMethod);
+
+		// request identifier (tID) based on injected traceparent, x-request-id, uber-trace-id, x-b3-traceid, ot-tracer-traceid
 		sb.append(", ")
 		  .append(TRANSFERID_NAME)
 		  .append("=")
 		  .append(tid);
+
+		// conversation os optional, tID switches when during processing on higher protocol level we het a new ID
+		var conversationId = rc.getConversationId();
+		if (!tid.equals(conversationId)) {
+			sb.append(", " + CONVERSATION_ID + "=")
+			  .append(conversationId);
+		}
+
+		// authenticated user principal if available
+		if (!StringUtils.isEmpty(principal)) {
+			sb.append(", ")
+			  .append(PRINCIPAL_NAME)
+			  .append("=")
+			  .append(principal);
+		}
+
+		// runtime context (rCtx)
 		sb.append(", ")
-		  .append(PRINCIPAL_NAME)
-		  .append("=")
-		  .append(principal);
+		  .append(RT_CTX_STRING);
+
+		// process context (pCtx = hex(ip).hex(pid).hex(tid))
+		sb.append(", ")
+		  .append(P_CTX_STRING)
+		  .append("-")
+		  .append(OpTraceUtil.getThreadHex8());
 
 		return sb;
 	}
@@ -157,10 +199,12 @@ public final class StaticOptraceHelper {
 	}
 
 	private static void appendClientId(StringBuilder builder, String clientId) {
-		builder.append(", ")
-			   .append(CLIENTID_NAME)
-			   .append("=")
-			   .append(clientId == null ? "" : clientId);
+		if (!StringUtils.isEmpty(clientId)) {
+			builder.append(", ")
+				   .append(CLIENTID_NAME)
+				   .append("=")
+				   .append(clientId);
+		}
 	}
 
 	private static void appendExtraParameters(StringBuilder builder, LogParameter[] param) {

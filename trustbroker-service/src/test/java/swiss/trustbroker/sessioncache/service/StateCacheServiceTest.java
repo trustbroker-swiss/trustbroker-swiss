@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.sessioncache.service;
@@ -21,9 +21,11 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 import static swiss.trustbroker.util.SessionTimeConfiguration.EXPIRATION_INSTANT;
 import static swiss.trustbroker.util.SessionTimeConfiguration.EXPIRATION_INSTANT_SSO;
 import static swiss.trustbroker.util.SessionTimeConfiguration.PAST_INSTANT;
@@ -47,9 +49,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ContextConfiguration;
 import swiss.trustbroker.common.exception.RequestDeniedException;
+import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.StateCacheProperties;
 import swiss.trustbroker.exception.GlobalExceptionHandler;
+import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.sessioncache.dto.LifecycleState;
 import swiss.trustbroker.sessioncache.dto.SsoSessionParticipant;
 import swiss.trustbroker.sessioncache.dto.StateData;
@@ -72,6 +76,9 @@ class StateCacheServiceTest {
 
 	@MockBean
 	private StateCacheProperties stateCacheProperties;
+
+	@MockBean
+	private MetricsService metricsService;
 
 	@Autowired
 	private StateCacheService cacheService;
@@ -113,7 +120,7 @@ class StateCacheServiceTest {
 	@Test
 	void save() {
 		var data = createStateData("testId", "spId");
-		this.cacheService.save(data, "Test");
+		cacheService.save(data, "Test");
 		ArgumentCaptor<StateEntity> captor = ArgumentCaptor.forClass(StateEntity.class);
 		verify(stateCacheRepository).save(captor.capture());
 		assertThat(captor.getValue().getId(), is(data.getId()));
@@ -124,9 +131,24 @@ class StateCacheServiceTest {
 	}
 
 	@Test
+	void saveToDbFailed() {
+		var data = createStateData("testId", "spId");
+		doThrow(new IllegalArgumentException()).when(stateCacheRepository).save(any());
+		assertThrows(TechnicalException.class, () -> cacheService.save(data, "saveToDbFailed"));
+	}
+
+	@Test
+	void findInvalidJson() {
+		var entity = mockStateEntity(LifecycleState.INIT);
+		var id = entity.getId();
+		entity.setJsonData("{\"unknown\":123}");
+		assertThrows(TechnicalException.class, () -> cacheService.find(id, "findInvalidJson"));
+	}
+
+	@Test
 	void saveWithoutLifecycle() {
 		var data = createStateData("testId", "spId");
-		this.cacheService.save(data, "Test");
+		cacheService.save(data, "Test");
 		assertThat(data.getLifecycle().getLifecycleState(), is(LifecycleState.INIT));
 		assertThat(data.getSpStateData().getLifecycle().getLifecycleState(), is(LifecycleState.INIT));
 		assertThat(data.getLifecycle().getInitTime(), is(Timestamp.from(START_INSTANT)));
@@ -136,7 +158,7 @@ class StateCacheServiceTest {
 	void saveWithoutLifecycleInSpState() {
 		var data = createStateData("testId", "spId");
 		data.getLifecycle().setLifecycleState(LifecycleState.ESTABLISHED);
-		this.cacheService.save(data, "Test");
+		cacheService.save(data, "Test");
 		assertThat(data.getLifecycle().getLifecycleState(), is(LifecycleState.ESTABLISHED));
 		assertThat(data.getSpStateData().getLifecycle().getLifecycleState(), is(LifecycleState.INIT));
 	}
@@ -178,7 +200,7 @@ class StateCacheServiceTest {
 	private void verifyStateAfterSaveSso(StateData data, Instant expirationTimestamp) {
 		data.getLifecycle().setLifecycleState(LifecycleState.ESTABLISHED);
 		data.initializedSsoState();
-		this.cacheService.save(data, "Test");
+		cacheService.save(data, "Test");
 		ArgumentCaptor<StateEntity> captor = ArgumentCaptor.forClass(StateEntity.class);
 		verify(stateCacheRepository).save(captor.capture());
 		assertThat(captor.getValue().getId(), is(data.getId()));
@@ -189,77 +211,155 @@ class StateCacheServiceTest {
 	@Test
 	void findOptional() {
 		var entity = mockStateEntity(LifecycleState.INIT);
-		var result = this.cacheService.findOptional(entity.getId(), "Test");
+		var result = cacheService.findOptional(entity.getId(), "Test");
 		assertThat(result.isPresent(), is(true));
 		assertThat(result.get().getId(), is(entity.getId()));
 	}
 
 	@ParameterizedTest
-	@CsvSource(value = "null,12345", nullValues = "null")
+	@CsvSource(value = { "null" , "12345" }, nullValues = "null")
 	void findOptionalMissing(String id) {
-		var result = this.cacheService.findOptional(id, "Test");
+		doThrow(new IllegalArgumentException()).when(stateCacheRepository).findById(null);
+		var result = cacheService.findOptional(id, "Test");
 		assertThat(result.isEmpty(), is(true));
 	}
 
 	@Test
 	void findById() {
 		var entity = mockStateEntity(LifecycleState.INIT);
-		StateData result = this.cacheService.find(entity.getId(), "Test");
+		StateData result = cacheService.find(entity.getId(), "Test");
 		assertThat(result.getId(), is(entity.getId()));
 	}
 
 	@Test()
 	void findByIdMissing() {
 		doReturn(Optional.empty()).when(stateCacheRepository).findById("testId");
-		assertThrows(RequestDeniedException.class, () -> this.cacheService.find("testId", "Test"));
+		assertThrows(RequestDeniedException.class, () -> cacheService.find("testId", "Test"));
 	}
 
 	@Test
 	void findBySpId() {
 		var entity = mockStateEntity(LifecycleState.ESTABLISHED);
 		doReturn(Collections.singletonList(entity)).when(stateCacheRepository).findBySpSessionId(entity.getSpSessionId());
-		var result = this.cacheService.findBySpId(entity.getSpSessionId(), "Test");
+		var result = cacheService.findBySpId(entity.getSpSessionId(), "Test");
 		assertThat(result.isPresent(), is(true));
 		assertThat(result.get().getId(), is(entity.getId()));
 	}
 
 	@Test
 	void findBySpIdNull() {
-		var result = this.cacheService.findBySpId(null, null);
+		doThrow(new IllegalArgumentException()).when(stateCacheRepository).findBySpSessionId(null);
+		var result = cacheService.findBySpId(null, null);
+		assertThat(result.isEmpty(), is(true));
+	}
+
+	@Test
+	void findByOidcSessionIdNull() {
+		doThrow(new IllegalArgumentException()).when(stateCacheRepository).findByOidcSessionId(null);
+		var result = cacheService.findByOidcSessionId(null, null);
+		assertThat(result.isEmpty(), is(true));
+	}
+
+	@Test
+	void findByOidcSessionId() {
+		var entity = mockStateEntity(LifecycleState.ESTABLISHED);
+		var sessionId = "oidc1";
+		entity.setOidcSessionId(sessionId);
+		doReturn(Collections.singletonList(entity)).when(stateCacheRepository).findByOidcSessionId(sessionId);
+		var result = cacheService.findByOidcSessionId(sessionId, null);
+		assertThat(result.isPresent(), is(true));
+		assertThat(result.get().getId(), is(entity.getId()));
+	}
+
+	@Test
+	void findByOidcSessionIdMissing() {
+		var sessionId = "test1";
+		doReturn(Collections.emptyList()).when(stateCacheRepository).findByOidcSessionId(sessionId);
+		var result = cacheService.findByOidcSessionId(sessionId, null);
+		assertThat(result.isEmpty(), is(true));
+	}
+
+	@Test
+	void findBySsoSessionId() {
+		var entity = mockStateEntity(LifecycleState.ESTABLISHED);
+		var sessionId = "sso-123";
+		entity.setOidcSessionId(sessionId);
+		doReturn(Collections.singletonList(entity)).when(stateCacheRepository).findBySsoSessionId(sessionId);
+		var result = cacheService.findBySsoSessionId(sessionId, null);
+		assertThat(result.isPresent(), is(true));
+		assertThat(result.get().getId(), is(entity.getId()));
+	}
+
+	@Test
+	void findSessionBySsoSessionIdResilient() {
+		var entity = mockStateEntity(LifecycleState.ESTABLISHED);
+		var sessionId = "sso-123";
+		entity.setOidcSessionId(sessionId);
+		when(stateCacheRepository.findBySsoSessionId(sessionId))
+				.thenReturn(Collections.emptyList()) // 1st
+				.thenReturn(Collections.emptyList()) // 2nd
+				.thenReturn(Collections.emptyList()) // 3rd
+				.thenReturn(Collections.singletonList(entity)); // 4th
+		var result = cacheService.findSessionBySsoSessionIdResilient(sessionId, null);
+		assertThat(result.isPresent(), is(true));
+		assertThat(result.get().getId(), is(entity.getId()));
+	}
+
+	@Test
+	void findSessionBySsoSessionIdResilientFails() {
+		var sessionId = "sso-123";
+		doReturn(Collections.emptyList()).when(stateCacheRepository).findBySsoSessionId(sessionId);
+		var result = cacheService.findSessionBySsoSessionIdResilient(sessionId, null);
+		assertThat(result.isPresent(), is(false));
+	}
+
+	@Test
+	void findBySsoSessionIdNull() {
+		doThrow(new IllegalArgumentException()).when(stateCacheRepository).findBySsoSessionId(null);
+		var result = cacheService.findBySsoSessionId(null, null);
+		assertThat(result.isEmpty(), is(true));
+	}
+
+	@Test
+	void findBySsoSessionIdMissing() {
+		var sessionId = "test2";
+		doReturn(Collections.emptyList()).when(stateCacheRepository).findBySsoSessionId(sessionId);
+		var result = cacheService.findBySsoSessionId(sessionId, null);
 		assertThat(result.isEmpty(), is(true));
 	}
 
 	@Test
 	void findByIdNull() {
-		assertThrows(RequestDeniedException.class, () -> this.cacheService.find(null, "Test"));
+		doThrow(new IllegalArgumentException()).when(stateCacheRepository).findById(null);
+		assertThrows(RequestDeniedException.class, () -> cacheService.find(null, "Test"));
 	}
 
 	@Test
 	void findBySpIdInvalid() {
 		var entity = mockStateEntity(LifecycleState.EXPIRED);
 		doReturn(Collections.singletonList(entity)).when(stateCacheRepository).findBySpSessionId(entity.getSpSessionId());
-		var result = this.cacheService.findBySpId(entity.getSpSessionId(), "Test");
+		var result = cacheService.findBySpId(entity.getSpSessionId(), "Test");
 		assertThat(result.isPresent(), is(false));
 	}
 
 	@Test
 	void findBySpIdMissing() {
 		doReturn(Collections.emptyList()).when(stateCacheRepository).findBySpSessionId("missingId");
-		var result = this.cacheService.findBySpId("missingId", "Test");
+		var result = cacheService.findBySpId("missingId", "Test");
 		assertThat(result.isPresent(), is(false));
 	}
 
 	@Test
 	void findValidStateMissing() {
 		doReturn(Collections.emptyList()).when(stateCacheRepository).findBySpSessionId("missingId");
-		var result = this.cacheService.findValidState("missingId", "Test");
+		var result = cacheService.findValidState("missingId", "Test");
 		assertThat(result.isPresent(), is(false));
 	}
 
 	@Test
 	void findValidStateInvalid() {
 		var entity = mockStateEntity(LifecycleState.EXPIRED);
-		var result = this.cacheService.findValidState(entity.getId(), "Test");
+		var result = cacheService.findValidState(entity.getId(), "Test");
 		assertThat(result.isPresent(), is(false));
 	}
 
@@ -267,14 +367,14 @@ class StateCacheServiceTest {
 	void findValidStateExpired() {
 		var entity = mockStateEntity(LifecycleState.INIT);
 		entity.setExpirationTimestamp(Timestamp.from(PAST_INSTANT));
-		var result = this.cacheService.findValidState(entity.getId(), "Test");
+		var result = cacheService.findValidState(entity.getId(), "Test");
 		assertThat(result.isPresent(), is(false));
 	}
 
 	@Test
 	void findValidStateValid() {
 		var entity = mockStateEntity(LifecycleState.INIT);
-		var result = this.cacheService.findValidState(entity.getId(), "Test");
+		var result = cacheService.findValidState(entity.getId(), "Test");
 		assertThat(result.isPresent(), is(true));
 		assertThat(result.get().getId(), is(entity.getId()));
 	}
@@ -282,7 +382,7 @@ class StateCacheServiceTest {
 	@Test
 	void findMandatoryValidStateValid() {
 		var entity = mockStateEntity(LifecycleState.INIT);
-		var result = this.cacheService.findMandatoryValidState(entity.getId(), "Test");
+		var result = cacheService.findMandatoryValidState(entity.getId(), "Test");
 		assertThat(result.getId(), is(entity.getId()));
 	}
 
@@ -290,14 +390,14 @@ class StateCacheServiceTest {
 	void findMandatoryValidStateExpired() {
 		var entity = mockStateEntity(LifecycleState.EXPIRED);
 		var id = entity.getId();
-		assertThrows(RequestDeniedException.class, () -> this.cacheService.findMandatoryValidState(id, "Test"));
+		assertThrows(RequestDeniedException.class, () -> cacheService.findMandatoryValidState(id, "Test"));
 	}
 
 	@Test
 	void invalidate() {
 		var entity = mockStateEntity(LifecycleState.INIT);
 		var data = createStateData(entity.getId(), entity.getSpSessionId());
-		this.cacheService.invalidate(data, this.getClass().getSimpleName());
+		cacheService.invalidate(data, getClass().getSimpleName());
 		assertStateAfterInvalidate(data);
 		assertThat(data.getLifecycle().getReauthTime(), is(nullValue()));
 		verify(stateCacheRepository).save(entity);
@@ -307,7 +407,7 @@ class StateCacheServiceTest {
 	void invalidateAfterAuth() {
 		var entity = mockStateEntity(LifecycleState.INIT);
 		var data = createStateData(entity.getId(), entity.getSpSessionId());
-		this.cacheService.invalidate(data, true, "Test");
+		cacheService.invalidate(data, true, "Test");
 		assertStateAfterInvalidate(data);
 		assertThat(data.getLifecycle().getReauthTime(), is(Timestamp.from(START_INSTANT)));
 		verify(stateCacheRepository).save(entity);
@@ -324,7 +424,7 @@ class StateCacheServiceTest {
 	void ssoEstablished() {
 		var entity = mockStateEntity(LifecycleState.INIT);
 		var data = createStateData(entity.getId(), entity.getSpSessionId());
-		this.cacheService.ssoEstablished(data, "Test");
+		cacheService.ssoEstablished(data, "Test");
 		validateSsoSession(data, entity);
 		assertThat(data.getLifecycle().getSsoEstablishedTime(), is(Timestamp.from(START_INSTANT)));
 		assertThat(data.getLifecycle().getReauthTime(), is(nullValue()));
@@ -336,7 +436,7 @@ class StateCacheServiceTest {
 		var data = createStateData(entity.getId(), entity.getSpSessionId());
 		var ssoEstablishedTime = Timestamp.from(START_INSTANT.minusSeconds(30));
 		data.getLifecycle().setSsoEstablishedTime(ssoEstablishedTime);
-		this.cacheService.ssoEstablished(data, "Test");
+		cacheService.ssoEstablished(data, "Test");
 		validateSsoSession(data, entity);
 		assertThat(data.getLifecycle().getSsoEstablishedTime(), is(ssoEstablishedTime));
 		assertThat(data.getLifecycle().getReauthTime(), is(Timestamp.from(START_INSTANT)));
@@ -355,7 +455,7 @@ class StateCacheServiceTest {
 		var entity = mockStateEntity(LifecycleState.EXPIRED);
 		var data = createStateData(entity.getId(), entity.getSpSessionId());
 		data.getLifecycle().setLifecycleState(LifecycleState.EXPIRED);
-		assertThrows(RequestDeniedException.class, () -> this.cacheService.ssoEstablished(data, "Test"));
+		assertThrows(RequestDeniedException.class, () -> cacheService.ssoEstablished(data, "Test"));
 	}
 
 	@Test
@@ -363,7 +463,7 @@ class StateCacheServiceTest {
 		doReturn(5).when(stateCacheRepository).deleteAllInBatchByExpirationTimestampBefore(any());
 		doReturn(10l).when(stateCacheRepository).count();
 
-		this.cacheService.reap();
+		cacheService.reap();
 
 		verify(stateCacheRepository, times(1)).deleteAllInBatchByExpirationTimestampBefore(
 				Timestamp.from(START_INSTANT));
@@ -377,7 +477,7 @@ class StateCacheServiceTest {
 		doReturn(15l).when(stateCacheRepository).count();
 		doReturn(2).when(stateCacheRepository).deleteAllInBatchByExpirationTimestampBefore(any());
 
-		this.cacheService.reap();
+		cacheService.reap();
 
 		verify(stateCacheRepository, times(1)).deleteAllInBatchByExpirationTimestampBefore(
 				Timestamp.from(START_INSTANT));
@@ -402,7 +502,7 @@ class StateCacheServiceTest {
 		// no sessions ever reaped:
 		doReturn(0).when(stateCacheRepository).deleteAllInBatchByExpirationTimestampBefore(any());
 
-		this.cacheService.reap();
+		cacheService.reap();
 
 		verify(stateCacheRepository, times(1)).deleteAllInBatchByExpirationTimestampBefore(
 				Timestamp.from(START_INSTANT));

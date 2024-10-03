@@ -1,32 +1,29 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.homerealmdiscovery.util;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.SerializationUtils;
-import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderDefinitions;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
@@ -39,30 +36,38 @@ import swiss.trustbroker.federation.xmlconfig.SsoGroupSetup;
 @Slf4j
 public class ClaimsProviderUtil {
 
-	static class LoadResult <T> {
-
-		List<T> result = new ArrayList<>();
-
-		int skipped = 0;
-	}
-
 	private ClaimsProviderUtil() {
 	}
 
 	// handle all SetupCP*.xml files
-	// handle all SetupCP*.xml files
 	public static ClaimsProviderSetup loadClaimsProviderSetup(String mappingFile) {
 		var start = System.currentTimeMillis(); // we read from PVC residing on a network appliance
 		var mapping = new File(mappingFile);
-		var allCps = loadConfigFromDirectory(mapping, ClaimsProviderSetup.class);
+		var allCps = XmlConfigUtil.loadConfigFromDirectory(mapping, ClaimsProviderSetup.class);
 		var ret = new ClaimsProviderSetup();
-		allCps.result.forEach(cps -> ret.getClaimsParties().addAll(cps.getClaimsParties()));
+		allCps.result().forEach(cps -> ret.getClaimsParties().addAll(cps.getClaimsParties()));
 		ret.getClaimsParties().forEach(ClaimsProviderUtil::postInit);
 		reportDuplicateClaimsParties(ret.getClaimsParties());
 		log.info("Loaded {}Count={} definitions from setupCpFileCount={} {} files (skipping invalidCount={}) in dtMs={}",
-				ClaimsParty.class.getSimpleName(), ret.getClaimsParties().size(), allCps.result.size(),
-				mapping.getName(), allCps.skipped, System.currentTimeMillis() - start);
+				ClaimsParty.class.getSimpleName(), ret.getClaimsParties().size(), allCps.result().size(),
+				mapping.getName(), allCps.skipped().size(), System.currentTimeMillis() - start);
+		// add dummy entries for skipped files for status API:
+		for (var skipped : allCps.skipped().entrySet()) {
+			addInvalidClaimsParty(ret, skipped.getKey(), skipped.getValue(), null);
+		}
 		return ret;
+	}
+
+	public static void addInvalidClaimsParty(ClaimsProviderSetup claimsProviderSetup, String id,
+			Exception exception, String errorText) {
+		var cp = ClaimsParty.builder().id(id).build();
+		if (exception != null) {
+			cp.invalidate(exception);
+		}
+		else {
+			cp.invalidate(errorText);
+		}
+		claimsProviderSetup.getClaimsParties().add(cp);
 	}
 
 	private static void postInit(ClaimsParty claimsParty) {
@@ -76,24 +81,40 @@ public class ClaimsProviderUtil {
 
 	public static RelyingPartySetup loadRelyingPartySetup(File mappingFile) {
 		var start = System.currentTimeMillis(); // we read from PVC residing on a network appliance
-		var allRps = loadConfigFromDirectory(mappingFile, RelyingPartySetup.class);
+		var allRps = XmlConfigUtil.loadConfigFromDirectory(mappingFile, RelyingPartySetup.class);
 		var ret = new RelyingPartySetup();
-		allRps.result.forEach(rps -> ret.getRelyingParties().addAll(rps.getRelyingParties()));
+		allRps.result().forEach(rps -> ret.getRelyingParties().addAll(rps.getRelyingParties()));
 		var countWithoutAliases = ret.getRelyingParties().size();
-		var rpIds = reportDuplicatRelyingParties(ret.getRelyingParties());
+		var rpIds = reportDuplicateRelyingParties(ret.getRelyingParties());
 		replicateRelyingPartiesByHrdAlias(ret.getRelyingParties(), rpIds); // register aliases
 		var countWithAliases = ret.getRelyingParties().size();
-		var oidcClientCount = new AtomicLong();
+		var oidcClientCount = new AtomicInteger();
 		ret.getRelyingParties().forEach(rp -> oidcClientCount.addAndGet(rp.getOidcClients().size()));
 		log.info("Loaded {}Count={} definitions from setupRpFileCount={} {} files "
 						+"(adding relyingPartyAliasCount={} oidcClientCount={}  skipping invalidCount={}) in dtMs={}",
-				RelyingParty.class.getSimpleName(), countWithoutAliases, allRps.result.size(),
-				mappingFile.getName(), (countWithAliases - countWithoutAliases), oidcClientCount, allRps.skipped,
+				RelyingParty.class.getSimpleName(), countWithoutAliases, allRps.result().size(),
+				mappingFile.getName(), (countWithAliases - countWithoutAliases), oidcClientCount, allRps.skipped().size(),
 				System.currentTimeMillis() - start);
+		// add dummy entries for skipped files for status API:
+		for (var skipped : allRps.skipped().entrySet()) {
+			addInvalidRelyingParty(ret, skipped.getKey(), skipped.getValue(), null);
+		}
 		return ret;
 	}
 
-	private static Set<String> reportDuplicatRelyingParties(List<RelyingParty> relyingParties) {
+	public static void addInvalidRelyingParty(RelyingPartySetup claimsProviderSetup, String id,
+			Exception exception, String errorText) {
+		var rp = RelyingParty.builder().id(id).build();
+		if (exception != null) {
+			rp.invalidate(exception);
+		}
+		else {
+			rp.invalidate(errorText);
+		}
+		claimsProviderSetup.getRelyingParties().add(rp);
+	}
+
+	private static Set<String> reportDuplicateRelyingParties(List<RelyingParty> relyingParties) {
 		var idSet = new HashSet<String>();
 		for (var relyingParty : relyingParties) {
 			if (idSet.contains(relyingParty.getId())) {
@@ -103,7 +124,6 @@ public class ClaimsProviderUtil {
 		}
 		return idSet;
 	}
-
 
 	private static Set<String> reportDuplicateClaimsParties(List<ClaimsParty> claimsParties) {
 		var idSet = new HashSet<String>();
@@ -138,54 +158,6 @@ public class ClaimsProviderUtil {
 			ssoGroupsSetupFile = new File(ssoGroupsSetupFileName.replace("SetupSSOGroups", "SSOGroups"));
 		}
 		return XmlConfigUtil.loadConfigFromFile(ssoGroupsSetupFile, SsoGroupSetup.class);
-	}
-
-	public static boolean mustUpdate(String newFile, String oldFile) {
-		var file1 = new File(newFile);
-		var file2 = new File(oldFile);
-		try {
-			boolean equals = FileUtils.contentEquals(file1, file2);
-			return !equals;
-		}
-		catch (IOException e) {
-			log.error("Reading files for update error", e);
-		}
-		return false;
-	}
-
-	// load multiple files
-	static <T> LoadResult<T> loadConfigFromDirectory(File mappingFile, Class<T> entryType) {
-		var ret = new LoadResult<T>();
-		var definitionDirectory = mappingFile.getParentFile();
-		if (definitionDirectory == null || !definitionDirectory.isDirectory()) {
-			log.error("Cannot iterate over directory {}", definitionDirectory);
-			return ret;
-		}
-		File[] allFiles = definitionDirectory.listFiles();
-		if (allFiles == null) {
-			log.error("Encountered empty directory {}", definitionDirectory.getParentFile());
-			return ret;
-		}
-		// SetupXY.xml => SetupXY
-		var fileExtension = ".xml";
-		String setupXy = mappingFile.getName().replace(fileExtension, "");
-		for (File file : allFiles) {
-			if (file.getName().startsWith(setupXy) && file.getName().endsWith(fileExtension)) {
-				try {
-					ret.result.add(XmlConfigUtil.loadConfigFromFile(file, entryType));
-				}
-				catch (TechnicalException ex) {
-					if (log.isDebugEnabled()) {
-						log.error("Could not load config: {}", ex.getInternalMessage(), ex);
-					}
-					else {
-						log.error("Could not load config: {}", ex.getInternalMessage()); // exception stack too verbose
-					}
-					++ret.skipped;
-				}
-			}
-		}
-		return ret;
 	}
 
 	// handle derived IDs, so we can merge RelyingParty X with X-...

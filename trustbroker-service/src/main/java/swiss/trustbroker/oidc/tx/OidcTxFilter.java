@@ -1,22 +1,23 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.oidc.tx;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.List;
 
 import jakarta.servlet.Filter;
@@ -33,6 +34,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.cors.CorsUtils;
 import swiss.trustbroker.common.exception.ErrorCode;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.common.util.UrlAcceptor;
@@ -47,14 +49,13 @@ import swiss.trustbroker.oidc.session.OidcSessionSupport;
 import swiss.trustbroker.oidc.session.TomcatSessionManager;
 import swiss.trustbroker.util.ApiSupport;
 import swiss.trustbroker.util.CorsSupport;
-import swiss.trustbroker.util.WebSupport;
 
 /**
  * Transaction boundary filter.
  * Also handles access to Keycloak-specific paths to be redirected to Spring authorization server.
  */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 3)
+@Order(Ordered.HIGHEST_PRECEDENCE + 4)
 @AllArgsConstructor
 @Slf4j
 public class OidcTxFilter implements Filter {
@@ -140,7 +141,7 @@ public class OidcTxFilter implements Filter {
 		else if (ApiSupport.isOidcSessionPath(path)) {
 			validateRequestAndAddCorsHeaders(httpRequest, path, wrappedResponse);
 			wrappedResponse.headerBuilder()
-					.oidcCspFrameOptions();
+					.oidcCspFrameOptions(getOwnOrigins());
 		}
 		else if (ApiSupport.isSamlPath(path)) {
 			wrappedResponse.headerBuilder()
@@ -182,8 +183,15 @@ public class OidcTxFilter implements Filter {
 					.allowedMethods(properties.getCors().getAllowedMethods())
 					.allowedHeaders(properties.getCors().getAllowedHeaders())
 					.build();
-			CorsSupport.setAccessControlHeaders(request, response, corsPolicies);
+			CorsSupport.setAccessControlHeaders(request, response, corsPolicies, getOwnOrigins());
 		}
+	}
+
+	private HashSet<String> getOwnOrigins() {
+		// deduplicate:
+		return new HashSet<>(List.of(
+				WebUtil.getValidOrigin(properties.getPerimeterUrl()),
+				WebUtil.getValidOrigin(properties.getOidc().getPerimeterUrl())));
 	}
 
 	// Support OIDC clients connecting to Keycloak validating the issuer ID containing /realms/X
@@ -215,8 +223,9 @@ public class OidcTxFilter implements Filter {
 		if (OidcUtil.isOidcPromptNone(request)) {
 			var clientId = OidcSessionSupport.getOidcClientId(request);
 			var session = HttpExchangeSupport.getRunningHttpSession();
-			if (session != null) {
-				log.debug("prompt=none ignored, clientId={} already logged in", clientId);
+			var principal = OidcSessionSupport.getAuthenticatedPrincipal(session);
+			if (principal != null) {
+				log.debug("prompt=none ignored, clientId={} already logged in as principal={}", clientId, principal.getName());
 				return false;
 			}
 			var client = relyingPartyDefinitions.getOidcClientConfigById(clientId, properties);
@@ -228,11 +237,12 @@ public class OidcTxFilter implements Filter {
 			var acl = client.get().getRedirectUris();
 			if (acl != null && UrlAcceptor.isRedirectUrlOkForAccess(redirectUri, acl.getAcNetUrls())) {
 				var state = StringUtil.clean(request.getParameter(OidcUtil.OIDC_STATE_ID));
-				var traceId = WebSupport.getTraceId(request);
+				var traceId = TraceSupport.getOwnTraceParent();
 				var errorPage = apiSupport.getErrorPageUrl(ErrorCode.REQUEST_DENIED.getLabel(), traceId);
 				var redirectUrl = OidcExceptionHelper.getOidcErrorLocation(redirectUri,
 						"login_required", "no session on prompt=none", errorPage,
 						properties.getOidc().getIssuer(), state);
+				log.debug("No authenticated OIDC session on prompt=none, redirecting to redirectUrl={}", redirectUrl);
 				response.sendRedirect(redirectUrl);
 				return true;
 			}

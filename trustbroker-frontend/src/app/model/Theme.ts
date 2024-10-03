@@ -14,32 +14,17 @@
  */
 
 export class Theme {
-	readonly name: string;
-	readonly hasBackdrop: boolean;
-	readonly hasThemeSelector: boolean;
-	readonly hasLanguageSelector: boolean;
-	readonly fullLanguageName: boolean;
-	readonly hasHelp: boolean;
-	readonly hasHelpPanel: boolean;
-	readonly helpTabindex: number;
 
 	constructor(
-		name: string,
-		hasBackdrop: boolean,
-		hasThemeSelector: boolean,
-		hasLanguageSelector: boolean,
-		fullLanguageName: boolean,
-		hasHelp: boolean,
-		hasHelpPanel: boolean,
-		helpTabindex: number
-	) {
-		this.name = name;
-		this.hasBackdrop = hasBackdrop;
-		this.hasThemeSelector = hasThemeSelector;
-		this.hasLanguageSelector = hasLanguageSelector;
-		this.fullLanguageName = fullLanguageName;
-		this.hasHelp = hasHelp;
-		this.hasHelpPanel = hasHelpPanel;
-		this.helpTabindex = helpTabindex;
-	}
+		readonly name : string,
+		readonly hasHeader: boolean,
+		readonly hasFooter: boolean,
+		readonly hasBackdrop: boolean,
+		readonly hasThemeSelector: boolean,
+		readonly hasLanguageSelector: boolean,
+		readonly fullLanguageName: boolean,
+		readonly hasHelp: boolean,
+		readonly hasHelpPanel: boolean,
+		readonly helpTabindex: number
+	) {}
 }

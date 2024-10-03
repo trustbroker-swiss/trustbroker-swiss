@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.tracing;
@@ -80,25 +80,25 @@ public class DefaultOptraceLogger implements OpTraceLogger {
 	}
 
 	@Override
-	public void logInitialEnter(String transferId, String object, String method, String principal, String clientId) {
-		logInitialEnter(transferId, object, method, principal, null, clientId, null, null);
+	public void logInitialEnter(String traceId, String object, String method, String principal, String clientId) {
+		logInitialEnter(traceId, object, method, principal, null, clientId, null, null);
 	}
 
 	@Override
 	public void logInitialEnter(
-			String transferId, String object, String method, String principal, Object[][] optional, String clientId
+			String traceId, String object, String method, String principal, Object[][] optional, String clientId
 	) {
-		logInitialEnter(transferId, object, method, principal, optional, clientId, null, null);
+		logInitialEnter(traceId, object, method, principal, optional, clientId, null, null);
 	}
 
 	@Override
 	public void logInitialEnter(
-			String transferId, String object, String method, String principal, Object[][] optional, String clientId,
+			String traceId, String object, String method, String principal, Object[][] optional, String clientId,
 			Object fullRequestContext, Object fullResponseContext
 	) {
 		try {
 			var numberRequests = concurrentRequests.incrementAndGet();
-			var rc = REQUEST_CONTEXT_FACTORY.create(object, method, transferId, principal, clientId,
+			var rc = REQUEST_CONTEXT_FACTORY.create(object, method, traceId, principal, clientId,
 					fullRequestContext, fullResponseContext);
 			if (oplog.isDebugEnabled()) {
 				var addonMetrics = getUsedMemoryAndRequests(numberRequests, false);
@@ -257,9 +257,9 @@ public class DefaultOptraceLogger implements OpTraceLogger {
 		var usedMemAmount = new String[] { StaticOptraceHelper.MEM_USED, String.valueOf(RUNTIME.totalMemory() - freeMem) };
 		var freeMemAmount = new String[] { StaticOptraceHelper.MEM_FREE, String.valueOf(freeMem) };
 		if (freeToo) {
-			return new String[][] { usedMemAmount, freeMemAmount, curReqCnt };
+			return new String[][] { curReqCnt, usedMemAmount, freeMemAmount };
 		}
-		return new String[][] { usedMemAmount, curReqCnt };
+		return new String[][] { curReqCnt, usedMemAmount };
 	}
 
 	@Override // <<<<<

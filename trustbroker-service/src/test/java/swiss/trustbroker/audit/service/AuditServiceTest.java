@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.audit.service;
@@ -33,6 +33,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 import swiss.trustbroker.audit.dto.AuditDto;
 import swiss.trustbroker.audit.dto.EventType;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
+import swiss.trustbroker.metrics.service.MetricsService;
 
 @SpringBootTest(classes = AuditService.class)
 @ExtendWith(SpringExtension.class)
@@ -43,9 +44,12 @@ class AuditServiceTest {
 
 	private AuditService auditService;
 
+	@MockBean
+	private MetricsService metricsService;
+
 	@BeforeEach
 	public void setUp() {
-		auditService = new AuditService(mockLogger);
+		auditService = new AuditService(mockLogger, metricsService);
 	}
 
 	@Test
@@ -61,7 +65,7 @@ class AuditServiceTest {
 	void testLogOutboundAuthnRequest() {
 		// DEBUG AuthnRequest to CP
 		AuditDto auditDto = buildDto(EventType.AUTHN_REQUEST);
-		auditService.logOutboundSamlFlow(auditDto);
+		auditService.logOutboundFlow(auditDto);
 		verify(mockLogger, times(1)).log(eq(EventType.AUTHN_REQUEST), eq(false), startsWith("AuthnRequest:"));
 		verify(mockLogger, times(1)).log(eq(EventType.AUTHN_REQUEST), eq(false), contains("event=authnrequest"));
 	}
@@ -79,7 +83,7 @@ class AuditServiceTest {
 	void testLogOutboundSamlResponse() {
 		// INFO Response to RP
 		AuditDto auditDto = buildDto(EventType.RESPONSE);
-		auditService.logOutboundSamlFlow(auditDto);
+		auditService.logOutboundFlow(auditDto);
 		verify(mockLogger, times(1)).log(eq(EventType.RESPONSE), eq(false), startsWith("AuthnResponse:"));
 		verify(mockLogger, times(1)).log(eq(EventType.RESPONSE), eq(false), contains("event=response"));
 		// network topology
@@ -102,7 +106,7 @@ class AuditServiceTest {
 	@Test
 	void testAnySsoSessionId() {
 		AuditDto auditDto = buildDto(EventType.RESPONSE);
-		auditService.logOutboundSamlFlow(auditDto);
+		auditService.logOutboundFlow(auditDto);
 		verify(mockLogger, times(1)).log(eq(EventType.RESPONSE), eq(false),
 				contains("SsoSessionId=\"sso-uuid\""));
 	}

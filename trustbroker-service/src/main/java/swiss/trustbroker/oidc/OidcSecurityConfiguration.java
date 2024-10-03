@@ -57,6 +57,7 @@ import swiss.trustbroker.api.qoa.service.QualityOfAuthenticationService;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.oidc.opensaml5.OpenSaml5AuthenticationProvider;
 import swiss.trustbroker.oidc.opensaml5.OpenSaml5AuthenticationRequestResolver;
 import swiss.trustbroker.oidc.opensaml5.OpenSaml5AuthenticationTokenConverter;
@@ -97,6 +98,8 @@ public class OidcSecurityConfiguration {
 
 	private final CustomOAuth2AuthorizationService customOAuth2AuthorizationService;
 
+	public final MetricsService metricsService;
+
 	@Bean
 	public WebSecurityCustomizer webSecurityCustomizer() {
 		// use top-level package to control sub-system debug flag
@@ -131,6 +134,7 @@ public class OidcSecurityConfiguration {
 
 		// authentication setup
 		http.saml2Login(saml2 -> saml2
+				.failureHandler(new CustomFailureHandler("saml2", relyingPartyDefinitions, properties))
 				.authenticationConverter(new OpenSaml5AuthenticationTokenConverter(relyingPartyRegistrationRepository))
 				.authenticationManager(new ProviderManager(customAuthenticationProvider())).
 									  loginPage(apiSupport.getErrorPageUrl()));
@@ -184,7 +188,7 @@ public class OidcSecurityConfiguration {
 	 */
 	@Bean
 	public JWKSource<SecurityContext> jwkSource() {
-		return new RotateJwkSource<>(jwkCacheService);
+		return new RotateJwkSource<>(jwkCacheService, metricsService);
 	}
 
 	@Bean

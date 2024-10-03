@@ -1,26 +1,31 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.script.service;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.doReturn;
 
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,16 +34,33 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.ContextConfiguration;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
+import swiss.trustbroker.config.TestConstants;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.federation.xmlconfig.Definition;
+import swiss.trustbroker.federation.xmlconfig.Script;
+import swiss.trustbroker.federation.xmlconfig.Scripts;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
 import swiss.trustbroker.saml.dto.CpResponse;
+import swiss.trustbroker.test.saml.util.SamlTestBase;
 
 @SpringBootTest
 @ContextConfiguration(classes = ScriptService.class)
 class ScriptServiceTest {
 
 	private static final String SCRIPTS_PATH = "scripts/"; // on classpath
+
+	private static final String GLOBAL_SCRIPTS_PATH = "global/";
+
+	private static final String TENANT1_PATH = "tenant1/";
+
+	private static final String TENANT2_PATH = "tenant2/app1/";
+
+	private static final String REMOVE_IDM_USER_DETAILS_AFTER_IDM = "RemoveIdmUserDetailsAfterIdm.groovy";
+
+	private static final String ADJUST_OIDC_ATTRIBUTE_NAMES = "AdjustOidcAttributeNames.groovy";
+
+	private static final String ENCODE_PASSWORD = "EncodePassword.groovy";
 
 	@Autowired
 	ScriptService scriptService;
@@ -56,7 +78,7 @@ class ScriptServiceTest {
 
 	@Test
 	void testRemoveIdmUserDetailsAfterIdm() {
-		String scriptName = SCRIPTS_PATH + "RemoveIdmUserDetailsAfterIdm.groovy";
+		String scriptName = SCRIPTS_PATH + TENANT1_PATH + REMOVE_IDM_USER_DETAILS_AFTER_IDM;
 		// beans
 		CpResponse cpResponse = givenResponseWithIdmUserDetails();
 		int originSize1 = cpResponse.getAttributes().size();
@@ -75,7 +97,7 @@ class ScriptServiceTest {
 
 	@Test
 	void testShortSamlAttributeNames() {
-		String scriptName = SCRIPTS_PATH + "AdjustOidcAttributeNames.groovy";
+		String scriptName = SCRIPTS_PATH + TENANT2_PATH + ADJUST_OIDC_ATTRIBUTE_NAMES;
 
 		// data
 		var cpResponse = CpResponse.builder()
@@ -103,6 +125,42 @@ class ScriptServiceTest {
 		assertEquals("value1", cpResponse.getAttribute("name1"));
 		assertEquals("value2", cpResponse.getUserDetail("name2"));
 		assertEquals("value3", cpResponse.getProperty("name3"));
+	}
+
+	@Test
+	void testCompileScripts() {
+		var scriptsPath = SamlTestBase.filePathFromClassPath(SCRIPTS_PATH);
+		var globalScriptsPath = scriptsPath + GLOBAL_SCRIPTS_PATH;
+		var result = scriptService.compileScripts(scriptsPath, globalScriptsPath);
+		assertThat(result.keySet(), containsInAnyOrder(
+				ENCODE_PASSWORD,
+				TENANT1_PATH + REMOVE_IDM_USER_DETAILS_AFTER_IDM,
+				TENANT2_PATH + ADJUST_OIDC_ATTRIBUTE_NAMES));
+	}
+
+	@Test
+	void testResolveScripts() {
+		// load scripts
+		var configPath = SamlTestBase.filePathFromClassPath(TestConstants.LATEST_PATH).replace(TestConstants.LATEST_PATH, "");
+		doReturn(configPath).when(trustBrokerProperties).getConfigurationPath();
+		doReturn(RelyingPartySetupUtil.DEFINITION_PATH).when(trustBrokerProperties).getScriptPath();
+		doReturn(SCRIPTS_PATH).when(trustBrokerProperties).getGlobalScriptPath();
+		scriptService.refresh();
+
+		// resolve
+		var type = "OnCpRequest";
+		var subPath = "test_application";
+		var relativeToSubPath = Script.builder().name("groovy/TestApplication.groovy").type(type).build();
+		var relativeToTop = Script.builder().name("application_group/ApplicationGroup.groovy").type(type).build();
+		var relativeToGlobalScripts = Script.builder().name("GlobalRequest.groovy").type(type).build();
+		var wrongType = Script.builder().name("GlobalResponse.groovy").type("BeforeIdm").build();
+		var scripts = Scripts.builder().scripts(List.of(relativeToSubPath, wrongType, relativeToTop, relativeToGlobalScripts)).build();
+		var result = scriptService.resolveScripts(scripts, subPath, type);
+		var resultScriptNames = result.stream().map(Pair::getKey).toList();
+		assertThat(resultScriptNames, containsInAnyOrder(
+				Path.of(subPath, relativeToSubPath.getName()).toString(), // result has the full path
+				relativeToTop.getName(),
+				relativeToGlobalScripts.getName()));
 	}
 
 	private static CpResponse givenResponseWithIdmUserDetails() {

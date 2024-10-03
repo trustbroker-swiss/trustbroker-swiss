@@ -34,12 +34,18 @@ export class DeviceInfoComponent implements OnInit {
 			const id = params.id;
 			this.deviceInfoService.sendDeviceInfo(cpUrn, rpUrn, id).subscribe({
 				next: resp => {
-					if (resp?.includes('redirectUrl')) {
-						const profile = JSON.parse(resp);
+					// document.write for error page does not work here
+					const url = resp?.url.replace(/^.*(\/failure\/.*$)/, '$1');
+					if (url !== resp?.url) {
+						void this.router.navigate([url]);
+						return;
+					}
+					if (resp?.body?.includes('redirectUrl')) {
+						const profile = JSON.parse(resp.body);
 						void this.router.navigate([profile.redirectUrl]);
 						return;
 					}
-					window.document.write(resp);
+					window.document.write(resp?.body);
 					if (document.forms.length > 0) {
 						document.forms.item(0).submit();
 					} else {

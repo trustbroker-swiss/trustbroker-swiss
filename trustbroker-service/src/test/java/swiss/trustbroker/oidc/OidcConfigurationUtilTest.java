@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.oidc;
@@ -41,17 +41,29 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationServerMetadataClaimNames;
 import org.springframework.security.oauth2.server.authorization.oidc.OidcProviderConfiguration;
 import org.springframework.security.oauth2.server.authorization.oidc.OidcProviderMetadataClaimNames;
+import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
+import org.springframework.security.oauth2.server.authorization.settings.OAuth2TokenFormat;
+import org.springframework.security.oauth2.server.authorization.settings.TokenSettings;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CoreAttributeInitializer;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.dto.OidcProperties;
+import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
+import swiss.trustbroker.federation.xmlconfig.AuthorizationGrantType;
+import swiss.trustbroker.federation.xmlconfig.AuthorizationGrantTypes;
+import swiss.trustbroker.federation.xmlconfig.ClientAuthenticationMethod;
+import swiss.trustbroker.federation.xmlconfig.ClientAuthenticationMethods;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.Multivalued;
+import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.OidcSecurityPolicies;
+import swiss.trustbroker.federation.xmlconfig.Scope;
+import swiss.trustbroker.federation.xmlconfig.Scopes;
 import swiss.trustbroker.oidc.session.OidcSessionSupport;
 
 @SpringBootTest(classes = OidcConfigurationUtilTest.class)
@@ -68,6 +80,14 @@ class OidcConfigurationUtilTest {
 	public static final List<Object> FIRST_NAMES = List.of("first1", "first2");
 
 	public static final List<Object> CLAIMS_NAMES = List.of("claim\\1", "claim\\2");
+
+	private static final int DEFAULT_TOKEN_TIME_SECS = 120;
+
+	private static final int ACCESS_TOKEN_TIME_TO_LIVE_MIN = 4;
+
+	private static final int REFRESH_TOKEN_TIME_TO_LIVE_MIN = 5;
+
+	private static final int AUTHORIZATION_CODE_TIME_TO_LIVE_MIN = 3;
 
 	@BeforeAll
 	static void setup() {
@@ -347,6 +367,85 @@ class OidcConfigurationUtilTest {
 		assertEquals(1, attributes.get(CoreAttributeName.CLAIMS_NAME.getNamespaceUri()).size());
 		assertEquals(1, attributes.get(CoreAttributeName.NAME.getNamespaceUri()).size());
 		assertFalse(attributes.get(CoreAttributeName.NAME.getNamespaceUri()) instanceof ImmutableList<Object>);
+	}
+
+	@ParameterizedTest
+	@CsvSource(value = { "false", "true" })
+	void createRegisteredClient(boolean withDefaults) {
+		var oidcClient = givenOidcClient(withDefaults);
+
+		var result = OidcConfigurationUtil.createRegisteredClient(oidcClient, DEFAULT_TOKEN_TIME_SECS);
+
+		var authMethods = ClientAuthenticationMethod.defaultValues();
+		var grantTypes = AuthorizationGrantType.defaultValues();
+		var scopes = Scope.defaultNames();
+		if (!withDefaults) {
+			authMethods = oidcClient.getClientAuthenticationMethods().getMethods();
+			grantTypes = oidcClient.getAuthorizationGrantTypes().getGrantTypes();
+			scopes = oidcClient.getScopes().getScopeList();
+		}
+		var authMethodsArray = authMethods.stream().map(ClientAuthenticationMethod::getMethod).toArray(Object[]::new);
+		var grantTypesArray = grantTypes.stream().map(AuthorizationGrantType::getType).toArray(Object[]::new);
+		var scopesArray = scopes.toArray(Object[]::new);
+
+		assertThat(oidcClient.getRegisteredClient(), is(result));
+		assertThat(result.getId(), is(oidcClient.getId()));
+		assertThat(result.getClientId(), is(oidcClient.getId()));
+		assertThat(result.getClientSecret(), is(oidcClient.getClientSecret()));
+		assertThat(result.getClientSettings(), is(givenClientSettings()));
+		assertThat(result.getClientAuthenticationMethods(), containsInAnyOrder(authMethodsArray));
+		assertThat(result.getAuthorizationGrantTypes(), containsInAnyOrder(grantTypesArray));
+		assertThat(result.getScopes(), containsInAnyOrder(scopesArray));
+		var redirectUris = oidcClient.getRedirectUris().getRedirectUrls().toArray(Object[]::new);
+		assertThat(result.getRedirectUris(), containsInAnyOrder(redirectUris));
+		assertThat(result.getTokenSettings(), is(givenTokenSettings()));
+	}
+
+	private static OidcClient givenOidcClient(boolean withDefaults) {
+		var builder = OidcClient.builder()
+				.id("client1")
+				.clientSecret("secret1")
+				.redirectUris(AcWhitelist.builder()
+						.acUrls(List.of("https://localhost/test"))
+						.build())
+				.oidcSecurityPolicies(OidcSecurityPolicies.builder()
+						.requireProofKey(true)
+						.requireAuthorizationConsent(true)
+						.reuseRefreshTokens(true)
+						.accessTokenTimeToLiveMin(ACCESS_TOKEN_TIME_TO_LIVE_MIN)
+						.refreshTokenTimeToLiveMin(REFRESH_TOKEN_TIME_TO_LIVE_MIN)
+						.authorizationCodeTimeToLiveMin(AUTHORIZATION_CODE_TIME_TO_LIVE_MIN)
+						.idTokenSignature(SignatureAlgorithm.RS256.getName())
+						.build());
+		if (!withDefaults) {
+					builder.clientAuthenticationMethods(ClientAuthenticationMethods.builder()
+						.methods(List.of(ClientAuthenticationMethod.CLIENT_SECRET_BASIC,
+								ClientAuthenticationMethod.CLIENT_SECRET_POST)).build())
+					.authorizationGrantTypes(AuthorizationGrantTypes.builder()
+						.grantTypes(
+								List.of(AuthorizationGrantType.AUTHORIZATION_CODE, AuthorizationGrantType.REFRESH_TOKEN)).build())
+					.scopes(Scopes.builder()
+						.scopeList(List.of(Scope.ADDRESS.getName(), Scope.OPENID.getName())).build());
+		}
+		return builder.build();
+	}
+
+	private static ClientSettings givenClientSettings() {
+		return ClientSettings.builder()
+				.requireProofKey(true)
+				.requireAuthorizationConsent(true)
+				.build();
+	}
+
+	private static TokenSettings givenTokenSettings() {
+		return TokenSettings.builder()
+				.reuseRefreshTokens(true)
+				.accessTokenTimeToLive(Duration.ofMinutes(ACCESS_TOKEN_TIME_TO_LIVE_MIN))
+				.refreshTokenTimeToLive(Duration.ofMinutes(REFRESH_TOKEN_TIME_TO_LIVE_MIN))
+				.authorizationCodeTimeToLive(Duration.ofMinutes(AUTHORIZATION_CODE_TIME_TO_LIVE_MIN))
+				.accessTokenFormat(OAuth2TokenFormat.SELF_CONTAINED)
+				.idTokenSignatureAlgorithm(SignatureAlgorithm.RS256)
+				.build();
 	}
 
 	private Map<String, List<Object>> givenAttributesWithDuplicates() {

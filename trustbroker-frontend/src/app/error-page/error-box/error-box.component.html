@@ -1,13 +1,13 @@
 <!--
  Copyright (C) 2024 trustbroker.swiss team BIT
- 
+
  This program is free software.
  You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- 
+
  This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- 
+
  See the GNU Affero General Public License for more details.
  You should have received a copy of the GNU Affero General Public License along with this program.
  If not, see <https://www.gnu.org/licenses/>.
@@ -17,17 +17,17 @@
 		<h1 class="high-emphasis mb-3">{{ titleKey | translate }}</h1>
 	</div>
 	<div>
-		<h2 class="medium-emphasis mb-2">{{ textKey | translate }}</h2>
-		<p *ngIf="!supportInfo" class="medium-emphasis">{{ infoKey | translate }}</p>
+		<h2 class="medium-emphasis mb-2" [innerHTML]="textKey | translate | safeMarkup"></h2>
+		<p *ngIf="!supportInfo" class="medium-emphasis" [innerHTML]="infoKey | translate | safeMarkup"></p>
 		<div *ngIf="supportInfoData" class="app-support">
 			<div *ngIf="supportInfoData.appUrl" class="app-support-info">
-				<div class="medium-emphasis">{{ "trustbroker.error.main.support.furtherinfo" | translate }}</div>
+				<div class="medium-emphasis" [innerHTML]="'trustbroker.error.main.support.furtherinfo' | translate | safeMarkup"></div>
 				<div>
 					<a href="{{ supportInfoData.appUrl }}">{{ "trustbroker.error.main.support.documentation" | translate }}</a>
 				</div>
 			</div>
 			<div *ngIf="supportInfoData.emailAddress || supportInfoData.phoneNumber" class="app-support-contact">
-				<div class="medium-emphasis">{{ "trustbroker.error.main.support.servicedesk" | translate }}</div>
+				<div class="medium-emphasis" [innerHTML]="'trustbroker.error.main.support.servicedesk' | translate | safeMarkup"></div>
 				<div *ngIf="supportInfoData.emailAddress">
 					<div>{{ "trustbroker.error.main.support.emailladdress" | translate }}</div>
 					<div>
@@ -35,21 +35,21 @@
 					</div>
 				</div>
 				<div *ngIf="supportInfoData.phoneNumber">
-					<div>{{ "trustbroker.error.main.support.phonennumber" | translate }}</div>
+					<div [innerHTML]="'trustbroker.error.main.support.phonennumber' | translate | safeMarkup"></div>
 					<div>
 						<a href="tel:{{ supportInfoData.phoneNumber }}">{{ supportInfoData.phoneNumber }}</a>
 					</div>
 				</div>
 			</div>
 			<div class="app-support-contact">
-				<p *ngIf="showSupportInfoText" class="medium-emphasis">{{ supportInfoText | translate }}</p>
+				<p *ngIf="showSupportInfoText" class="medium-emphasis" [innerHTML]="supportInfoText | translate | safeMarkup"></p>
 				<p *ngIf="showSupportContactText" class="medium-emphasis">
-					{{ supportContactText | translate }}
+					<span [innerHTML]="supportContactText | translate | safeMarkup"></span>
 					<a href="{{ supportContactUrl | translate }}" target="_blank">{{ "trustbroker.error.main.support.documentation" | translate }}</a>
 				</p>
 			</div>
 		</div>
-		<p class="medium-emphasis" *ngIf="reference">{{ referenceKey | translate }} {{ reference }}</p>
+		<p class="medium-emphasis" *ngIf="reference"><span [innerHTML]="referenceKey | translate | safeMarkup"></span><span>{{ reference }}</span></p>
 		<button *ngIf="continueButton" mat-flat-button color="accent" (click)="continueFlow()" tabindex="1" type="submit" class="{{ theme.name }} button-text mt-2">
 			<span>{{ "trustbroker.error.main.button.continue" | translate }}</span>
 		</button>

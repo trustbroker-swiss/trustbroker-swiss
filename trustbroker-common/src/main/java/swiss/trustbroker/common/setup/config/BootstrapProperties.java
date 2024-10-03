@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.setup.config;
@@ -51,10 +51,13 @@ public class BootstrapProperties {
 	public static String getFromSysPropsOrEnv(String name, String defaultValue, boolean required) {
 		String ret = System.getProperty(name);
 		if (ret == null) {
-			ret = System.getenv(name);
+			ret = System.getenv(name); // as is, but . are illegal
 		}
 		if (ret == null) {
-			ret = System.getenv(name.toUpperCase().replace(".", "_"));
+			ret = System.getenv(name.replace(".", "_")); // better
+		}
+		if (ret == null) {
+			ret = System.getenv(name.toUpperCase().replace(".", "_")); // ENV convention
 		}
 		if (ret == null) {
 			ret = defaultValue;

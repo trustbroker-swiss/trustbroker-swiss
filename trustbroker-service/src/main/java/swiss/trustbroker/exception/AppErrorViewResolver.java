@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.exception;
@@ -26,6 +26,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.ModelAndView;
 import swiss.trustbroker.common.exception.ErrorCode;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.oidc.OidcExceptionHelper;
 import swiss.trustbroker.util.ApiSupport;
@@ -42,7 +43,7 @@ public class AppErrorViewResolver implements ErrorViewResolver {
 
 	@Override
 	public ModelAndView resolveErrorView(HttpServletRequest request, HttpStatus status, Map<String, Object> model) {
-		var traceId = WebSupport.getTraceId(request);
+		var traceId = TraceSupport.getOwnTraceParent();
 		var errorPage = resolveErrorPage(status, traceId);
 		if (OidcExceptionHelper.hasAuthenticationException(request)) {
 			var location = OidcExceptionHelper.buildLocationForAuthenticationException(request, errorPage,

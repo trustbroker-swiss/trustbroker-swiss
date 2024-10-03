@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.config.dto;
@@ -33,6 +33,7 @@ import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
+import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.AccessRequest;
@@ -46,7 +47,6 @@ import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.RelyingPartySetup;
 import swiss.trustbroker.oidc.session.HttpExchangeSupport;
-import swiss.trustbroker.util.WebSupport;
 
 class RelyingPartyDefinitionsTest {
 
@@ -80,7 +80,7 @@ class RelyingPartyDefinitionsTest {
 	}
 
 	@Test
-	void testAmbuiguousOidcRouting() {
+	void testAmbiguousOidcRouting() {
 		var newConfigurations = new HashMap<String, Pair<RelyingParty, OidcClient>>();
 
 		var clientId1 = "OidcClient1";
@@ -165,21 +165,25 @@ class RelyingPartyDefinitionsTest {
 
 		// last one wins (arbitrary)
 		var def1 = relyingPartyDefinitions.getOidcClientConfigById(clientId1, properties);
+		assertTrue(def1.isPresent());
 		assertThat(def1.get(), equalTo(cl1cp));
 
 		// unique one works
 		var def2 = relyingPartyDefinitions.getOidcClientConfigById(clientId2, properties);
+		assertTrue(def2.isPresent());
 		assertThat(def2.get(), equalTo(cl2));
 
 		// LB routing for mobile gateway
-		request.addHeader(WebSupport.HTTP_HEADER_X_FORWARDED_FOR, MOB_GW_IP);
+		request.addHeader(WebUtil.HTTP_HEADER_X_FORWARDED_FOR, MOB_GW_IP);
 		var def3 = relyingPartyDefinitions.getOidcClientConfigById(clientId3, properties);
+		assertTrue(def3.isPresent());
 		assertThat(def3.get().getFederationId(), equalTo(rp33.getId()));
 
 		// LB for INTRANET
-		request.removeHeader(WebSupport.HTTP_HEADER_X_FORWARDED_FOR);
+		request.removeHeader(WebUtil.HTTP_HEADER_X_FORWARDED_FOR);
 		request.addHeader(properties.getNetwork().getNetworkHeader(), "INTRANET");
 		var def4 = relyingPartyDefinitions.getOidcClientConfigById(clientId3, properties);
+		assertTrue(def4.isPresent());
 		assertThat(def4.get().getFederationId(), equalTo(rp32.getId()));
 	}
 
@@ -259,13 +263,18 @@ class RelyingPartyDefinitionsTest {
 	private RelyingParty givenRelyingParty(String rpId, String alias, String net, String... cpIds) {
 		var cps = new ArrayList<ClaimsProviderRelyingParty>();
 		for (var cpId : cpIds) {
-			cps.add(ClaimsProviderRelyingParty.builder().id(cpId).clientNetworks(net).build());
+			cps.add(ClaimsProviderRelyingParty.builder()
+											  .id(cpId)
+											  .clientNetworks(net)
+											  .build());
 		}
 		return RelyingParty.builder()
-				.id(rpId)
-				.unaliasedId(alias)
-				.claimsProviderMappings(ClaimsProviderMappings.builder().claimsProviderList(cps).build())
-				.build();
+						   .id(rpId)
+						   .unaliasedId(alias)
+						   .claimsProviderMappings(ClaimsProviderMappings.builder()
+																		 .claimsProviderList(cps)
+																		 .build())
+						   .build();
 	}
 
 	private static TrustBrokerProperties givenProperties() {
@@ -285,15 +294,19 @@ class RelyingPartyDefinitionsTest {
 		var request = new MockHttpServletRequest();
 		var relyingPartyDefinitions = new RelyingPartyDefinitions();
 		var relyingParty = new RelyingParty();
+		var networkConfig = NetworkConfig.builder()
+										 .canaryMarkerName("canary")
+										 .canaryEnabledValue("always")
+										 .build();
 
-		assertFalse(relyingPartyDefinitions.isRpDisabled(null, request));
-		assertFalse(relyingPartyDefinitions.isRpDisabled(relyingParty, request));
+		assertFalse(relyingPartyDefinitions.isRpDisabled(null, request, networkConfig));
+		assertFalse(relyingPartyDefinitions.isRpDisabled(relyingParty, request, networkConfig));
 
 		relyingParty.setEnabled(FeatureEnum.FALSE);
-		assertTrue(relyingPartyDefinitions.isRpDisabled(relyingParty, request));
+		assertTrue(relyingPartyDefinitions.isRpDisabled(relyingParty, request, networkConfig));
 
-		request.addHeader(WebSupport.HTTP_CANARY_MARKER, WebSupport.HTTP_CANARY_MARKER_ALWAYS);
-		assertFalse(relyingPartyDefinitions.isRpDisabled(relyingParty, request));
+		request.addHeader(networkConfig.getCanaryMarkerName(), networkConfig.getCanaryEnabledValue());
+		assertFalse(relyingPartyDefinitions.isRpDisabled(relyingParty, request, networkConfig));
 	}
 
 }

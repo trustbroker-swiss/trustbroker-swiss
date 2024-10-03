@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.federation.xmlconfig;
@@ -49,6 +49,8 @@ import swiss.trustbroker.util.PropertyUtil;
  * </ul>
  * <br/>
  * RP profiles are configuration templates for RP setups that reflect a common pattern used by multiple RPs.
+ * <br/>
+ * Potentially breaking changes: see <code>FeatureEnum</code>
  */
 @XmlRootElement(name = "RelyingParty")
 @XmlAccessorType(XmlAccessType.FIELD)
@@ -56,7 +58,7 @@ import swiss.trustbroker.util.PropertyUtil;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class RelyingParty implements Serializable, RelyingPartyConfig {
+public class RelyingParty implements Serializable, RelyingPartyConfig, PathReference {
 
 	@XmlAttribute(name = "id")
 	private String id;
@@ -71,7 +73,7 @@ public class RelyingParty implements Serializable, RelyingPartyConfig {
 	 */
 	@XmlAttribute(name = "enabled")
 	@Builder.Default
-	private String enabled = FeatureEnum.TRUE.name(); // String to support 'true' and 'false' for consistency
+	private FeatureEnum enabled = FeatureEnum.TRUE;
 
 	@XmlAttribute(name = "base")
 	private String base;
@@ -228,6 +230,11 @@ public class RelyingParty implements Serializable, RelyingPartyConfig {
 
 	private transient Credential rpEncryptionCred;
 
+	private transient String subPath;
+
+	@Builder.Default
+	private transient ValidationStatus validationStatus = new ValidationStatus();
+
 	// Lombok would generate this, but the compiler complains about not implementing RelyingPartyConfig
 	@Override
 	public String getId() {
@@ -251,12 +258,16 @@ public class RelyingParty implements Serializable, RelyingPartyConfig {
 		return rpEncryptionCred;
 	}
 
-	public void setEnabled(FeatureEnum enabled) {
-		this.enabled = FeatureEnum.getName(enabled);
-	}
+	@XmlTransient
+	@Override
+	public String getSubPath() { return subPath; }
 
-	public FeatureEnum getEnabled() {
-		return FeatureEnum.ofName(enabled);
+	@Override
+	public void setSubPath(String subPath) { this.subPath = subPath; }
+
+	@XmlTransient
+	public ValidationStatus getValidationStatus() {
+		return validationStatus;
 	}
 
 	// derived
@@ -370,6 +381,27 @@ public class RelyingParty implements Serializable, RelyingPartyConfig {
 		}
 		return claimsProviderMappings.getClaimsProviderList().stream()
 				.filter(cpRp -> rpAliasId.equals(cpRp.getRelyingPartyAlias())).findFirst();
+	}
+
+	public void invalidate(Throwable ex) {
+		enabled = FeatureEnum.INVALID;
+		initializedValidationStatus().addException(ex);
+	}
+
+	public void invalidate(String error) {
+		enabled = FeatureEnum.INVALID;
+		initializedValidationStatus().addError(error);
+	}
+
+	public ValidationStatus initializedValidationStatus() {
+		if (validationStatus == null) {
+			validationStatus = new ValidationStatus();
+		}
+		return validationStatus;
+	}
+
+	public boolean isValid() {
+		return enabled != FeatureEnum.INVALID;
 	}
 
 }

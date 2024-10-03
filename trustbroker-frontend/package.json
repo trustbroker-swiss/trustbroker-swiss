@@ -27,7 +27,7 @@
     "@ngrx/store": "^17.2.0",
     "@ngx-translate/core": "^15.0.0",
     "@ngx-translate/http-loader": "^7.0.0",
-    "@oblique/oblique": "^11.2.0",
+    "@oblique/oblique": "^11.3.2",
     "@popperjs/core": "^2.11.8",
     "@typescript-eslint/utils": "^7.12.0",
     "angular-oauth2-oidc": "^17.0.2",

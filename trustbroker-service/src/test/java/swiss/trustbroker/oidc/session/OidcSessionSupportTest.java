@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.oidc.session;
@@ -22,11 +22,14 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.verifyNoInteractions;
 
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -37,6 +40,7 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import jakarta.servlet.http.Cookie;
 import org.apache.commons.lang3.tuple.Pair;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -45,6 +49,7 @@ import org.mockito.Mock;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
@@ -54,19 +59,34 @@ import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
+import swiss.trustbroker.sessioncache.dto.Lifecycle;
+import swiss.trustbroker.sessioncache.dto.LifecycleState;
+import swiss.trustbroker.sessioncache.dto.SsoSessionParticipant;
+import swiss.trustbroker.sessioncache.dto.StateData;
+import swiss.trustbroker.sso.service.SsoService;
 import swiss.trustbroker.util.ApiSupport;
 
 @SpringBootTest(classes = OidcSessionSupportTest.class)
 class OidcSessionSupportTest {
 
+	private static final String OIDC_CLIENT_ID = "client1";
+
 	@Mock
 	private RelyingPartyDefinitions relyingPartyDefinitions;
+
+	@Mock
+	private SsoService ssoService;
 
 	private NetworkConfig network;
 
 	@BeforeEach
 	void setup() {
 		network = new NetworkConfig();
+	}
+
+	@AfterEach
+	void tearDown() {
+		HttpExchangeSupport.end();
 	}
 
 	@Test
@@ -206,12 +226,8 @@ class OidcSessionSupportTest {
 								.build();
 		// ambiguous
 		var oidcClients = Map.of(
-				"1", Pair.of(RelyingParty.builder()
-										 .id("1")
-										 .build(), client1),
-				"2", Pair.of(RelyingParty.builder()
-										 .id("2")
-										 .build(), client2)
+				"1", Pair.of(givenRelyingParty("1"), client1),
+				"2", Pair.of(givenRelyingParty("2"), client2)
 		);
 		var relyingParties = RelyingPartyDefinitions.builder()
 													.oidcConfigurations(oidcClients)
@@ -305,7 +321,84 @@ class OidcSessionSupportTest {
 
 	}
 
-	String givenToken(String clientId) throws JOSEException {
+	@Test
+	void testGetSsoStateDataForClientFromSession() {
+		var stateData = givenSsoState(Collections.emptySet());
+		var request = new MockHttpServletRequest();
+		var response = new MockHttpServletResponse();
+		HttpExchangeSupport.begin(request, response, true);
+		HttpExchangeSupport.getRunningHttpExchange().setSsoState(stateData);
+		var relyingParty = givenRelyingParty(null);
+
+		var result = OidcSessionSupport.getSsoStateDataForClient(ssoService, request, relyingParty, OIDC_CLIENT_ID);
+
+		assertThat(result, is(stateData));
+		verifyNoInteractions(ssoService);
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void testGetSsoStateDataForClientFromSso(Set<SsoSessionParticipant> participants1,
+			Set<SsoSessionParticipant> participants2, boolean expectState) {
+		var stateData1 = givenSsoState(participants1);
+		var stateData2 = givenSsoState(participants2);
+		var request = new MockHttpServletRequest();
+		var relyingParty = givenRelyingParty(null);
+		var cookie = new Cookie("session", "sid1");
+		request.setCookies(cookie);
+
+		doReturn(List.of(stateData1, stateData2)).when(ssoService)
+												 .findValidStatesFromCookies(relyingParty, new Cookie[] { cookie });
+
+		var result = OidcSessionSupport.getSsoStateDataForClient(ssoService, request, relyingParty, OIDC_CLIENT_ID);
+
+		if (expectState) {
+			assertThat(result, is(stateData1));
+		}
+		else {
+			assertThat(result, is(nullValue()));
+		}
+	}
+
+	static Object[][] testGetSsoStateDataForClientFromSso() {
+		return new Object[][] {
+				// no matching participant:
+				{
+					Collections.emptySet(),
+					Collections.emptySet(),
+					false
+				},
+				// single matching participant:
+				{
+					Set.of(SsoSessionParticipant.builder().oidcSessionId("osid").oidcClientId(OIDC_CLIENT_ID).build()),
+					Collections.emptySet(),
+					true
+				},
+				// multiple matching participants:
+				{
+					Set.of(SsoSessionParticipant.builder().oidcSessionId("osid1").oidcClientId(OIDC_CLIENT_ID).build()),
+					Set.of(SsoSessionParticipant.builder().oidcSessionId("osid2").oidcClientId(OIDC_CLIENT_ID).build()),
+					false
+				}
+		};
+	}
+
+	private static StateData givenSsoState(Set<SsoSessionParticipant> ssoParticipants) {
+		var stateData = StateData.builder()
+								 .id("SessionId1")
+								 .lifecycle(Lifecycle.builder().lifecycleState(LifecycleState.ESTABLISHED).build())
+								 .build();
+		stateData.initializedSsoState().setSsoParticipants(ssoParticipants);
+		return stateData;
+	}
+
+	private static RelyingParty givenRelyingParty(String id) {
+		return RelyingParty.builder()
+						   .id(id != null ? id : "rp1")
+						   .build();
+	}
+
+	private String givenToken(String clientId) throws JOSEException {
 		var rsa = new RSAKeyGenerator(RSAKeyGenerator.MIN_KEY_SIZE_BITS).keyID("kid1").generate();
 		var signer = new RSASSASigner(rsa);
 		var claimsSet = new JWTClaimsSet.Builder()

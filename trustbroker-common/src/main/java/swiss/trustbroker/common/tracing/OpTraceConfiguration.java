@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.tracing;
@@ -34,10 +34,10 @@ public final class OpTraceConfiguration {
 			= System.getProperty(OpTraceConfiguration.class.getName() + "logger.name", "swiss.trustbroker.op");
 
 	private static final String PKG_NAME
-			= System.getProperty(OpTraceConfiguration.class.getName() + "package.name", "defaultPackage");
+			= System.getProperty(OpTraceConfiguration.class.getName() + "package.name", "");
 
 	private static final String PKG_VERSION
-			= System.getProperty(OpTraceConfiguration.class.getName() + "package.version", "v1.0");
+			= System.getProperty(OpTraceConfiguration.class.getName() + "package.version", "");
 
 	private static final String INSTANCE_NAME
 			= System.getProperty(OpTraceConfiguration.class.getName() + "instance.name", getHostName());
@@ -76,7 +76,7 @@ public final class OpTraceConfiguration {
 						 .strip();
 		}
 		catch (Exception e) {
-			return "OpTraceInstUnknown";
+			return "no-hostname";
 		}
 	}
 

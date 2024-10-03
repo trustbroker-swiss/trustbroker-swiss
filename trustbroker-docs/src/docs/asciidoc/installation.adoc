@@ -70,9 +70,9 @@ chmod 555 /usr/local/bin/docker-compose
 
 The demo setup should run out of the box as follows:
 
-- Download https://github.com/trustbroker-swiss/trustbroker-swiss/trustbroker-install/docker/docker-compose.yml[docker-compose.yml]
-- Download https://github.com/trustbroker-swiss/trustbroker-swiss/trustbroker-install/docker/env-vault.conf[env-vault.conf]
-- Download https://github.com/trustbroker-swiss/trustbroker-swiss/trustbroker-install/docker/run.sh[run.sh]
+- Download https://github.com/trustbroker-swiss/trustbroker-swiss/blob/main/trustbroker-install/docker/docker-compose.yml[docker-compose.yml]
+- Download https://github.com/trustbroker-swiss/trustbroker-swiss/blob/main/trustbroker-install/env-vault.conf[env-vault.conf]
+- Download https://github.com/trustbroker-swiss/trustbroker-swiss/blob/main/trustbroker-install/run.sh[run.sh]
 
 Run the setup:
 ```

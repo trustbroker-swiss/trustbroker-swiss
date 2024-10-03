@@ -1,16 +1,16 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.audit.service;
@@ -32,6 +32,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.opensaml.saml.saml2.core.ArtifactResolve;
 import org.opensaml.saml.saml2.core.ArtifactResponse;
 import org.opensaml.saml.saml2.core.Assertion;
+import org.opensaml.saml.saml2.core.Attribute;
 import org.opensaml.saml.saml2.core.AuthnRequest;
 import org.opensaml.saml.saml2.core.LogoutRequest;
 import org.opensaml.saml.saml2.core.LogoutResponse;
@@ -44,8 +45,10 @@ import swiss.trustbroker.audit.dto.AuditDto;
 import swiss.trustbroker.audit.dto.EventType;
 import swiss.trustbroker.audit.dto.OidcAuditData;
 import swiss.trustbroker.common.saml.util.AttributeRegistry;
+import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlUtil;
+import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
@@ -114,17 +117,17 @@ public abstract class AuditMapper {
 		if (request == null) {
 			return this;
 		}
-		setIfNotNull(builder::conversationId, request.getID());
+		setIfNotNull(builder::conversationId, TraceSupport.switchToConversationFromSamlId(request.getID()));
+		setIfNotNull(builder::messageId, request.getID());
 		setIfNotNull(builder::issuer, request.getIssuer().getValue());
 		setIfNotNull(builder::destination, request.getDestination());
 		setIfNotNull(builder::samlMessage, request);
-		if (request instanceof  AuthnRequest authnRequest) {
+		if (request instanceof AuthnRequest authnRequest) {
 			setIfNotNull(builder::assertionConsumerUrl, authnRequest.getAssertionConsumerServiceURL());
 			setIfNotNull(builder::eventType, EventType.AUTHN_REQUEST);
 		}
 		else if (request instanceof LogoutRequest) {
 			setIfNotNull(builder::eventType, EventType.LOGOUT_REQUEST);
-
 		}
 		else if (request instanceof ArtifactResolve) {
 			setIfNotNull(builder::eventType, EventType.ARTIFACT_RESOLVE);
@@ -134,7 +137,7 @@ public abstract class AuditMapper {
 
 	public AuditMapper mapFrom(HttpServletRequest request) {
 		if (request != null) {
-			setIfNotNull(builder::clientIP, WebSupport.getClientIp(request));
+			setIfNotNull(builder::clientIP, WebUtil.getClientIp(request));
 			setIfNotNull(builder::clientType, WebSupport.getUserAgent(request));
 			setIfNotNull(builder::clientNetwork, WebSupport.getClientNetwork(request, trustBrokerProperties.getNetwork()));
 			setIfNotNull(builder::deviceId, WebSupport.getDeviceId(request));
@@ -145,8 +148,6 @@ public abstract class AuditMapper {
 			setIfNotNull(builder::url, request.getRequestURL().toString());
 			var httpReferer = extractReferrer(WebUtil.getHeader(HttpHeaders.REFERER, request));
 			setIfNotNull(builder::referrer, httpReferer);
-			// request tracing (distributed request tracing there are a few 'standards') => LB, Nginx, GORouter, ...
-			setIfNotNull(builder::transferId, WebSupport.getTraceId(request));
 		}
 		return this;
 	}
@@ -235,6 +236,7 @@ public abstract class AuditMapper {
 		}
 		mapStatus(response);
 
+		setIfNotNull(builder::messageId, response.getID());
 		setIfNotNull(builder::issuer, response.getIssuer().getValue());
 		setIfNotNull(builder::destination, response.getDestination());
 		setIfNotNull(builder::samlMessage, response);
@@ -245,7 +247,9 @@ public abstract class AuditMapper {
 		if (assertion == null) {
 			return this;
 		}
-		setIfNotNull(builder::conversationId, assertion.getID());
+		if (assertion.getID() != null) {
+			setIfNotNull(builder::conversationId, assertion.getID()); // if ID is prefixed with S2-
+		}
 		if (assertion.getIssuer() != null) {
 			setIfNotNull(builder::issuer, assertion.getIssuer().getValue());
 		}
@@ -254,23 +258,30 @@ public abstract class AuditMapper {
 		}
 		if (CollectionUtils.isNotEmpty(assertion.getAttributeStatements())) {
 			assertion.getAttributeStatements().forEach(as ->
-				as.getAttributes().forEach(a -> {
-					var name = a.getName();
-					var attributeName = AttributeRegistry.forName(name);
-					var values = SamlUtil.getAttributeValues(a);
-					if (values.size() == 1) {
-						addResponseAttribute(name, attributeName, values.get(0), AuditDto.AttributeSource.SAML_RESPONSE); // single value
-					}
-					else {
-						addResponseAttribute(name, attributeName, values, AuditDto.AttributeSource.SAML_RESPONSE); // list
-					}
-				})
+				as.getAttributes().forEach(this::mapFrom)
 			);
 		}
 		setIfNotNull(builder::samlMessage, assertion);
 		return this;
 	}
 
+	private void mapFrom(Attribute attribute) {
+		var name = attribute.getName();
+		var attributeName = AttributeRegistry.forName(name);
+		var values = SamlUtil.getAttributeValues(attribute);
+		if (values.size() == 1) {
+			addResponseAttribute(name, attributeName, values.get(0), AuditDto.AttributeSource.SAML_RESPONSE); // single value
+		}
+		else {
+			addResponseAttribute(name, attributeName, values, AuditDto.AttributeSource.SAML_RESPONSE); // list
+		}
+		// overwrite conversationId if attribute was set by caller as a claim
+		if (attributeName != null && CoreAttributeName.CONVERSATION_ID.getName().equals(attributeName.getName())) {
+			var conversationId = values.get(0);
+			setIfNotNull(builder::conversationId, conversationId);
+			TraceSupport.switchToConversation(conversationId);
+		}
+	}
 
 	public AuditMapper mapFrom(OidcAuditData oidcAuditData) {
 		if (oidcAuditData != null) {
@@ -279,8 +290,8 @@ public abstract class AuditMapper {
 			}
 			setIfNotNull(builder::oidcClientId, oidcAuditData.getOidcClientId());
 			setIfNotNull(builder::ssoSessionId, oidcAuditData.getSsoSessionId());
-			setIfNotNull(builder::conversationId, oidcAuditData.getConversationId());
 			setIfNotNull(builder::destination, oidcAuditData.getOidcLogoutUrl());
+			setIfNotNull(builder::conversationId, TraceSupport.getOwnTraceParent());
 			return this;
 		}
 		return this;
@@ -297,8 +308,9 @@ public abstract class AuditMapper {
 	}
 
 	public AuditMapper mapFromThreadContext() {
-		setIfNotNull(builder::clientIP, WebSupport.getClientIp());
-		setIfNotNull(builder::transferId, WebSupport.getTraceId());
+		setIfNotNull(builder::clientIP, TraceSupport.getClientIp());
+		setIfNotNull(builder::traceId, TraceSupport.getCallerTraceParent());
+		setIfNotNull(builder::conversationId, TraceSupport.getOwnTraceParent());
 		return this;
 	}
 
@@ -398,8 +410,7 @@ public abstract class AuditMapper {
 					name = namePart;
 				}
 			}
-
-			putResponseAttribute(name, originalName, value,false, source);
+			putResponseAttribute(name, originalName, value, false, source);
 		}
 	}
 

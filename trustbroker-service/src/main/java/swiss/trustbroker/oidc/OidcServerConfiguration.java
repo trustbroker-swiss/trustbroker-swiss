@@ -1,22 +1,23 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.oidc;
 
 import static org.springframework.security.web.util.matcher.AntPathRequestMatcher.antMatcher;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -24,6 +25,7 @@ import java.util.function.Function;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
@@ -52,6 +54,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.exception.GlobalExceptionHandler;
+import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.oidc.jackson.ObjectMapperFactory;
 import swiss.trustbroker.oidc.pkce.PublicClientRefreshTokenAuthenticationConverter;
 import swiss.trustbroker.oidc.pkce.PublicClientRefreshTokenAuthenticationProvider;
@@ -129,7 +133,8 @@ public class OidcServerConfiguration {
 			authServerConfigurer.tokenRevocationEndpoint(tokenRevocationEndpoint -> tokenRevocationEndpoint
 					.revocationResponseHandler((request, response, authentication) ->
 							response.setStatus(HttpStatus.OK.value()))
-					.authenticationProvider(new CustomTokenRevocationAuthenticationProvider(authorizationService))
+					.authenticationProvider(
+							new CustomTokenRevocationAuthenticationProvider(authorizationService, trustBrokerProperties))
 					.errorResponseHandler(new CustomFailureHandler(
 							"revoke", relyingPartyDefinitions, trustBrokerProperties))
 			);
@@ -216,19 +221,29 @@ public class OidcServerConfiguration {
 	}
 
 	@Bean
-	public OAuth2AuthorizationService authorizationService(JdbcTemplate jdbcTemplate,
-			RegisteredClientRepository registeredClientRepository, TrustBrokerProperties trustBrokerProperties) {
-		if (trustBrokerProperties.isServerMultiProcessed()) {
-			var authorizationService = new JdbcOAuth2AuthorizationService(jdbcTemplate, registeredClientRepository);
-			var rowMapper = new JdbcOAuth2AuthorizationService.OAuth2AuthorizationRowMapper(registeredClientRepository);
-			var oAuth2AuthorizationParametersMapper = new JdbcOAuth2AuthorizationService.OAuth2AuthorizationParametersMapper();
-			ObjectMapper objectMapper = ObjectMapperFactory.springSecObjectMapper();
-			oAuth2AuthorizationParametersMapper.setObjectMapper(objectMapper);
-			rowMapper.setObjectMapper(objectMapper);
-			authorizationService.setAuthorizationRowMapper(rowMapper);
-			authorizationService.setAuthorizationParametersMapper(oAuth2AuthorizationParametersMapper);
-			return authorizationService;
-		}
+	@ConditionalOnProperty(value = "trustbroker.config.serverMultiProcessed", havingValue = "true", matchIfMissing = true)
+	public CustomOAuth2AuthorizationService authorizationService(
+			JdbcTemplate jdbcTemplate,
+			RegisteredClientRepository registeredClientRepository,
+			TrustBrokerProperties trustBrokerProperties,
+			GlobalExceptionHandler globalExceptionHandler,
+			Clock clock,
+			MetricsService metricsService) {
+		var authorizationService = new CustomOAuth2AuthorizationService(jdbcTemplate, registeredClientRepository,
+				trustBrokerProperties, globalExceptionHandler, clock, metricsService);
+		var rowMapper = new JdbcOAuth2AuthorizationService.OAuth2AuthorizationRowMapper(registeredClientRepository);
+		var oAuth2AuthorizationParametersMapper = new JdbcOAuth2AuthorizationService.OAuth2AuthorizationParametersMapper();
+		ObjectMapper objectMapper = ObjectMapperFactory.springSecObjectMapper();
+		oAuth2AuthorizationParametersMapper.setObjectMapper(objectMapper);
+		rowMapper.setObjectMapper(objectMapper);
+		authorizationService.setAuthorizationRowMapper(rowMapper);
+		authorizationService.setAuthorizationParametersMapper(oAuth2AuthorizationParametersMapper);
+		return authorizationService;
+	}
+
+	@Bean
+	@ConditionalOnProperty(value = "trustbroker.config.serverMultiProcessed", havingValue = "false", matchIfMissing = false)
+	public InMemoryOAuth2AuthorizationService authorizationServiceDev() {
 		return new InMemoryOAuth2AuthorizationService();
 	}
 

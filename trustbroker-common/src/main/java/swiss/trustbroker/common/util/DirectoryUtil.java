@@ -1,22 +1,23 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 package swiss.trustbroker.common.util;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
@@ -78,23 +79,26 @@ public class DirectoryUtil {
 		}
 	}
 
-	public void renameDirectory(String curDirName, String newDirName) {
+	public boolean renameDirectory(String curDirName, String newDirName) {
 		var curDir = new File(curDirName);
 		var newDir = new File(newDirName);
-		renameDirectory(curDir, newDir);
+		return renameDirectory(curDir, newDir);
 	}
 
-	public void renameDirectory(File curDir, File newDir) {
+	public boolean renameDirectory(File curDir, File newDir) {
 		if (curDir.exists()) {
 			if (curDir.renameTo(newDir)) {
 				log.info("Rename current={} to new={} successfully", curDir.getAbsolutePath(), newDir.getAbsolutePath());
+				return true;
 			}
 			else {
 				log.error("Rename current={} to new={} failed", curDir.getAbsolutePath(), newDir.getAbsolutePath());
+				return false;
 			}
 		}
 		else {
 			log.info("Rename current={} ignored (did not exists or already gone)", curDir.getAbsolutePath());
+			return false;
 		}
 	}
 
@@ -126,5 +130,44 @@ public class DirectoryUtil {
 					sourceDirectory.getAbsolutePath(), destinationDirectory.getAbsolutePath(), e.getMessage());
 			throw new TechnicalException(msg);
 		}
+	}
+
+	public static Path relativePath(Path file, Path basePath, boolean tryOnly) {
+		try {
+			var relative = basePath.relativize(file);
+			if (relative.startsWith("../")) {
+				if (tryOnly) {
+					return null;
+				}
+				throw new TechnicalException(String.format("file=%s not relative to basePath=%s", file, basePath));
+			}
+			return relative;
+		}
+		catch (IllegalArgumentException ex) {
+			if (tryOnly) {
+				return null;
+			}
+			throw new TechnicalException(String.format("file=%s cannot be relativized to basePath=%s", file, basePath));
+		}
+	}
+
+	public static boolean contentDiffers(File file1, File file2) {
+		try {
+			var equals = FileUtils.contentEquals(file1, file2);
+			return !equals;
+		}
+		catch (IOException e) {
+			log.error("Reading files for update error", e);
+		}
+		return false;
+	}
+
+	public static boolean existsOnFilesystemOrClasspath(String keystorePath) {
+		var file = new File(keystorePath);
+		if (file.exists()) {
+			return true;
+		}
+		var url = DirectoryUtil.class.getClassLoader().getResource(keystorePath);
+		return url != null;
 	}
 }

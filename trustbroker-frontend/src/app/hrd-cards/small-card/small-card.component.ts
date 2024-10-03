@@ -16,6 +16,7 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { Theme } from '../../model/Theme';
 import { ThemeService } from '../../services/theme-service';
+import { SafeHtml } from '@angular/platform-browser';
 
 @Component({
 	selector: 'app-small-card',
@@ -27,7 +28,7 @@ export class SmallCardComponent {
 	@Input() showSmallCards: boolean;
 	@Input() inputColor: string;
 	@Input() inputShortcut: string;
-	@Input() cardText: string;
+	@Input() cardText: SafeHtml;
 	@Input() disabled: boolean;
 	@Input() theme: Theme = ThemeService.defaultTheme;
 

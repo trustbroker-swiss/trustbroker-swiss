@@ -1,17 +1,18 @@
 /*
  * Copyright (C) 2024 trustbroker.swiss team BIT
- * 
+ *
  * This program is free software.
  * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
  * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * See the GNU Affero General Public License for more details.
  * You should have received a copy of the GNU Affero General Public License along with this program.
- * If not, see <https://www.gnu.org/licenses/>. 
+ * If not, see <https://www.gnu.org/licenses/>.
  */
+
 package swiss.trustbroker.oidc.tx;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -29,6 +30,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.ContentSecurityPolicies;
 import swiss.trustbroker.config.dto.FrameOptionsPolicies;
+import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.oidc.OidcFrameAncestorHandler;
 import swiss.trustbroker.oidc.session.TomcatSessionManager;
@@ -53,6 +55,7 @@ class OidcTxFilterTest {
 	void setUp() {
 		MockitoAnnotations.openMocks(this);
 		properties = new TrustBrokerProperties();
+		properties.setOidc(new OidcProperties());
 		filter = new OidcTxFilter(relyingPartyDefinitions, properties, tomcatSessionManager, new ApiSupport(properties));
 	}
 
@@ -62,6 +65,8 @@ class OidcTxFilterTest {
 		var request = new MockHttpServletRequest();
 		request.setRequestURI(path);
 		var response = new MockHttpServletResponse();
+		properties.setPerimeterUrl("https://localhost/saml");
+		properties.getOidc().setPerimeterUrl("https://localhost/oidc");
 
 		filter.validateAndSetSecurityHeaders(
 				request,

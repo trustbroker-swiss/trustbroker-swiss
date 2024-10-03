@@ -110,7 +110,6 @@ public class CustomOAuth2AuthenticationProviderUtils {
 								metadata.put(OAuth2Authorization.Token.INVALIDATED_METADATA_NAME, true));
 			}
 		}
-
 		return authorizationBuilder.build();
 	}
 

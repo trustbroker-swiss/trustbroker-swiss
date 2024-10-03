@@ -37,6 +37,8 @@ import org.springframework.security.oauth2.server.authorization.OAuth2Authorizat
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2TokenRevocationAuthenticationToken;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.util.OidcUtil;
+import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.oidc.session.OidcSessionSupport;
 
 /**
  * Revocation handler endpoint. Copied from spring-security-oauth2-authorization-server:
@@ -60,8 +62,12 @@ public class CustomTokenRevocationAuthenticationProvider implements Authenticati
 
 	private final OAuth2AuthorizationService authorizationService;
 
-	public CustomTokenRevocationAuthenticationProvider(OAuth2AuthorizationService authorizationService) {
+	private final TrustBrokerProperties trustBrokerProperties;
+
+	public CustomTokenRevocationAuthenticationProvider(OAuth2AuthorizationService authorizationService,
+			TrustBrokerProperties trustBrokerProperties) {
 		this.authorizationService = authorizationService;
+		this.trustBrokerProperties = trustBrokerProperties;
 	}
 
 	@Override
@@ -101,6 +107,10 @@ public class CustomTokenRevocationAuthenticationProvider implements Authenticati
 		// persist revocation state
 		authorization = CustomOAuth2AuthenticationProviderUtils.invalidate(authorization, token.getToken());
 		this.authorizationService.save(authorization);
+
+		// invalidate web session after revocation
+		OidcSessionSupport.invalidateSession(trustBrokerProperties, "token invalidated");
+
 		log.info("Token invalidated for userPrincipal='{}' tokenType={} token='{}'", clientPrincipal.getName(),
 				tokenRevocationAuthentication.getTokenTypeHint(),
 				log.isDebugEnabled() ? OidcUtil.maskedToken(tokenRevocationAuthentication.getToken()) : "MASKED");
