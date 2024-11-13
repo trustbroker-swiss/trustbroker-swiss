@@ -56,30 +56,6 @@ public class DefaultOptraceLogger implements OpTraceLogger {
 	}
 
 	@Override
-	public void logEnter(String object, String method) {
-		logEnter(object, method, null);
-	}
-
-	@Override
-	public void logEnter(String object, String method, Object[][] optional) {
-		try {
-			var numberRequests = concurrentRequests.incrementAndGet();
-			RequestContext rc = REQUEST_CONTEXT_FACTORY.getRequestContext();
-			if (rc == null) {
-				throw new IllegalStateException(OPTRACE_THREADCTX_ERROR);
-			}
-			rc = REQUEST_CONTEXT_FACTORY.create(object, method, rc);
-			if (oplog.isDebugEnabled()) {
-				var addonMetrics = getUsedMemoryAndRequests(numberRequests, false);
-				StaticOptraceHelper.logEnter(oplog, OPTRACE_SERVER_REQUEST, rc, addonMetrics, optional);
-			}
-		}
-		catch (Exception e) {
-			log.error(OPTRACE_PROCESSING_ERROR, e);
-		}
-	}
-
-	@Override
 	public void logInitialEnter(String traceId, String object, String method, String principal, String clientId) {
 		logInitialEnter(traceId, object, method, principal, null, clientId, null, null);
 	}
@@ -154,37 +130,6 @@ public class DefaultOptraceLogger implements OpTraceLogger {
 		catch (Exception e) {
 			log.error(OPTRACE_PROCESSING_ERROR, e);
 		}
-	}
-
-	@Override
-	public void logReturn(Object exception) {
-		logReturn(exception, null);
-	}
-
-	@Override
-	public void logReturn(Object exception, Object[][] optional) {
-		try {
-			var numberRequests = concurrentRequests.decrementAndGet();
-			var rc = getRequestContext();
-			if (rc == null) {
-				throw new IllegalStateException(OPTRACE_THREADCTX_ERROR);
-			}
-			if (oplog.isInfoEnabled()) {
-				var addonMetrics = getUsedMemoryAndRequests(numberRequests, false);
-				StaticOptraceHelper.logExit(oplog, OPTRACE_SERVER_RESPONSE, rc, exception, addonMetrics, optional,
-						new LogParameter(StaticOptraceHelper.FAN_OUT_REQUESTS_NAME, rc.getFanOutRequestCounter())
-				);
-			}
-			REQUEST_CONTEXT_FACTORY.delete();
-		}
-		catch (Exception e) {
-			log.error(OPTRACE_PROCESSING_ERROR, e);
-		}
-	}
-
-	@Override
-	public void logInitialReturn(Object exception) {
-		logInitialReturn(exception, null);
 	}
 
 	@Override

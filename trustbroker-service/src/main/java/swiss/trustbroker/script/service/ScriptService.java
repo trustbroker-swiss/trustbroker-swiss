@@ -320,8 +320,19 @@ public class ScriptService {
 		bindings.put(BEAN_HTTP_REQUEST, HttpExchangeSupport.getRunningHttpRequest()); // allow some HTTP wire based decisions
 		// input/output (documented)
 		bindings.put(BEAN_CP_RESPONSE, cpResponse); // documented, used, our main vehicle for SAML  manipulations
+		bindings.put(BEAN_RP_REQUEST, deriveRpRequestFromCpResponse(cpResponse));
 		bindings.put(BEAN_LOGGER, log);
 		return bindings;
+	}
+
+	// Replace this late response copy of the RPRequest by splitting away the CPResponse related rpMembers
+	private static RpRequest deriveRpRequestFromCpResponse(CpResponse cpResponse) {
+		return RpRequest.builder()
+						.rpIssuer(cpResponse.getRpIssuer())
+						.applicationName(cpResponse.getApplicationName())
+						.contextClasses(cpResponse.getRpContextClasses())
+						.referer(cpResponse.getRpReferer())
+						.build();
 	}
 
 	public void refresh() {

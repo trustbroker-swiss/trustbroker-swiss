@@ -252,6 +252,7 @@ public class RelyingPartyService {
 	}
 
 	// Handling all cases (direct CpResponse from CP or interactive profile selection from UI)
+	@SuppressWarnings("java:S107")
 	String sendSuccessSamlResponseToRp(OutputService outputService, ResponseData<Response> responseData, CpResponse cpResponse,
 			StateData idpStateData, HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse,
 			String selectedProfileId, String incomingDeviceId) {
@@ -797,8 +798,8 @@ public class RelyingPartyService {
 
 		// adjust final settings
 		adjustSsoSessionIdProperty(stateData, cpResponse);
-		processOnResponseScript(cpResponse, requestIssuer, requestReferer);
 		SubjectNameMapper.adjustSubjectNameId(cpResponse, relyingParty);
+		processOnResponseScript(cpResponse, requestIssuer, requestReferer);
 
 		// assemble and sign
 		var authnResponse = createSamlResponseFromState(stateData, cpResponse);

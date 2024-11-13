@@ -82,29 +82,33 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 
 	private String authLevel; // declared QoA CP side
 
-	// RP initiated authnrequest data
+	// RP initiated SAML authnrequest data
 
-	private String rpIssuer;
+	private String rpIssuer; // incoming SAML issuer on RP side
 
-	private String rpDestination; // override for RP Response.Destination
+	private String rpReferer; // incoming HTTP referrer on RP side
 
-	private String rpRecipient; // override for RP SubjectConfirmationData.Recipient
+	private List<String> rpContextClasses; // incoming context class requirements on RP side
 
-	private String clientExtId;
+	private String rpDestination; // override SAML Response.Destination on RP side
+
+	private String rpRecipient; // override SAML SubjectConfirmationData.Recipient on RP side
+
+	private String clientExtId; // retrieved IDM primary reference for internal reference
 
 	private String clientName; // RelyingParty <ClientName> as used in the IDM credential SAML-Federation Issuer NameID
 
-	// RP/OIDC context sending 'SAML clientId' in ProviderName
-	private String applicationName;
+	private String applicationName; // RP/OIDC context sending 'SAML clientId' in ProviderName
 
 	// OIDC context only
-	private String oidcClientId;
 
-	private Set<String> oidcScopes;
+	private String oidcClientId; // incoming client_id
+
+	private Set<String> oidcScopes; // incoming scopes
 
 	// internal script processing
 
-	private String customIssuer; // allow to set another issuer ID in RP SAML response
+	private String customIssuer; // override RP response issuer
 
 	/**
 	 The HttpServletRequest params, some specific ones: username, Client_Network

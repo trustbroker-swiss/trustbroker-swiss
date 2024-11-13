@@ -232,7 +232,12 @@ trustbroker:
       # No acr_values in /authorize request? No Qoa element on RelyingParty or Oidc Client?
       defaultQoa: "urn:oasis:names:tc:SAML:2.0:ac:classes:unspecified"
       keycloakTransparencyModeOn: false
-      addEidStandardClaims: false
+      # Name plus value and/or regex:
+      jsonErrorPageHeaders:
+        - name: 'Accept'
+          regex: 'application/json'
+        - name: 'Accept'
+          value: '*/*'
       # Globally customize OIDC header (e.g. adding option typ=JWT)
       addTokenHeader:
         - typ
@@ -350,8 +355,8 @@ logging:
     # Audit facility only logs RP side in INFO level, to see CP side use DEBUG and to see claim details use TRACE
     swiss.trustbroker.audit.service.AuditLogger: TRACE
     # Access logging (DEBUG on op logger shows incoming requests as well, DEBUG on full logger shows conversational HTTP headers)
-    swiss.trustbroker.op: INFO
-    swiss.trustbroker.op.http: INFO
+    #swiss.trustbroker.op: DEBUG
+    #swiss.trustbroker.op.http: DEBUG
     # opensaml is not happy with RelayState > 80 bytes (according top spec) but handles it anyway
     org.opensaml.saml.common.binding.SAMLBindingSupport: ERROR
     # SAML handling in spring-authorization-server (Processing SAML response from... Found x validation errors in...)

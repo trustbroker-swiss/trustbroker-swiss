@@ -244,4 +244,33 @@ public class OidcUtil {
         return toks[0] + "." + toks[1] + "." + "SIG-MASKED";
     }
 
+	// find OIDC grant or token helpful for debugging (data might not be related to use)
+	public static String getGrantOrToken(HttpServletRequest request) {
+		if (request == null) {
+			return null;
+		}
+		var ret = new StringBuilder();
+		var sep = "";
+		for (var src : List.of(OIDC_CODE, OIDC_REFRESH_TOKEN, ID_TOKEN_HINT, TOKEN_INTROSPECT, ACCESS_INTROSPECT)) {
+			var val = request.getParameter(src);
+			if (val != null) {
+				ret.append(sep)
+				   .append(src)
+				   .append("=")
+				   .append(val);
+				sep = ",";
+			}
+		}
+		for (var src : List.of(HttpHeaders.AUTHORIZATION)) {
+			var val = request.getHeader(src);
+			if (val != null) {
+				ret.append(sep)
+				   .append(src)
+				   .append("=")
+				   .append(val);
+			}
+		}
+		return ret.toString();
+	}
+
 }

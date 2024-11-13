@@ -35,6 +35,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.oauth2.core.oidc.OidcUserInfo;
 import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationService;
@@ -78,10 +79,20 @@ public class OidcServerConfiguration {
 
 	private final ScriptService scriptService;
 
+
+	// no in-memory session tracking
+	// note: this bean needs to be in the bean registry, see OAuth2AuthorizationServerConfigurer
+	// using OAuth2ConfigurerUtils.getOptionalBean, setting it in HttpSecurity has no effect:
+	// httpSecurity.setSharedObject(SessionRegistry.class, sessionRegistry)
+	@Bean
+	public SessionRegistry sessionRegistry() {
+		return new CustomSessionRegistry();
+	}
+
 	@Bean
 	@Order(Ordered.HIGHEST_PRECEDENCE)
 	public SecurityFilterChain authorizationServerSecurityFilterChain(
-			HttpSecurity http, OAuth2AuthorizationService authorizationService) throws Exception {
+			SessionRegistry sessionRegistry, HttpSecurity http, OAuth2AuthorizationService authorizationService) throws Exception {
 
 		// setup spring-authorization-server for login federation
 		var authServerConfigurer = new OAuth2AuthorizationServerConfigurer();

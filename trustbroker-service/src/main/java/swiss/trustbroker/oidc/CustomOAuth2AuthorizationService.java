@@ -52,11 +52,11 @@ public class CustomOAuth2AuthorizationService extends JdbcOAuth2AuthorizationSer
 
 	private static final String TOKEN_TABLE = "oauth2_authorization";
 
-	private static final String DELETE_EXPIRED_TOKENS
-			= "DELETE FROM " + TOKEN_TABLE + " WHERE access_token_expires_at < ? AND authorization_code_expires_at < ?";
+	private static final String DELETE_EXPIRED_TOKENS = "DELETE FROM " + TOKEN_TABLE
+			+ " WHERE access_token_expires_at < ? AND authorization_code_expires_at < ? AND refresh_token_expires_at < ?";
 
-	private static final String DELETE_AUTHORIZATION_BY_CLIENTID_PRINCIPAL
-			= "DELETE FROM " + TOKEN_TABLE + " WHERE registered_client_id = ? AND principal_name = ?";
+	private static final String DELETE_AUTHORIZATION_BY_CLIENTID_PRINCIPAL = "DELETE FROM " + TOKEN_TABLE
+			+ " WHERE registered_client_id = ? AND principal_name = ?";
 
 	private static final String COUNT = "SELECT count(1) from " + TOKEN_TABLE;
 
@@ -120,6 +120,7 @@ public class CustomOAuth2AuthorizationService extends JdbcOAuth2AuthorizationSer
 			var currentTimestamp = Timestamp.from(start);
 			log.info("Start reaping token store (delayMs={})...", randomDelayMs);
 			SqlParameterValue[] parameters = new SqlParameterValue[] {
+					new SqlParameterValue(Types.TIMESTAMP, currentTimestamp),
 					new SqlParameterValue(Types.TIMESTAMP, currentTimestamp),
 					new SqlParameterValue(Types.TIMESTAMP, currentTimestamp)
 			};
@@ -194,7 +195,7 @@ public class CustomOAuth2AuthorizationService extends JdbcOAuth2AuthorizationSer
 		}
 		var oldValue = metaData.put(TraceSupport.XTB_TRACEID, conversationId);
 		if (oldValue != null && !oldValue.equals(conversationId)) {
-			log.info("Replaced conversationId={} in metaData={} with newValue={}", oldValue, metaData, conversationId);
+			log.debug("Replaced conversationId={} in metaData={} with newValue={}", oldValue, metaData, conversationId);
 		}
 	}
 

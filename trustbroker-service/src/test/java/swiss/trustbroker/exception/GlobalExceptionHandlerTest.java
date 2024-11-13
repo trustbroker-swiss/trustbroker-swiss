@@ -126,14 +126,23 @@ class GlobalExceptionHandlerTest {
 		assertThat(response.getHeader(HttpHeaders.LOCATION), is(REDIRECT_URL));
 	}
 
+	@Test
+	void handleAnyExceptionClientGone() {
+		var cause = new IOException("Broken pipe");
+		var ex = new RuntimeException(cause);
+		var response = new MockHttpServletResponse();
+		globalExceptionHandler.handleAnyException(ex, response);
+		assertThat(response.getStatus(), is(HttpStatus.OK.value()));
+	}
+
 	private static TechnicalException givenTechnicalException() {
 		var cause = new IOException();
-		var ex = new TechnicalException(ErrorMarker.BROKEN_PIPE, "message2", cause);
+		var ex = new TechnicalException(ErrorMarker.CLIENT_DISCONNECT, "message2", cause);
 		assertThat(ex.getErrorCode(), is(ErrorCode.REQUEST_REJECTED));
-		assertThat(ex.getErrorMarker(), is(ErrorMarker.BROKEN_PIPE));
+		assertThat(ex.getErrorMarker(), is(ErrorMarker.CLIENT_DISCONNECT));
 		assertThat(ex.getCause(), is(cause));
 		assertThat(ex.getMessage(), is("Service rejected"));
-		assertThat(ex.getInternalMessage(), is("marker=XTB_ERR_BROKEN_PIPE message2"));
+		assertThat(ex.getInternalMessage(), is("xtbCode=CLIENT_DISCONNECT message2"));
 		return ex;
 	}
 

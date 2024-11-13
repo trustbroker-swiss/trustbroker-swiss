@@ -36,31 +36,6 @@ public interface OpTraceLogger {
 	/**
 	 * Emit a service entering statement into the OP-TraceLog.
 	 *
-	 * It is assumed that there's a valid RequestContext available in the current thread which is
-	 * used to extract the Principal and Transfer ID. Thus, it may only be used if a logInitialEnter
-	 * has already been called in this request e.g. LocalEJB, SpringService or JDBC tracing.
-	 * A new RequestContext object is created based on the existing RequestContext, the parameter
-	 * passed and the current time.
-	 *
-	 * @param calledObject called object or called servlet/filter or database name
-	 * @param calledMethod method called or request URL or SQL query
-	 */
-	void logEnter(String calledObject, String calledMethod);
-
-	/**
-	 * Emit a service entering statement into the OP-TraceLog.
-	 *
-	 * @see OpTraceLogger#logEnter(String, String)
-	 *
-	 * @param calledObject called object or called servlet/filter or database name
-	 * @param calledMethod method called or request URL or SQL query
-	 * @param optional name/value pairs to be appended at the end of the log entry
-	 */
-	void logEnter(String calledObject, String calledMethod, Object[][] optional);
-
-	/**
-	 * Emit a service entering statement into the OP-TraceLog.
-	 *
 	 * Use this method to log the entering into the first service called on this JVM for a
 	 * given request/thread. A new RequestContext is created with the given parameters and
 	 * the current time. It is assumed that no RequestContext object exists yet in this
@@ -150,28 +125,6 @@ public interface OpTraceLogger {
 	 */
 	void logClientReturn(Object exception, Object[][] optional);
 
-
-	/**
-	 * Emit a service leaving statement into the OP-TraceLog.
-	 *
-	 * Used before returning from a service method. Only use this method, if you used one of the
-	 * logEnter methods before.
-	 *
-	 * @param exception optional object which represents an error condition (null on success)
-	 */
-	void logReturn(Object exception);
-
-	/**
-	 * Emit a service leaving statement into the OP-TraceLog.
-	 *
-	 * @see OpTraceLogger#logReturn(Object)
-	 *
-	 * @param exception optional object which represents an error condition (null on success)
-	 * @param optional name/value pairs to be appended at the end of the log entry
-	 */
-	void logReturn(Object exception, Object[][] optional);
-
-
 	/**
 	 * Emit a service leaving statement into the OP-TraceLog.
 	 *
@@ -179,16 +132,6 @@ public interface OpTraceLogger {
 	 * logInitialEnter methods before.
 	 *
 	 * @param exception optional object which represents an error condition (null on success)
-	 */
-	void logInitialReturn(Object exception);
-
-	/**
-	 * Emit a service leaving statement into the OP-TraceLog.
-	 *
-	 * @see OpTraceLogger#logInitialReturn(Object)
-	 *
-	 * @param exception optional object which represents an error condition (null on success)
-	 * @param optional name/value pairs to be appended at the end of the log entry
 	 */
 	void logInitialReturn(Object exception, Object[][] optional);
 

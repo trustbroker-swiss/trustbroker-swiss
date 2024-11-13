@@ -134,12 +134,15 @@ public class AssertionConsumerService {
 		cpResponse.setClientName(relyingPartySetupService.getRpClientName(idpStateData.getRpIssuer(), null));
 		cpResponse.setCustomIssuer(trustBrokerProperties.getIssuer()); // allows to use it as input too
 
-		// save some AuthnRequest related HTTP layer data
-		if (idpStateData.getSpStateData() != null) {
-			cpResponse.setRpContext(idpStateData.getSpStateData().getRpContext());
+		// make some RpRequest related data available in response phase (why not the whole RPRequest object?)
+		var rpStateData = idpStateData.getSpStateData();
+		if (rpStateData != null) {
+			cpResponse.setRpContext(rpStateData.getRpContext());
+			cpResponse.setRpReferer(rpStateData.getReferer());
+			cpResponse.setRpContextClasses(rpStateData.getContextClasses());
 			// propagate applicationName and OIDC client_id for scripting
-			cpResponse.setOidcClientId(idpStateData.getRpOidcClientId());
-			cpResponse.setApplicationName(idpStateData.getRpApplicationName());
+			cpResponse.setOidcClientId(rpStateData.getOidcClientId());
+			cpResponse.setApplicationName(rpStateData.getApplicationName());
 		}
 
 		// Scripts BeforeIdm CP side

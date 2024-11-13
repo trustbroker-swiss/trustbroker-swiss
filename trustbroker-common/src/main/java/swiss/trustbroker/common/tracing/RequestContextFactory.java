@@ -26,20 +26,6 @@ package swiss.trustbroker.common.tracing;
 public interface RequestContextFactory {
 
 	/**
-	 * Creates a new RequestContext with an initialized traceId.
-	 * 
-	 * The newly created RequestContext is also pushed on to the request context stack.
-	 *  
-	 * Format: "00000000." + PID_HEX4 + "." + HOSTID_HEX8 + "." + createRequestGUID8()
-	 * @return new RequestContext
-	 */
-    RequestContext create(String calledObject, String calledMethod);
-
-	/**
-	 * Creates a new RequestContext with the given traceId and principal.
-	 */
-	RequestContext create(String calledObject, String calledMethod, String traceId, String principal, String clientId);
-	/**
 	 * Creates a new RequestContext with the given traceId and principal.
 	 *
 	 * @param calledObject called object or called servlet/filter or database name
@@ -58,10 +44,10 @@ public interface RequestContextFactory {
      * Creates a new RequestContext based on the provided context.
      */
     RequestContext create(String calledObject, String calledMethod, RequestContext context);
-    
+
     /**
      * Puts a new RequestContext with an extended traceId onto the request context stack.
-     * 
+     *
      * This is done when a synchronous client call is done. Asynchronous client calls also
      * get a RequestContext with an extended traceId but that RequestContext may not be put
      * onto the request context stack. The client doing the asynchronous call must manage the
@@ -70,16 +56,16 @@ public interface RequestContextFactory {
      * @return current RequestContext with extended traceId
      */
     RequestContext extendTransferId(String obj, String mth);
-    
+
     /**
      * Creates a new RequestContext with an extended traceId.
 	 *
      * Generates a new unique Transfer-Id. The new Transfer-Id is built by appending a process-wide
      * unique Request-Id to the Transfer-Id stored in the current RequestContext on top of the
-     * request context stack. The resulting RequestContext is not put itself onto the request 
+     * request context stack. The resulting RequestContext is not put itself onto the request
      * context stack. Asynchronous client calls use this method to get a RequestContext with an
      * extended traceId.
-     * 
+     *
      * @return unique traceId
      * @throws IllegalArgumentException when no RequestContext is available
      */
@@ -87,17 +73,17 @@ public interface RequestContextFactory {
 
    	/**
      * Used to get the actual RequestContext from the top of the request context stack.
-     * 
+     *
      * It only returns the top of the stack it does not remove it.
-     * 
+     *
      * @return actual RequestContext or null if none exists
      */
     RequestContext getRequestContext();
-    
+
     /**
      * Puts the RequestContext onto the request context stack.
-     * 
-     * Server side entering (logInitialEnter, logEnter) and the synchronous client side service 
+     *
+     * Server side entering (logInitialEnter, logEnter) and the synchronous client side service
      * invocation (logClientCall) statement put there RequestContext onto that stack. There
      * corresponding return statements will later remove them form the stack again.
      * NOTE: The request context stack itself is stored in a thread local.
@@ -107,11 +93,11 @@ public interface RequestContextFactory {
 
     /**
      * Removes the last RequestContext from the request context stack.
-     * 
+     *
      * Any synchronous return statement (logInitialReturn, logReturn, logClientReturn)
-     * removes its RequestContext from the stack. 
+     * removes its RequestContext from the stack.
      * @see RequestContextFactory#setRequestContext(RequestContext)
      */
     void delete();
-    
+
 }

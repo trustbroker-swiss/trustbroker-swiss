@@ -23,7 +23,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
-import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.security.core.AuthenticationException;
@@ -35,11 +34,13 @@ import org.springframework.security.saml2.provider.service.authentication.Saml2A
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import swiss.trustbroker.common.exception.ErrorCode;
 import swiss.trustbroker.common.tracing.TraceSupport;
+import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.oidc.session.OidcSessionSupport;
 import swiss.trustbroker.util.ApiSupport;
+import swiss.trustbroker.util.WebSupport;
 
 @Slf4j
 public class CustomFailureHandler implements AuthenticationFailureHandler {
@@ -77,10 +78,10 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 			// OIDC sub-system https://openid.net/specs/openid-connect-core-1_0.html#AuthError
 			var error = authException.getError();
 			errMsg = String.format("Failed OIDC %s for oidcClient=%s of rpIssuerId=%s and httpReferer=%s"
-							+ " with errorCode=%s exceptionMessage='%s' exceptionClass=%s description='%s'",
+							+ " with errorCode=%s exceptionMessage='%s' exceptionClass=%s description='%s' oidcData='%s'",
 					type, clientId, client != null ? client.getId() : null, referrer, error.getErrorCode(),
 					exception.getMessage(), exception.getClass().getSimpleName(),
-					getDescription(exception, error.getDescription()));
+					getDescription(exception, error.getDescription()), OidcUtil.getGrantOrToken(request));
 		}
 		else if (exception instanceof Saml2AuthenticationException authException) {
 			// federation handling using SAML
@@ -109,41 +110,35 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 		OidcSessionSupport.invalidateSession(request, response, trustBrokerProperties, clientId, errMsg);
 
 		// choose failure notification approach
-		var acceptHeader = request.getHeader(HttpHeaders.ACCEPT);
-		if (acceptHeader != null && acceptHeader.contains(MediaType.APPLICATION_JSON_VALUE)) {
+		if (WebSupport.anyHeaderMatches(request, trustBrokerProperties.getOidc().getJsonErrorPageHeaders())) {
 			handleFailureAsJsonError(errMsg, response, exception);
 		}
 		else if (location != null) {
-			handleFailureWithClientRedirect(location, errMsg, acceptHeader, response);
+			handleFailureWithClientRedirect(location, errMsg, response);
 		}
 		else {
-			handleFailureWithServiceRedirect(errorPage, errMsg, acceptHeader, request, response, exception);
+			handleFailureWithServiceRedirect(errorPage, errMsg, request, response, exception);
 		}
 	}
 
-	private void handleFailureWithClientRedirect(
-			String location, String errMsg, String acceptHeader,
-			HttpServletResponse response)
+	private void handleFailureWithClientRedirect(String location, String errMsg, HttpServletResponse response)
 			throws IOException {
-		log.error("OIDC client failure redirecting to redirectUri=\"{}\" accept='{}' caused by: {}",
-				location, acceptHeader, errMsg);
+		log.error("OIDC client failure redirecting to redirectUri=\"{}\" caused by: {}", location, errMsg);
 		response.sendRedirect(location);
 	}
 
 	private void handleFailureWithServiceRedirect(
-			String errorPage, String errMsg, String acceptHeader,
+			String errorPage, String errMsg,
 			HttpServletRequest request, HttpServletResponse response, AuthenticationException exception)
 			throws IOException {
-		log.error("OIDC client failure redirecting to errorPage=\"{}\" accept='{}' caused by: {}",
-				errorPage, acceptHeader, errMsg);
+		log.error("OIDC client failure redirecting to errorPage=\"{}\" caused by: {}", errorPage, errMsg);
 		// store for later handling in OidcTxResponseWrapper / AppErrorViewResolver
 		OidcExceptionHelper.saveAuthenticationException(request, exception);
 		response.sendRedirect(errorPage);
 	}
 
 	private void handleFailureAsJsonError(
-			String errMsg,
-			HttpServletResponse response, AuthenticationException exception)
+			String errMsg, HttpServletResponse response, AuthenticationException exception)
 			throws IOException {
 		log.error("OIDC client failure caused by: {}", errMsg);
 		try (var httpResponse = new ServletServerHttpResponse(response)) {
@@ -173,7 +168,8 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 
 	// de-duplicate exception message and error description
 	private static String getDescription(AuthenticationException exception, String errorDescription) {
-		return errorDescription != null && !errorDescription.equals(exception.getMessage()) ? errorDescription : "";
+		return errorDescription != null && !errorDescription.equals(exception.getMessage()) ? errorDescription :
+				"https://datatracker.ietf.org/doc/html/rfc6749#section-5.2";
 	}
 
 }

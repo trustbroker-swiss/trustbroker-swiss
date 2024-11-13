@@ -28,6 +28,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import swiss.trustbroker.common.exception.ErrorCode;
+import swiss.trustbroker.common.exception.ErrorMarker;
 import swiss.trustbroker.common.exception.ExceptionUtil;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
@@ -72,6 +73,13 @@ public class GlobalExceptionHandler {
 
 	// We could also check for OIDC specific error handling sending failures to the client here
 	public void handleAnyException(Exception ex, HttpServletResponse response) {
+		// output stream disrupted, do not log stacks and do not redirect
+		if (ExceptionUtil.isClientDisconnected(ex)) {
+			var msg2 = TrustBrokerException.getMarkerMessage(ErrorMarker.CLIENT_DISCONNECT, "Client gone");
+			logException(ex, msg2, false,  trustBrokerProperties.getNetwork(), Level.WARN);
+			return;
+		}
+		// normal case
 		logException(ex);
 		redirectToErrorPage(ex, response);
 	}

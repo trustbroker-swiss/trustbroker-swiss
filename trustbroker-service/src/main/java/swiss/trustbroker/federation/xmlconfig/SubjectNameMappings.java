@@ -43,6 +43,8 @@ public class SubjectNameMappings implements Serializable {
 	 * If true, do not overwrite nameId if differing from originalNameId (i.e. preserve changes done by scripts).
 	 * <br/>
 	 * Default: false
+	 *
+	 * @since 1.7.0
 	 */
 	@XmlAttribute(name = "preserve")
 	@Builder.Default

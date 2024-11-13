@@ -88,7 +88,7 @@ class VelocityUtilTest {
 
 	static Object[][] renderTemplateBrokenPipe() {
 		return new Object[][] {
-				{ new RuntimeException("Failed", new IOException(ExceptionUtil.BROKEN_PIPE)), ErrorMarker.BROKEN_PIPE },
+				{ new RuntimeException("Failed", new IOException(ExceptionUtil.BROKEN_PIPE)), ErrorMarker.CLIENT_DISCONNECT },
 				{ new RuntimeException("Failed", new IOException("Other")), ErrorMarker.DEFAULT }
 		};
 	}

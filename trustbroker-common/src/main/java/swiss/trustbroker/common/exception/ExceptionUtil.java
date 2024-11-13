@@ -21,6 +21,8 @@ public class ExceptionUtil {
 
 	public static final String BROKEN_PIPE = "Broken pipe";
 
+	public static final String CONNECTION_RESET = "Connection reset by peer";
+
 	private ExceptionUtil() { }
 
 	// we want to have the root cause within the ERROR line as java stack-traces may not be aggregated in indexed logs
@@ -40,11 +42,11 @@ public class ExceptionUtil {
 	}
 
 	// detection of "Broken pipe" IOException
-	public static boolean isBrokenPipe(Throwable ex) {
+	public static boolean isClientDisconnected(Throwable ex) {
 		var rootCause = getRootCause(ex);
 		if (rootCause instanceof IOException) {
 			var msg = rootCause.getMessage();
-			return msg != null && msg.contains(BROKEN_PIPE);
+			return msg != null && (msg.contains(BROKEN_PIPE) || msg.contains(CONNECTION_RESET));
 		}
 		return false;
 	}

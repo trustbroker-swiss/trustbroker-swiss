@@ -75,8 +75,8 @@ public class VelocityUtil {
 			}
 		}
 		catch (Exception ex) {
-			if (ExceptionUtil.isBrokenPipe(ex)) {
-				throw new TechnicalException(ErrorMarker.BROKEN_PIPE, String.format(
+			if (ExceptionUtil.isClientDisconnected(ex)) {
+				throw new TechnicalException(ErrorMarker.CLIENT_DISCONNECT, String.format(
 						"Connection to client broken while rendering Velocity template msg='%s'", ex.getMessage()), ex);
 			}
 			throw new TechnicalException(

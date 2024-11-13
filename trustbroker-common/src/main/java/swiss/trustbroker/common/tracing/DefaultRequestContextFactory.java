@@ -27,23 +27,6 @@ public class DefaultRequestContextFactory implements RequestContextFactory {
 	@SuppressWarnings("java:S5164") // we keep the empty stack per thread
 	private static final ThreadLocal<Deque<RequestContext>> contextDeque = new ThreadLocal<>();
 
-	private final AtomicLong reqCounter = new AtomicLong();
-
-	public RequestContext create(String calledObject, String calledMethod) {
-		return create(
-				calledObject,
-				calledMethod,
-				createInitialTraceId(),
-				null,
-				null
-		);
-	}
-
-	@Override
-	public RequestContext create(String calledObject, String calledMethod, String traceId, String principal,	String clientId) {
-		return create(calledObject, calledMethod, traceId, principal, clientId, null, null);
-	}
-
 	@Override
 	public RequestContext create(String calledObject, String calledMethod, String traceId, String principal, String clientId,
 			Object fullRequestContext, Object fullResponseContext) {
@@ -62,7 +45,7 @@ public class DefaultRequestContextFactory implements RequestContextFactory {
 			AtomicLong fanOutRequestCounter, Object fullRequestContext, Object fullResponseContext) {
 		// make sure we can track the request, also when a logInitialEnter in a batch job did not detect an incoming one
 		if (traceId == null) {
-			traceId = createInitialTraceId();
+			traceId = TraceSupport.getOwnTraceParent();
 		}
 		var rc = DefaultRequestContext
 				.builder()
@@ -99,7 +82,7 @@ public class DefaultRequestContextFactory implements RequestContextFactory {
 				.calledObject(calledObject)
 				.calledMethod(calledMethod)
 				.clientId(clientId)
-				.traceId(id + "-" + createRequestGUID8())
+				.traceId(id)
 				.principal(principal)
 				.fanOutRequestCounter(fanOutRequestCounter)
 				.build();
@@ -136,17 +119,8 @@ public class DefaultRequestContextFactory implements RequestContextFactory {
 		return stack;
 	}
 
-	private String createRequestGUID8() {
-		var id = reqCounter.getAndIncrement();
-		return String.format("%08x", id);
-	}
-
 	public void setRequestContext(RequestContext ctx) {
 		pushRequestContext(ctx);
-	}
-
-	public String createInitialTraceId() {
-		return "00000000." + OpTraceUtil.PID_HEX_4 + "." + OpTraceUtil.HOST_IP_HEX_8 + "." + createRequestGUID8();
 	}
 
 }

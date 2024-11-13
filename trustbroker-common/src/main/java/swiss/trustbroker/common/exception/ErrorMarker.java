@@ -27,7 +27,7 @@ import org.slf4j.event.Level;
 @Getter
 public enum ErrorMarker {
 	DEFAULT(Level.ERROR),
-	BROKEN_PIPE(Level.WARN);
+	CLIENT_DISCONNECT(Level.WARN); // Broken pipe, Connection reset
 
 	private final Level level;
 }

@@ -31,11 +31,11 @@ class ExceptionUtilTest {
 
 	@ParameterizedTest
 	@MethodSource
-	void isBrokenPipe(Exception ex, boolean expected) {
-		assertThat(ExceptionUtil.isBrokenPipe(ex), is(expected));
+	void isClientDisconnected(Exception ex, boolean expected) {
+		assertThat(ExceptionUtil.isClientDisconnected(ex), is(expected));
 	}
 
-	static Object[][] isBrokenPipe() {
+	static Object[][] isClientDisconnected() {
 		return new Object[][] {
 				{ new RuntimeException("Failed", new IOException(ExceptionUtil.BROKEN_PIPE)), true },
 				{ new RuntimeException("Failed", new IOException("Other")), false },

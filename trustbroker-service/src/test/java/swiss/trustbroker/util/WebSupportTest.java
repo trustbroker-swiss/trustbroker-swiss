@@ -23,12 +23,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
 import jakarta.servlet.http.Cookie;
 import net.shibboleth.shared.net.URLBuilder;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.servlet.view.UrlBasedViewResolver;
+import swiss.trustbroker.common.config.RegexNameValue;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.config.dto.NetworkConfig;
@@ -125,6 +134,148 @@ class WebSupportTest {
 		request.removeHeader(networkConfig.getCanaryMarkerName());
 		request.setCookies(new Cookie(networkConfig.getCanaryMarkerName(), networkConfig.getCanaryEnabledValue()));
 		assertTrue(WebSupport.canaryModeEnabled(request, networkConfig));
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void anyHeaderMatches(Map<String, String> headers, List<RegexNameValue> conditions, boolean expected) {
+		var request = new MockHttpServletRequest();
+		for (var header : headers.entrySet()) {
+			request.addHeader(header.getKey(), header.getValue());
+		}
+		assertThat(WebSupport.anyHeaderMatches(request, conditions), is(expected));
+	}
+
+	static Object[][] anyHeaderMatches() {
+		return new Object[][] {
+				// header not set
+				{ Collections.emptyMap(), null, false },
+				{
+						Map.of(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE),
+						List.of(RegexNameValue.builder()
+										  .name(HttpHeaders.ACCEPT)
+										  .value(MediaType.APPLICATION_JSON_VALUE)
+										  .regex(".*/.*")
+										  .build()),
+						false
+				},
+				// match by value
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE),
+						List.of(RegexNameValue.builder()
+										  .name(HttpHeaders.ACCEPT)
+										  .value(MediaType.APPLICATION_JSON_VALUE)
+										  .build()),
+						true
+				},
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE),
+						List.of(RegexNameValue.builder()
+											  .name(HttpHeaders.ACCEPT)
+											  .value(MediaType.APPLICATION_JSON_VALUE)
+											  .regex("[*]/[*]")
+											  .build()),
+						true
+				},
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.ALL_VALUE),
+						List.of(RegexNameValue.builder()
+											  .name(HttpHeaders.ACCEPT)
+											  .value(MediaType.ALL_VALUE)
+											  .build()),
+						true
+				},
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.TEXT_HTML_VALUE),
+						List.of(RegexNameValue.builder()
+											  .name(HttpHeaders.ACCEPT)
+											  .value(MediaType.APPLICATION_JSON_VALUE)
+											  .build()),
+						false
+				},
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.ALL_VALUE),
+						List.of(RegexNameValue.builder()
+											  .name(HttpHeaders.ACCEPT)
+											  .value(MediaType.APPLICATION_JSON_VALUE)
+											  .build()),
+						false
+				},
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.ALL_VALUE,
+								"sec-fetch-mode", "cors"),
+						List.of(RegexNameValue.builder()
+											  .name(HttpHeaders.ACCEPT)
+											  .value(MediaType.APPLICATION_JSON_VALUE)
+											  .build(),
+								RegexNameValue.builder()
+											  .name("sec-fetch-mode")
+											  .value("cors")
+											  .build()),
+						true
+				},
+				// match by regex
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE),
+						List.of(RegexNameValue.builder()
+											  .name(HttpHeaders.ACCEPT)
+											  .regex(MediaType.APPLICATION_JSON_VALUE)
+											  .build()),
+						true
+				},
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.IMAGE_JPEG_VALUE + ',' + MediaType.APPLICATION_JSON_VALUE + ','
+								+ MediaType.TEXT_HTML_VALUE),
+						List.of(RegexNameValue.builder()
+											  .name(HttpHeaders.ACCEPT)
+											  .regex(MediaType.APPLICATION_JSON_VALUE)
+											  .build()),
+						true
+				},
+
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE),
+						List.of(RegexNameValue.builder()
+											  .name(HttpHeaders.ACCEPT)
+											  .value(MediaType.APPLICATION_PDF_VALUE)
+											  .regex("application/.*")
+											  .build()),
+						true
+				},
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE),
+						List.of(RegexNameValue.builder()
+											  .name(HttpHeaders.ACCEPT)
+											  .value(MediaType.TEXT_HTML_VALUE)
+											  .regex("text/.*")
+											  .build()),
+						false
+				},
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.ALL_VALUE),
+						List.of(RegexNameValue.builder()
+											  .name(HttpHeaders.ACCEPT)
+											  .regex("^(application/json|[*]/[*])$")
+											  .build()),
+						true
+				},
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE),
+						List.of(RegexNameValue.builder()
+											  .name(HttpHeaders.ACCEPT)
+											  .regex("^(application/json|[*]/[*])$")
+											  .build()),
+						true
+				},
+				{
+						Map.of(HttpHeaders.ACCEPT, MediaType.APPLICATION_PDF_VALUE + ',' + MediaType.APPLICATION_JSON_VALUE),
+						List.of(RegexNameValue.builder()
+											  .name(HttpHeaders.ACCEPT)
+											  .regex("^(application/json|[*]/[*])$")
+											  .build()),
+						false
+				}
+		};
 	}
 
 }

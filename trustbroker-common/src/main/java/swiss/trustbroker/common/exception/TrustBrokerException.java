@@ -35,11 +35,11 @@ public abstract class TrustBrokerException extends RuntimeException {
 		super(debug ? message + ": " + internalMessage : message, exception);
 		this.errorCode = errorCode;
 		this.errorMarker = defaultErrorMarker(errorMarker);
-		this.internalMessage = getMarkerPrefix() + internalMessage;
+		this.internalMessage = getMarkerMessage(this.errorMarker, internalMessage);
 	}
 
-	private String getMarkerPrefix() {
-		return errorMarker != ErrorMarker.DEFAULT ? "marker=XTB_ERR_" + errorMarker + " " : "";
+	public static String getMarkerMessage(ErrorMarker errorMarker, String message) {
+		return errorMarker == ErrorMarker.DEFAULT ? message : "xtbCode=" + errorMarker + " " + message;
 	}
 
 	private static ErrorMarker defaultErrorMarker(ErrorMarker errorMarker) {

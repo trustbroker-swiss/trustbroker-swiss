@@ -179,6 +179,14 @@ public class OidcProperties {
 	private String defaultErrorCode;
 
 	/**
+	 * List of HTTP header names and regex matching the value. If any one matches, the request is considered to originate from
+	 * Javascript and a JSON response is sent.
+	 *
+	 * @since 1.7.0
+	 */
+	private List<RegexNameValue> jsonErrorPageHeaders;
+
+	/**
 	 * Internal fallback to add eID OIDC standard-claims
  	 */
 	private boolean addEidStandardClaims = false;

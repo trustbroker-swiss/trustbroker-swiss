@@ -16,7 +16,9 @@
 package swiss.trustbroker.util;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.servlet.view.UrlBasedViewResolver;
+import swiss.trustbroker.common.config.RegexNameValue;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.tracing.TraceSupport;
@@ -279,6 +282,32 @@ public class WebSupport {
 			var canaryCookie = WebUtil.getCookie(networkConfig.getCanaryMarkerName(), httpRequest);
 			var enabledValue = networkConfig.getCanaryEnabledValue();
 			return enabledValue.equals(canaryHeader) || enabledValue.equals(canaryCookie);
+		}
+		return false;
+	}
+
+	/**
+	 * @param httpRequest
+	 * @param headerConditions
+	 * @return true if any of the request headers matches any of the headerConditions by header name and value/regex
+	 */
+	public static boolean anyHeaderMatches(HttpServletRequest httpRequest, List<RegexNameValue> headerConditions) {
+		if (headerConditions == null) {
+			return false;
+		}
+		for (var condition : headerConditions) {
+			var value = httpRequest.getHeader(condition.getName());
+			if (value == null) {
+				continue;
+			}
+			if (value.equals(condition.getValue())) {
+				log.debug("Condition {}={} equals header value={}", condition.getName(), condition.getValue(), value);
+				return true;
+			}
+			if (condition.getRegex() != null && Pattern.compile(condition.getRegex()).matcher(value).find()) {
+				log.debug("Condition {}={} matches header value={}", condition.getName(), condition.getRegex(), value);
+				return true;
+			}
 		}
 		return false;
 	}
