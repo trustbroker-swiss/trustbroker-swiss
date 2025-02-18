@@ -33,7 +33,6 @@ import javax.script.CompiledScript;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -81,12 +80,16 @@ public class ScriptService {
 
 	private static final String SCRIPT_TYPE_ON_CP_REQUEST = "OnCpRequest"; // outbound hook
 
+	private static final String SCRIPT_TYPE_BEFORE_RESPONSE = "BeforeResponse"; // after AccessRequest but before filtering
+
 	private static final String SCRIPT_TYPE_ON_SAML_RESPONSE = "OnResponse"; // validation hook
 
 	// beans that groovy scripts can access directly by these names (Camel case with first character uppercase)
 	private static final String BEAN_LOGGER = "LOG";
 
 	private static final String BEAN_HTTP_REQUEST = "HTTPRequest"; // just the servlet spec interface
+
+	private static final String BEAN_HTTP_RESPONSE = "HTTPResponse"; // just the servlet spec interface
 
 	private static final String BEAN_RP_REQUEST = "RPRequest"; // state we pass through processing i.e. RpRequest
 
@@ -115,17 +118,20 @@ public class ScriptService {
 	private final Compilable compilingEngine;
 
 	// for re-config support always use via getScriptsMap
+
+	private Map<String, CompiledScript> preparedCompiledScriptsMap;
+
 	private Map<String, CompiledScript> compiledScriptsMap;
 
 	private final TrustBrokerProperties trustBrokerProperties;
 
 	private final RelyingPartySetupService relyingPartySetupService;
 
-	public ScriptService(TrustBrokerProperties trustBrokerProperties,
-			RelyingPartySetupService relyingPartySetupService) {
+	public ScriptService(TrustBrokerProperties trustBrokerProperties, RelyingPartySetupService relyingPartySetupService) {
 		this.trustBrokerProperties = trustBrokerProperties;
 		this.relyingPartySetupService = relyingPartySetupService;
 		var factory = new ScriptEngineManager();
+		preparedCompiledScriptsMap = new HashMap<>(); // not thread-safe
 		compiledScriptsMap = new HashMap<>(); // not thread-safe
 		try {
 			scriptEngine = factory.getEngineByName(LANG_GROOVY);
@@ -147,23 +153,23 @@ public class ScriptService {
 		var scriptSrc = new ScriptSource(scriptName);
 		var compiledScript = scriptSrc.loadScript(compilingEngine);
 		if (compiledScript != null) {
-			getScriptsMap().put(scriptName, compiledScript);
+			getScriptsMap(true).put(scriptName, compiledScript);
 		}
 	}
 
 	// RP side script hooks
 
-	public void processHrdSelection(RpRequest rpRequest, HttpServletRequest request) {
+	public void processHrdSelection(RpRequest rpRequest) {
 		var scripts = getScriptsByType(rpRequest.getRpIssuer(), rpRequest.getReferer(),	SCRIPT_TYPE_BEFORE_HRD, true);
 		for (var script : scripts) {
-			processOnRequest(SCRIPT_TYPE_BEFORE_HRD, script, request, rpRequest, null);
+			processOnRequest(SCRIPT_TYPE_BEFORE_HRD, script, rpRequest, null);
 		}
 	}
 
-	public void processRequestValidation(RpRequest rpRequest, HttpServletRequest request, RequestAbstractType samlRequest) {
+	public void processRequestValidation(RpRequest rpRequest, RequestAbstractType samlRequest) {
 		var scripts = getScriptsByType(rpRequest.getRpIssuer(), rpRequest.getReferer(), SCRIPT_TYPE_ON_SAML_REQUEST, true);
 		for (var script : scripts) {
-			processOnRequest(SCRIPT_TYPE_ON_SAML_REQUEST, script, request, rpRequest, samlRequest);
+			processOnRequest(SCRIPT_TYPE_ON_SAML_REQUEST, script, rpRequest, samlRequest);
 		}
 	}
 
@@ -177,6 +183,11 @@ public class ScriptService {
 		processAllSamlScripts(SCRIPT_TYPE_AFTER_IDM, scripts, cpResponse, response, null);
 	}
 
+	public void processBeforeResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
+		var scripts = getScriptsByType(requestIssuer, referrer, SCRIPT_TYPE_BEFORE_RESPONSE, true);
+		processAllSamlScripts(SCRIPT_TYPE_BEFORE_RESPONSE, scripts, cpResponse, response, null);
+	}
+
 	public void processOnResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
 		var scripts = getScriptsByType(requestIssuer, referrer, SCRIPT_TYPE_ON_SAML_RESPONSE, true);
 		processAllSamlScripts(SCRIPT_TYPE_ON_SAML_RESPONSE, scripts, cpResponse, response, null);
@@ -187,7 +198,7 @@ public class ScriptService {
 	public void processRequestToCp(String cpIssuer, RequestAbstractType samlRequest) {
 		var scripts = getScriptsByType(cpIssuer, null, SCRIPT_TYPE_ON_CP_REQUEST, false);
 		for (var script : scripts) {
-			processOnRequest(SCRIPT_TYPE_ON_CP_REQUEST, script, null, null, samlRequest);
+			processOnRequest(SCRIPT_TYPE_ON_CP_REQUEST, script, null, samlRequest);
 		}
 	}
 
@@ -208,7 +219,7 @@ public class ScriptService {
 	}
 
 	void processAllOidcScripts(String hookType, List<Pair<String, CompiledScript>> scripts, CpResponse cpResponse,
-									  Response response) {
+			Response response) {
 		for (var script : scripts) {
 			processOnResponse(hookType, script, cpResponse, response, null);
 		}
@@ -222,19 +233,16 @@ public class ScriptService {
 	}
 
 	// On unit testing it's not very relevant which hook it is
-	protected void processOnRequest(String scriptName, HttpServletRequest httpServletRequest, RpRequest rpRequest,
-						  RequestAbstractType samlRequest)
+	protected void processOnRequest(String scriptName, RpRequest rpRequest, RequestAbstractType samlRequest)
 			throws TechnicalException {
 		var compiledScript = resolveScript(scriptName);
-		processOnRequest("TestStep", compiledScript, httpServletRequest, rpRequest, samlRequest);
+		processOnRequest("TestStep", compiledScript, rpRequest, samlRequest);
 	}
-
 
 	// SAML request and a RPRequest object could be future use, for now we keep it small for SPS19 only
 	private void processOnRequest(String hookType, Pair<String, CompiledScript> script,
-			HttpServletRequest httpServletRequest, RpRequest rpRequest, RequestAbstractType samlRequest)
-			throws TechnicalException {
-		var bindings = bindRequestBeans(httpServletRequest, rpRequest, samlRequest);
+			RpRequest rpRequest, RequestAbstractType samlRequest) throws TechnicalException {
+		var bindings = bindRequestBeans(rpRequest, samlRequest);
 		try {
 			if (log.isTraceEnabled()) {
 				log.trace("Executing step={} script={} using {}={} {}={} {}={}",
@@ -258,8 +266,7 @@ public class ScriptService {
 	}
 
 	private void processOnResponse(String hookType, Pair<String, CompiledScript> script,
-						   CpResponse cpResponse, Response response,
-						   List<IdmQuery> idmQueries) throws TechnicalException {
+			CpResponse cpResponse, Response response, List<IdmQuery> idmQueries) throws TechnicalException {
 		var bindings = bindResponseBeans(cpResponse, response, idmQueries);
 		try {
 			if (log.isTraceEnabled()) {
@@ -293,21 +300,16 @@ public class ScriptService {
 		}
 	}
 
-	private Bindings bindRequestBeans(HttpServletRequest httpServletRequest, RpRequest rpRequest,
-									  RequestAbstractType samlRequest) {
+	private Bindings bindRequestBeans(RpRequest rpRequest, RequestAbstractType samlRequest) {
 		var bindings = scriptEngine.createBindings();
 		// input
 		bindings.put(BEAN_RP_CONFIG, relyingPartySetupService);  // undocumented, unused (even dangerous when modified)
-		if (httpServletRequest != null) {
-			bindings.put(BEAN_HTTP_REQUEST, httpServletRequest);  // undocumented, unused (even dangerous when modified)
-		}
+		bindHttpCommonBeans(bindings);
 		bindings.put(BEAN_SAML_REQUEST, samlRequest);  // SAML message validation
 		// input/output
 		if (rpRequest != null) {
 			bindings.put(BEAN_RP_REQUEST, rpRequest); // undocumented, unused (even dangerous when modified)
 		}
-		// output
-		bindings.put(BEAN_LOGGER, log); // documented
 		return bindings;
 	}
 
@@ -321,8 +323,25 @@ public class ScriptService {
 		// input/output (documented)
 		bindings.put(BEAN_CP_RESPONSE, cpResponse); // documented, used, our main vehicle for SAML  manipulations
 		bindings.put(BEAN_RP_REQUEST, deriveRpRequestFromCpResponse(cpResponse));
-		bindings.put(BEAN_LOGGER, log);
+		bindHttpCommonBeans(bindings);
 		return bindings;
+	}
+
+	private static void bindHttpCommonBeans(Bindings bindings) {
+		// input/output (undocumented)
+		var httpExchange = HttpExchangeSupport.getRunningHttpExchange();
+		if (httpExchange != null) {
+			var httpServletRequest = httpExchange.getRequest();
+			if (httpServletRequest != null) {
+				bindings.put(BEAN_HTTP_REQUEST, httpServletRequest);  // unused (even dangerous when modified)
+			}
+			var httpServletResponse = httpExchange.getResponse();
+			if (httpServletResponse != null) {
+				bindings.put(BEAN_HTTP_RESPONSE, httpServletResponse);  // unused
+			}
+		}
+		// output
+		bindings.put(BEAN_LOGGER, log); // documented
 	}
 
 	// Replace this late response copy of the RPRequest by splitting away the CPResponse related rpMembers
@@ -335,13 +354,17 @@ public class ScriptService {
 						.build();
 	}
 
-	public void refresh() {
+	public void prepareRefresh() {
 		var configurationPath = trustBrokerProperties.getConfigurationPath();
 		var latestPath = configurationPath + DIRECTORY_LATEST;
 		var scriptsFullPath = latestPath + trustBrokerProperties.getScriptPath();
 		var globalScriptsFullPath = scriptsFullPath + trustBrokerProperties.getGlobalScriptPath();
 		var tempCompiledScriptsMap = compileScripts(scriptsFullPath, globalScriptsFullPath);
-		switchScriptsMap(tempCompiledScriptsMap);
+		prepareScriptsMap(tempCompiledScriptsMap);
+	}
+
+	public void activateRefresh() {
+		switchScriptsMap();
 	}
 
 	Map<String, CompiledScript> compileScripts(String scriptsFullPath, String globalScriptsFullPath) {
@@ -406,19 +429,23 @@ public class ScriptService {
 		return resolveScripts(cp.getScripts(), cp.getSubPath(), type);
 	}
 
+	public boolean isScriptValid(String scriptName, String subPath, boolean activeScripts) {
+		return resolveScript(scriptName, subPath, activeScripts, true) != null;
+	}
+
 	List<Pair<String, CompiledScript>> resolveScripts(Scripts scripts, String subPath, String type) {
 		if (scripts == null || scripts.getScripts() == null) {
 			return Collections.emptyList();
 		}
 		return scripts.getScripts().stream()
 				.filter(script -> script != null && script.getType().equalsIgnoreCase(type))
-				.map(script -> resolveScript(script.getName(), subPath))
+				.map(script -> resolveScript(script.getName(), subPath, true, false))
 				.toList();
 	}
 
-	private Pair<String, CompiledScript> resolveScript(String script, String subPath) {
+	private Pair<String, CompiledScript> resolveScript(String script, String subPath, boolean activeScripts, boolean tryOnly) {
 		// see ReferenceHolder for the order
-		var map = getScriptsMap();
+		var map = getScriptsMap(activeScripts);
 		// 1. relative path
 		if (StringUtils.isNotEmpty(subPath)) {
 			var name = Path.of(subPath, script).toString();
@@ -434,11 +461,15 @@ public class ScriptService {
 			log.trace("Global or full path script={} found", script);
 			return compiledScript;
 		}
+		if (tryOnly) {
+			log.trace("Script={} not found in subPath={}", script, subPath);
+			return null;
+		}
 		throw new TechnicalException(String.format("Failed to load compiled script='%s' in subPath='%s'", script, subPath));
 	}
 
 	private Pair<String, CompiledScript> resolveScript(String scriptName) {
-		return resolveScript(scriptName, getScriptsMap(), false);
+		return resolveScript(scriptName, getScriptsMap(true), false);
 	}
 
 	private Pair<String, CompiledScript> resolveScript(String scriptName, Map<String, CompiledScript> scriptsMap,
@@ -455,14 +486,19 @@ public class ScriptService {
 	}
 
 	// for refresh, we need to make sure switch over does not lead to concurrent modification exceptions
-	synchronized Map<String, CompiledScript> getScriptsMap() {
-		return compiledScriptsMap;
+	synchronized Map<String, CompiledScript> getScriptsMap(boolean active) {
+		return active ? compiledScriptsMap : preparedCompiledScriptsMap;
 	}
 
 	// for refresh, we need to make sure switch over does not lead to concurrent modification exceptions
-	private synchronized void switchScriptsMap(Map<String, CompiledScript> newScriptsMap) {
-		log.debug("Activate scripts oldMap={} newMap={}", compiledScriptsMap.size(), newScriptsMap.size());
-		compiledScriptsMap = newScriptsMap;
+	private synchronized void prepareScriptsMap(Map<String, CompiledScript> newScriptsMap) {
+		log.debug("Pre-activate scripts oldMap={} newMap={}", compiledScriptsMap.size(), newScriptsMap.size());
+		preparedCompiledScriptsMap = newScriptsMap;
+	}
+
+	private synchronized void switchScriptsMap() {
+		log.debug("Activate scripts oldMap={} newMap={}", compiledScriptsMap.size(), preparedCompiledScriptsMap.size());
+		compiledScriptsMap = preparedCompiledScriptsMap;
 	}
 
 }

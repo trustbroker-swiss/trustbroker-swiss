@@ -93,6 +93,8 @@ public class SamlMockProperties {
 
 	private boolean signAuthnRequest = false;
 
+	private boolean cacheMockFiles = false;
+
 	public String getArtifactResolutionIssuer() {
 		if (artifactResolutionIssuer != null) {
 			return artifactResolutionIssuer;

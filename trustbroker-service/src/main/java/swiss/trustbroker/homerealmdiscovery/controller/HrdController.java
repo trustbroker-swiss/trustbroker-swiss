@@ -38,8 +38,8 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import swiss.trustbroker.api.announcements.dto.Announcement;
 import swiss.trustbroker.api.announcements.dto.AnnouncementUiElement;
 import swiss.trustbroker.api.announcements.service.AnnouncementService;
-import swiss.trustbroker.api.profileselection.dto.ProfileData;
 import swiss.trustbroker.api.profileselection.dto.ProfileResponse;
+import swiss.trustbroker.api.profileselection.dto.ProfileSelectionData;
 import swiss.trustbroker.api.profileselection.service.ProfileSelectionService;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
@@ -112,8 +112,7 @@ public class HrdController {
 	}
 
 	@GetMapping(path = "/api/v1/hrd/relyingparties/{sessionId}/continue")
-	@ResponseBody
-	public String handleContinueToRp(HttpServletRequest request, HttpServletResponse response,
+	public void handleContinueToRp(HttpServletRequest request, HttpServletResponse response,
 			@PathVariable(name = "sessionId") String sessionIdEncoded) {
 		log.debug("User confirmed continuation to RP");
 
@@ -122,7 +121,6 @@ public class HrdController {
 		var rpId = stateData.getRpIssuer();
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpId, null);
 		relyingPartyService.sendResponseToRpFromSessionState(samlOutputService, relyingParty, stateData, request, response);
-		return null;
 	}
 
 	@GetMapping(path = "/api/v1/hrd/profiles")
@@ -132,9 +130,10 @@ public class HrdController {
 		SamlValidationUtil.validateProfileRequestId(id);
 		log.debug("Rendering response for profileId={}", id);
 		var stateData = stateCacheService.find(id, this.getClass().getSimpleName());
-		return profileSelectionService.buildProfileResponse(
-				ProfileData.builder().profileId(id).build(),
-				stateData.getCpResponse());
+		var profileSelectionData = ProfileSelectionData.builder()
+													   .selectedProfileId(id)
+													   .build();
+		return profileSelectionService.buildProfileResponse(profileSelectionData, stateData.getCpResponse());
 	}
 
 	@PostMapping(path = "/api/v1/hrd/profile")

@@ -51,6 +51,7 @@ public class ServiceTestBase {
 
 		return idmLookup;
 	}
+
 	protected CpResponse givenCpResponse(String issuer, String clientExtId, String homeName,
 			String nameId, boolean addProperties) {
 		CpResponse cpResponse = new CpResponse();

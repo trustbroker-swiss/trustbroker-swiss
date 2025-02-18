@@ -605,6 +605,7 @@ public class TomcatSessionManager extends ManagerBase {
 		}
 	}
 
+	// since v16 we do not need webs ession backing anymore for /token retrival
 	void validateOidcTokenState(TomcatSession session, Object context) {
 		logSession(session, "validateOidcTokenState");
 		if (context == null) {
@@ -612,7 +613,7 @@ public class TomcatSessionManager extends ManagerBase {
 			if (request != null && request.getRequestURI() != null) {
 				var isTokenRequest = request.getRequestURI().endsWith(ApiSupport.OIDC_TOKEN);
 				if (isTokenRequest) {
-					log.error("OIDC /token access will fail because of lost sessionId={} for client {}",
+					log.info("OIDC /token access not backed by web sessionId={} for clientId={}",
 							session.getId(), WebSupport.getClientHint(HttpExchangeSupport.getRunningHttpRequest(),
 									trustBrokerProperties.getNetwork()));
 				}

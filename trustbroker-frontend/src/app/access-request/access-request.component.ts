@@ -31,7 +31,10 @@ export class AccessRequestComponent implements OnInit {
 	private _showAbortButton: boolean;
 	private _showLoginButton: boolean;
 
-	constructor(private readonly route: ActivatedRoute, private readonly router: Router) {}
+	constructor(
+		private readonly route: ActivatedRoute,
+		private readonly router: Router
+	) {}
 
 	get showContinueButton(): boolean {
 		return this._showContinueButton;

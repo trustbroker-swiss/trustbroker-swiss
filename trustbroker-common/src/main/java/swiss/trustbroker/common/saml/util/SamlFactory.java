@@ -70,7 +70,6 @@ import org.opensaml.xmlsec.signature.Signature;
 import org.opensaml.xmlsec.signature.X509Certificate;
 import org.opensaml.xmlsec.signature.X509Data;
 import org.opensaml.xmlsec.signature.support.SignatureConstants;
-import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.dto.SignatureParameters;
 
@@ -136,29 +135,6 @@ public class SamlFactory {
 		return originalIssuerFromAttribute.equals(originalIssuerFromResultAttribute);
 	}
 
-	public static List<Attribute> dropDuplicatedAttributeFromOriginalIssuer(List<Attribute> attributes,
-			List<String> attributesToDrop) {
-		if (CollectionUtils.isEmpty(attributesToDrop)) {
-			return attributes;
-		}
-		List<Attribute> result = new ArrayList<>();
-		for (Attribute attribute : attributes) {
-			if (SamlUtil.hasOriginalIssuer(attribute) && attributesToDrop.contains(attribute.getName())
-				&& countAttributeByName(attribute, attributes) > 1) {
-				log.debug("Dropping duplicated attribute={} from original issuer in list={}", attribute, attributesToDrop);
-			}
-			else {
-				result.add(attribute);
-			}
-		}
-		return result;
-	}
-
-	private static long countAttributeByName(Attribute attribute, List<Attribute> result) {
-		return result.stream().filter(resultAttribute -> resultAttribute.getName().equals(attribute.getName())).count();
-	}
-
-
 	public static void signAssertion(Assertion assertion, SignatureParameters signatureParameters) {
 		signSignableObject(assertion, signatureParameters);
 	}
@@ -185,6 +161,9 @@ public class SamlFactory {
 	// We also should not pass on what we receive from an IDP but declare our own session state here.
 	public static List<AuthnStatement> createAuthnState(List<String> classRefs, String sessionIndex, Instant authnInstant) {
 		List<AuthnStatement> authnStatements = new ArrayList<>();
+		if (classRefs == null) {
+			return authnStatements;
+		}
 		for (String classRef : classRefs) {
 			var authnStatement = OpenSamlUtil.buildSamlObject(AuthnStatement.class);
 			if (sessionIndex != null) {

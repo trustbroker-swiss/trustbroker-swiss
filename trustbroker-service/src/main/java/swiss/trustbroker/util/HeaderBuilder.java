@@ -187,7 +187,7 @@ public class HeaderBuilder {
 	}
 
 	private void setHeader(String name, String value) {
-		log.debug("Setting header '{}'='{}'", name, value);
+		log.trace("Setting header '{}'='{}'", name, value); // op tracing provides it too
 		response.setHeader(name, value);
 	}
 

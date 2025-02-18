@@ -41,7 +41,11 @@ export class ThemeService {
 
 	private readonly themeChangedSubject = new Subject();
 
-	constructor(private readonly cookieService: CookieService, private readonly apiService: ApiService, @Inject(DOCUMENT) private readonly document: Document) {
+	constructor(
+		private readonly cookieService: CookieService,
+		private readonly apiService: ApiService,
+		@Inject(DOCUMENT) private readonly document: Document
+	) {
 		this.themeCookie = new CookieConfiguration();
 		// Defaults until we get the information from the server.
 		// Allow all themes to avoid initially showing a wrong default theme. This would still happen if the cookie has a different name.
@@ -104,7 +108,18 @@ export class ThemeService {
 		const helpTabindex = helpIndex < languageSelectorIndex ? 10 : 30;
 		// NOSONAR
 		// console.debug('[ThemeService] Theme', theme, 'helpPanel:', hasHelpPanel, 'backdrop:', hasBackdrop, 'variants:', hasVariants, 'helpTabindex:', helpTabindex);
-		return new Theme(theme, hasHeader, hasFooter, hasBackdrop, themeSelectorIndex >= 0, languageSelectorIndex >= 0, fullLanguageName, helpIndex >= 0, hasHelpPanel, helpTabindex);
+		return new Theme(
+			theme,
+			hasHeader,
+			hasFooter,
+			hasBackdrop,
+			themeSelectorIndex >= 0,
+			languageSelectorIndex >= 0,
+			fullLanguageName,
+			helpIndex >= 0,
+			hasHelpPanel,
+			helpTabindex
+		);
 	}
 
 	private loadConfig() {
@@ -113,7 +128,7 @@ export class ThemeService {
 				const themeCookie: CookieConfiguration = configuration.themeCookie;
 				if (themeCookie?.name == null || themeCookie.values == null) {
 					// NOSONAR
-					// console.debug('[ThemeService] Keeping default theme cookie', this.themeCookie.name, 'valuePrefix:', this.themeCookie.valuePrefix);
+					// console.debug('[ThemeService] Keeping default theme cookie', this.themeCookie.name, 'values:', this.themeCookie.values);
 					return;
 				}
 				this.themeCookie = themeCookie;
@@ -127,7 +142,7 @@ export class ThemeService {
 				}
 				this.defaultCookieParameters = false;
 				// NOSONAR
-				// console.debug('[ThemeService] Server sent theme cookie parameters', this.themeCookie.name, 'valuePrefix:', this.themeCookie.valuePrefix);
+				// console.debug('[ThemeService] Server sent theme cookie parameters', this.themeCookie.name, 'values:', this.themeCookie.values);
 				this.publish(this.getTheme());
 			},
 			error: (errorResponse: HttpErrorResponse) => {

@@ -95,9 +95,12 @@ public class AppConfigService {
 			gitService.rolloverConfig(trustBrokerProperties.getConfigurationPath());
 			refresh();
 			trustBrokerProperties.setGitParamsFromEnv();
+			// load up-to-date scripts for validation
+			scriptService.prepareRefresh();
 			checkAndUpdateMapping();
 			checkAndUpdateOidcRegistry(relyingPartyDefinitions.getRelyingPartySetup());
-			scriptService.refresh();
+			// load scripts, this MUST be last as the refresh will swap the script registry, and we are not transactional here
+			scriptService.activateRefresh();
 			updateMetrics();
 
 		}
@@ -199,6 +202,7 @@ public class AppConfigService {
 
 		if (claimsProviderSetup != null) {
 			checkAndLoadCpCertificates(claimsProviderSetup);
+			validateScripts(claimsProviderSetup);
 			filterInvalidClaimsParties(claimsProviderSetup);
 			relyingPartyDefinitions.setClaimsProviderSetup(claimsProviderSetup);
 		}
@@ -210,7 +214,7 @@ public class AppConfigService {
 		if (relyingPartySetup != null) {
 			Collection<RelyingParty> claimRules = relyingPartySetup.getRelyingParties();
 			RelyingPartySetupUtil.loadRelyingParty(claimRules, trustBrokerProperties.getConfigurationPath()
-							+ CONFIG_CACHE_DEFINITION_SUBPATH, newConfigPath, trustBrokerProperties, idmServices);
+							+ CONFIG_CACHE_DEFINITION_SUBPATH, newConfigPath, trustBrokerProperties, idmServices, scriptService);
 			checkAndLoadRelyingPartyCertificates(relyingPartySetup);
 			checkRpSsoIntegrity(relyingPartySetup, ssoGroupSetup);
 			filterInvalidRelyingParties(relyingPartySetup);
@@ -248,6 +252,12 @@ public class AppConfigService {
 				log.error("Invalid CP={}: {}", claimsParty.getId(), ex.getInternalMessage());
 				claimsParty.invalidate(ex);
 			}
+		}
+	}
+
+	public void validateScripts(ClaimsProviderSetup claimsProviderSetup) {
+		for (ClaimsParty claimsParty : claimsProviderSetup.getClaimsParties()) {
+			RelyingPartySetupUtil.validateScripts(claimsParty, scriptService);
 		}
 	}
 

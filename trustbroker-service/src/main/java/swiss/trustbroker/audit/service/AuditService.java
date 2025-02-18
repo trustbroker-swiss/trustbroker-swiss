@@ -15,15 +15,17 @@
 
 package swiss.trustbroker.audit.service;
 
+import java.util.List;
 import java.util.Map;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import swiss.trustbroker.audit.dto.AuditDto;
 import swiss.trustbroker.audit.dto.EventType;
 import swiss.trustbroker.metrics.service.MetricsService;
 
 @Service
+@AllArgsConstructor
 public class AuditService {
 
 	private static final Map<EventType, String> PREFIXES = Map.of(
@@ -51,21 +53,18 @@ public class AuditService {
 			EventType.OIDC_LOGOUT, MAPPED_LOGOUT_TYPE
 	);
 
-	private final AuditLogger logger;
+	private final List<AuditLogger> loggers;
 
 	public final MetricsService metricsService;
 
-	@Autowired
-	public AuditService(AuditLogger logger, MetricsService metricsService) {
-		this.logger = logger;
-		this.metricsService = metricsService;
-	}
 
 	public void logInboundSamlFlow(AuditDto auditDto) {
-		var incomingMessage = buildRoutingMessage(auditDto);
-		logger.log(auditDto.getEventType(), true, incomingMessage.build());
-		String[] labels = getMetricsLabels(auditDto);
-		metricsService.increment(auditDto.getEventType(), EVENTS.get(auditDto.getEventType()), labels);
+		for (var logger : loggers) {
+			var incomingMessage = buildRoutingMessage(logger, auditDto);
+			logger.log(auditDto.getEventType(), true, incomingMessage.build());
+			String[] labels = getMetricsLabels(auditDto);
+			metricsService.increment(auditDto.getEventType(), EVENTS.get(auditDto.getEventType()), labels);
+		}
 	}
 
 	private static String[] getMetricsLabels(AuditDto auditDto) {
@@ -79,22 +78,25 @@ public class AuditService {
 	}
 
 	public void logOutboundFlow(AuditDto auditDto) {
-		var incomingMessage = buildRoutingMessage(auditDto);
-		logger.log(auditDto.getEventType(), false, incomingMessage.build());
-		String[] labels = getMetricsLabels(auditDto);
-		metricsService.increment(auditDto.getEventType(), EVENTS.get(auditDto.getEventType()), labels);
+		for (var logger : loggers) {
+			var incomingMessage = buildRoutingMessage(logger, auditDto);
+			logger.log(auditDto.getEventType(), false, incomingMessage.build());
+			String[] labels = getMetricsLabels(auditDto);
+			metricsService.increment(auditDto.getEventType(), EVENTS.get(auditDto.getEventType()), labels);
+
+		}
 	}
 
-	private static AuditLogBuilder buildRoutingMessage(AuditDto auditDto) {
+	private static AuditLogBuilder buildRoutingMessage(AuditLogger logger, AuditDto auditDto) {
 		String prefix = PREFIXES.get(auditDto.getEventType());
-		var logBuilder = new AuditLogBuilder(prefix);
+		var logBuilder = logger.createAuditLogBuilder(prefix);
 
-		logBuilder.append("event", EVENTS.get(auditDto.getEventType()));
+		logBuilder.append(AuditDto.EVENT_NAME, EVENTS.get(auditDto.getEventType()));
 		logBuilder.appendDtoFields(auditDto);
 
-		var auditDetail = AuditLogger.getAuditDetail(auditDto.getSamlMessage());
+		var auditDetail = logger.getAuditDetail(auditDto.getSamlMessage());
 		if (auditDetail != null) {
-			logBuilder.append("detail", auditDetail);
+			logBuilder.append(AuditDto.DETAIL_NAME, auditDetail);
 		}
 
 		return logBuilder;

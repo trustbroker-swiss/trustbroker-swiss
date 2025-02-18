@@ -56,9 +56,16 @@ public class IdmLookup implements Serializable, IdmRequests {
 
 	/**
 	 * Handling of same attributes across queries.
+	 * <br/>
+	 * Default: MERGE is used if none is defined.
+	 * <br/>
+	 * Potentially breaking changes:
+	 * <ul>
+	 *     <li>With 1.8.0 changed from String to <code>MultiQueryResultPolicy</code>.</li>
+	 * </ul>
 	 */
 	@XmlAttribute(name = "multiQueryPolicy")
-	private String multiQueryPolicy;
+	private MultiQueryResultPolicy multiQueryPolicy;
 
 	/**
 	 * List of queries to be executed.

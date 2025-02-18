@@ -53,6 +53,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import swiss.trustbroker.api.idm.dto.IdmRequest;
 import swiss.trustbroker.api.idm.dto.IdmRequests;
 import swiss.trustbroker.api.idm.dto.IdmResult;
@@ -80,6 +81,7 @@ import swiss.trustbroker.federation.xmlconfig.Script;
 import swiss.trustbroker.federation.xmlconfig.Scripts;
 import swiss.trustbroker.federation.xmlconfig.SignerKeystore;
 import swiss.trustbroker.federation.xmlconfig.SignerTruststore;
+import swiss.trustbroker.script.service.ScriptService;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.STRICT_STUBS)
@@ -88,7 +90,7 @@ class RuleDefinitionUtilTest {
 	private static class SortingIdmService implements IdmService {
 
 		@Override
-		public Optional<IdmResult> getAttributesFromIdm(RelyingPartyConfig relyingPartyConfig, CpResponseData cpResponse,
+		public Optional<IdmResult> getAttributes(RelyingPartyConfig relyingPartyConfig, CpResponseData cpResponse,
 				IdmRequests idmRequests, IdmStatusPolicyCallback statusPolicyCallback) {
 			return Optional.empty();
 		}
@@ -109,6 +111,9 @@ class RuleDefinitionUtilTest {
 	private final static String GLOBAL_QUERY = "GLOBAL";
 
 	private IdmService idmService = new SortingIdmService();
+
+	@MockBean
+	private ScriptService scriptService;
 
 	@Test
 	void joinAndDistinctDefinitionsNoBaseTest() {
@@ -461,7 +466,7 @@ class RuleDefinitionUtilTest {
 	void loadBaseClaimNoBaseTest() {
 		Collection<RelyingParty> claimRules = givenClaimRulesWithoutBase();
 		RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
-				CACHE_DEFINITION_PATH,null, List.of(idmService));
+				CACHE_DEFINITION_PATH,null, List.of(idmService), scriptService);
 
 		assertNotNull(claimRules);
 	}
@@ -470,10 +475,10 @@ class RuleDefinitionUtilTest {
 	void loadBaseClaimBaseDoesNotExistTest() {
 		Collection<RelyingParty> claimRules = givenClaimRulesWithBaseNotFound();
 		assertDoesNotThrow(() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
-				CACHE_DEFINITION_PATH, null, List.of(idmService)));
+				CACHE_DEFINITION_PATH, null, List.of(idmService), scriptService));
 		assertDoesNotThrow(
 				() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
-						CACHE_DEFINITION_PATH, null, List.of(idmService)));
+						CACHE_DEFINITION_PATH, null, List.of(idmService), scriptService));
 		claimRules.forEach(rp -> assertEquals(FeatureEnum.INVALID, rp.getEnabled(), "RP " + rp.getId()));
 	}
 
@@ -492,7 +497,7 @@ class RuleDefinitionUtilTest {
 		String definitionPath = baseRuleFilePath();
 
 		RelyingPartySetupUtil.loadRelyingParty(claimRules, definitionPath, CACHE_PATH,
-				null, List.of(idmService));
+				null, List.of(idmService), scriptService);
 
 		assertNotNull(claimRules);
 		assertNull(claimRules.get(0).getConstAttributes());
@@ -504,7 +509,8 @@ class RuleDefinitionUtilTest {
 	void loadBaseClaimBaseInCache() {
 		List<RelyingParty> claimRules = loadRulesWithCacheFromFile();
 		String newCacheDefinition = baseCacheRuleFilePath();
-		RelyingPartySetupUtil.loadRelyingParty(claimRules, baseRuleFilePath(), newCacheDefinition, null, List.of(idmService));
+		RelyingPartySetupUtil.loadRelyingParty(claimRules, baseRuleFilePath(), newCacheDefinition, null,
+				List.of(idmService), scriptService);
 
 		RelyingParty testRp = claimRules.get(0);
 
@@ -542,7 +548,8 @@ class RuleDefinitionUtilTest {
 
 		var properties = new TrustBrokerProperties();
 		properties.setGlobalProfilesPath("profiles");
-		RelyingPartySetupUtil.loadRelyingParty(relyingParties, baseRuleFilePath(), "cache/", properties, List.of(idmService));
+		RelyingPartySetupUtil.loadRelyingParty(relyingParties, baseRuleFilePath(), "cache/", properties,
+				List.of(idmService), scriptService);
 		assertEquals(TestConstants.VALID_TEST_RPS, relyingParties.size());
 
 		validateTestRp(relyingParties, "urn:test:SAMPLERP");
@@ -639,7 +646,7 @@ class RuleDefinitionUtilTest {
 		var claimRules = List.of(rp);
 		var definitionPath = baseRuleFilePath();
 		assertDoesNotThrow(() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, definitionPath, CACHE_PATH,
-				null, List.of(idmService)));
+				null, List.of(idmService), scriptService));
 		assertThat(rp.getEnabled(), is(expectedEnabled));
 	}
 

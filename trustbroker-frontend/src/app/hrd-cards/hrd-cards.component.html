@@ -33,7 +33,7 @@
 					*ngIf="!isButtonSize"
 					tabindex="1"
 					role="button"
-					[attr.aria-label]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate : { Default: idpObject.title }"
+					[attr.aria-label]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title }"
 					(keydown.enter)="onClickCard(idpObject)"
 					(keydown.space)="onClickCard(idpObject)"
 					(click)="onClickCard(idpObject)"
@@ -41,13 +41,16 @@
 				>
 					<app-disabled-card
 						*ngIf="idpObject.disabled"
-						[cardText]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate : { Default: idpObject.title }"
+						[cardText]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title }"
 						[theme]="theme"
 					>
 					</app-disabled-card>
 					<img mat-card-image [src]="getImageUrl(idpObject.image)" alt="{{ idpObject.title }}" (click)="onClickCard(idpObject)" />
 					<mat-card-title class="high-emphasis">
-						<h2 [id]="idpObject.title" [innerHTML]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate : { Default: idpObject.title } | safeMarkup"></h2>
+						<h2
+							[id]="idpObject.title"
+							[innerHTML]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title } | safeMarkup"
+						></h2>
 					</mat-card-title>
 				</mat-card>
 				<!--Buttons -->
@@ -56,7 +59,7 @@
 					[showSmallCards]="isButtonSize"
 					[inputColor]="idpObject.color"
 					[inputShortcut]="idpObject.shortcut"
-					[cardText]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate : { Default: idpObject.title } | safeMarkup"
+					[cardText]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title } | safeMarkup"
 					(cardClick)="onClickCard(idpObject)"
 					[disabled]="idpObject.disabled"
 					[theme]="theme"

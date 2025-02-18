@@ -22,6 +22,9 @@ package swiss.trustbroker.api.sessioncache.dto;
  */
 public interface SessionState {
 
+	/**
+	 * @return Session ID
+	 */
 	String getId();
 
 }

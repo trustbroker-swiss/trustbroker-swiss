@@ -118,7 +118,9 @@ public class CustomTokenIntrospectionAuthenticationProvider implements Authentic
 			throw new OAuth2AuthenticationException(OAuth2ErrorCodes.INVALID_REQUEST);
 		}
 		if (!authorizedToken.isActive()) {
-			log.info("OAuth2Authorization is invalidated={} expires={} tokenClaims={}", authorizedToken.isInvalidated(),
+			log.info("OAuth2Authorization is active={} invalidated={}  beforeUse={} expired={} expiresAt={} tokenClaims='{}'",
+					authorizedToken.isActive(), authorizedToken.isInvalidated(),
+					authorizedToken.isBeforeUse(), authorizedToken.isExpired(),
 					authorizedToken.getToken().getExpiresAt(), authorizedToken.getClaims());
 			return new OAuth2TokenIntrospectionAuthenticationToken(tokenIntrospectionAuthentication.getToken(),
 					clientPrincipal, OAuth2TokenIntrospection.builder().build());

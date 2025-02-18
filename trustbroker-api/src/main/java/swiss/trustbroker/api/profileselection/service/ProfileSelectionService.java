@@ -15,7 +15,6 @@
 
 package swiss.trustbroker.api.profileselection.service;
 
-import swiss.trustbroker.api.profileselection.dto.ProfileData;
 import swiss.trustbroker.api.profileselection.dto.ProfileResponse;
 import swiss.trustbroker.api.profileselection.dto.ProfileSelectionData;
 import swiss.trustbroker.api.profileselection.dto.ProfileSelectionResult;
@@ -30,6 +29,11 @@ import swiss.trustbroker.api.sessioncache.dto.SessionState;
  * <br/>
  * An implementation can be configured via Spring @Value binding or by injecting swiss.trustbroker.config.TrustbrokerProperties
  * and using swiss.trustbroker.config.dto.ProfileSelectionConfig (${trustbroker.config.profileSelection}).
+ * <br>
+ * Breaking changes:
+ * <ul>
+ *     <li>With 1.8.0 buildProfileResponse signature changed.</li>
+ * </ul>
  */
 public interface ProfileSelectionService {
 
@@ -42,6 +46,5 @@ public interface ProfileSelectionService {
 	ProfileSelectionResult doSsoProfileSelection(ProfileSelectionData profileSelectionData,
 			RelyingPartyConfig relyingPartyConfig, CpResponseData cpResponseData, SessionState sessionState);
 
-	ProfileResponse buildProfileResponse(ProfileData profileData, CpResponseData cpResponseData);
-
+	ProfileResponse buildProfileResponse(ProfileSelectionData profileSelectionData, CpResponseData cpResponseData);
 }

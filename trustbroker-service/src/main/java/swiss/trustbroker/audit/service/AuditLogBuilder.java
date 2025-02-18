@@ -16,13 +16,16 @@
 package swiss.trustbroker.audit.service;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.audit.dto.AuditDto;
 import swiss.trustbroker.audit.dto.CustomLogging;
 
@@ -38,17 +41,20 @@ public class AuditLogBuilder {
 	// (values might allow more characters without quoting)
 	private static final Pattern KEY_NAME_PATTERN = Pattern.compile("\\w*");
 
+	private final AuditLogFilter filter;
+
 	private final StringBuilder output = new StringBuilder();
 
 	private final int prefixLength;
 
 	private final List<Field> dtoFields;
 
-	public AuditLogBuilder() {
-		this(null);
+	public AuditLogBuilder(AuditLogFilter filter) {
+		this(filter, null);
 	}
 
-	public AuditLogBuilder(String prefix) {
+	public AuditLogBuilder(AuditLogFilter filter, String prefix) {
+		this.filter = filter;
 		if (prefix != null) {
 			output.append(prefix);
 		}
@@ -61,8 +67,8 @@ public class AuditLogBuilder {
 		// operates on a copy of the declared fields and makes them accessible for this class
 		List<Field> dtoFieldList = new ArrayList<>();
 		for (Field field : AuditDto.class.getDeclaredFields()) {
-			// saml fields need special handling
-			if (field.getAnnotation(CustomLogging.class) == null) {
+			// some fields need special handling
+			if (!Modifier.isStatic(field.getModifiers()) && field.getAnnotation(CustomLogging.class) == null) {
 				field.setAccessible(true);
 				dtoFieldList.add(field);
 			}
@@ -71,57 +77,81 @@ public class AuditLogBuilder {
 	}
 
 	// not used for OIDC
-	private static boolean isAuditAddonsEnabled(String postfix, AuditDto.AttributeSource source) {
-		return AuditLogger.isAdditionalAuditingEnabled() && // DEBUG
-				(StringUtils.isNotEmpty(postfix)  // SAML name
-						|| (source != null && StringUtils.isNotEmpty(source.getShortName()))); // SAML value
+	private boolean isAuditAddonsEnabled(AuditDto.ResponseAttributeValue attributeValue) {
+		return filter.isAdditionalAuditingEnabled() && // DEBUG
+				(StringUtils.isNotEmpty(attributeValue.getNamespaceUri())  // SAML name
+						|| attributeValue.hasSourceTag()); // SAML value
 	}
 
 	/**
 	 * Append key/value pair in the format specified above.
 	 *
-	 * @param key     nothing appended if null (should not happen in practice)
-	 * @param value   nothing appended if null (i.e. skip key if no value present)
-	 * @param postfix appended after value if not null or empty
+	 * @param name         nothing appended if null (should not happen in practice)
+	 * @param attributeValues
+	 * value        nothing appended if null (i.e. skip key if no value present)
+	 * namespaceUri appended after value if not null or empty
+	 * source       short name appended if set
 	 * @return this
 	 */
-	public AuditLogBuilder append(String key, Object value, String postfix, AuditDto.AttributeSource source, long count) {
-		if (key == null || value == null) {
+	private AuditLogBuilder appendValues(String name, List<AuditDto.ResponseAttributeValue> attributeValues) {
+		if (name == null || CollectionUtils.isEmpty(attributeValues)) {
 			return this;
 		}
 		if (output.length() > prefixLength) {
 			output.append(", ");
 		}
 		// some AttributeNames contain dash, which is not allowed as Splunk key character for indexing -> replace to avoid quotes
-		appendEncoded(key.replace('-', '_'));
+		appendEncoded(name.replace('-', '_'));
 		output.append('=');
-		StringBuilder valueBuilder = new StringBuilder(valueToString(value));
-		// if not INFO we append the FQ name to see from which attribute this was mapped plus some stats
-		if (isAuditAddonsEnabled(postfix, source)) {
-			valueBuilder.append(" (");
-			var separator = "";
-			if (source != null) {
-				valueBuilder.append('@');
-				valueBuilder.append(source.getShortName());
-				separator = " ";
-			}
-			if (count > 1) {
+		var valueBuilder = new StringBuilder();
+		// flatten singleton list
+		if (attributeValues.size() == 1) {
+			appendValue(valueBuilder, attributeValues.get(0));
+		}
+		else {
+			var separator = "[";
+			for (var attributeValue : attributeValues) {
 				valueBuilder.append(separator);
-				valueBuilder.append(count);
-				separator = " ";
+				separator = ", ";
+				appendValue(valueBuilder, attributeValue);
 			}
-			if (postfix != null) {
-				valueBuilder.append(separator);
-				valueBuilder.append(postfix);
-			}
-			valueBuilder.append(')');
+			valueBuilder.append("]");
 		}
 		appendEncoded(valueBuilder.toString());
 		return this;
 	}
 
+	private void appendValue(StringBuilder valueBuilder, AuditDto.ResponseAttributeValue attributeValue) {
+		valueBuilder.append(valueToString(attributeValue.getValue()));
+		// if not INFO we append the FQ name to see from which attribute this was mapped plus some stats
+		if (isAuditAddonsEnabled(attributeValue)) {
+			valueBuilder.append(" (");
+			var subSeparator = "";
+			if ((attributeValue.hasSourceTag())) {
+				valueBuilder.append('@');
+				if (attributeValue.getSource().getShortName() != null) {
+					valueBuilder.append(attributeValue.getSource().getShortName());
+				}
+				if (attributeValue.getQuerySource() != null) {
+					valueBuilder.append('/');
+					valueBuilder.append(attributeValue.getQuerySource());
+				}
+				subSeparator = " ";
+			}
+			if (attributeValue.getNamespaceUri() != null) {
+				valueBuilder.append(subSeparator);
+				valueBuilder.append(attributeValue.getNamespaceUri());
+			}
+			valueBuilder.append(')');
+		}
+	}
+
 	public AuditLogBuilder append(String key, Object value, String postfix) {
-		return append(key, value, postfix, null, 1);
+		if (value == null || filter.suppressField(key, value)) {
+			return this;
+		}
+		return appendValues(key,
+				Collections.singletonList(AuditDto.ResponseAttributeValue.of(value, postfix, null, null, null)));
 	}
 
 	private void appendEncoded(String value) {
@@ -166,18 +196,23 @@ public class AuditLogBuilder {
 		if (auditDto == null) {
 			return this;
 		}
-		dtoFields.forEach(field -> {
-			try {
-				appendField(field.getName(), field.get(auditDto));
-			}
-			catch (IllegalAccessException ex) {
-				// does not happen as we made them accessible
-			}
-		});
+		dtoFields.forEach(field -> appendField(auditDto, field));
 		return this;
 	}
 
+	private void appendField(AuditDto auditDto, Field field) {
+		try {
+			appendField(field.getName(), field.get(auditDto));
+		}
+		catch (IllegalAccessException ex) {
+			// does not happen as we made them accessible
+		}
+	}
+
 	private void appendField(String key, Object value) {
+		if (filter.suppressField(key, value)) {
+			return;
+		}
 		if (value instanceof Map) {
 			appendMapEntries((Map<?, ?>) value);
 		}
@@ -189,13 +224,16 @@ public class AuditLogBuilder {
 	private void appendMapEntries(Map<?, ?> values) {
 		// map is broken down into individual key/value pairs
 		values.forEach((key, value) -> {
-			if (value instanceof AuditDto.ResponseAttributeValue attributeValue) {
-				// contains key and postfix
-				append(String.valueOf(key), attributeValue.getValue(), attributeValue.getPostfix(),
-						attributeValue.getSource(), attributeValue.getCount());
+			var keyString = String.valueOf(key);
+			if (value instanceof AuditDto.ResponseAttributeValues attributeValues) {
+				var filteredValues = attributeValues.getValues().stream()
+						.filter(attributeValue -> attributeValue.getValue() != null)
+						.filter(attributeValue -> !filter.suppressAttribute(keyString, attributeValue))
+						.toList();
+				appendValues(keyString, filteredValues);
 			}
 			else {
-				append(String.valueOf(key), value);
+				append(keyString, value);
 			}
 		});
 	}

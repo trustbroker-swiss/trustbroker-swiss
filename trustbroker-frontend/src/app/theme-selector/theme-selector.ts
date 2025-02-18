@@ -27,7 +27,10 @@ export class ThemeSelectorComponent {
 	@Input()
 	theme = ThemeService.defaultTheme;
 
-	constructor(private readonly themeService: ThemeService, private readonly apiService: ApiService) {}
+	constructor(
+		private readonly themeService: ThemeService,
+		private readonly apiService: ApiService
+	) {}
 
 	toggleTheme(): void {
 		this.themeService.toggleTheme();

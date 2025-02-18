@@ -17,12 +17,17 @@ package swiss.trustbroker.saml.dto;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 
+import java.util.HashMap;
 import java.util.List;
 
+import org.apache.commons.lang3.SerializationUtils;
 import org.junit.jupiter.api.Test;
+import swiss.trustbroker.common.saml.util.CoreAttributeName;
+import swiss.trustbroker.federation.xmlconfig.Definition;
 
 class CpResponseTest {
 
@@ -64,16 +69,16 @@ class CpResponseTest {
 		cpResponse.setUserDetail(null, null, null);
 		cpResponse.setUserDetail(null, null, "NULL");
 		cpResponse.setUserDetail(null, "NULL", null);
-		cpResponse.setUserDetail(null, "NULL", "NULL"); // added
+		cpResponse.setUserDetail(null, "NULL", "NULL"); // add
 		cpResponse.setUserDetail("NULL", null, null);
-		cpResponse.setUserDetail("NULL", null, "NULL"); // added
+		cpResponse.setUserDetail("NULL", null, "NULL"); // overwrite
 		cpResponse.setUserDetails("NULL", null, List.of());
 		assertThat(cpResponse.getUserDetails()
-							 .size(), is(2));
+							 .size(), is(1));
 		cpResponse.setUserDetail("attr1", "attr1-long", "value1");
-		cpResponse.setUserDetails("attr1", "attr1-long", List.of("value2", "value3"));
+		cpResponse.setUserDetails("attr1", "attr1-long", List.of("value2", "value3")); // overwrite
 		assertThat(cpResponse.getUserDetails()
-							 .size(), is(3));
+							 .size(), is(2));
 		assertThat(cpResponse.getUserDetails("attr1"), contains("value2", "value3"));
 		assertThat(cpResponse.getUserDetail("attr1"), is("value2"));
 		assertThat(cpResponse.getUserDetail("attr2"), is(nullValue()));
@@ -160,5 +165,25 @@ class CpResponseTest {
 		assertThat(cpResponse.getClaim("attr2"), is("value2"));
 	}
 
+	@Test
+	void testCloneEquality() {
+		var userDetails = new HashMap<Definition, List<String>>();
+		userDetails.put(Definition.builder()
+								  .source("GLOBAL")
+								  .name(CoreAttributeName.EMAIL.getName())
+								  .build(), List.of("mail1"));
+		userDetails.put(Definition.builder()
+								  .namespaceUri(CoreAttributeName.EMAIL.getNamespaceUri())
+								  .build(), List.of("mail2"));
+		userDetails.put(Definition.builder()
+								  .name(CoreAttributeName.FIRST_NAME.getName())
+								  .namespaceUri(CoreAttributeName.FIRST_NAME.getNamespaceUri())
+								  .build(), List.of("en"));
+		var cpResponse = CpResponse.builder()
+								   .userDetails(userDetails)
+								   .build();
+		var cpResponseClone = SerializationUtils.clone(cpResponse);
+		assertThat(cpResponseClone, equalTo(cpResponse));
+	}
 
 }

@@ -15,8 +15,8 @@
 
 package swiss.trustbroker.federation.xmlconfig;
 
-import java.io.Serializable;
 import java.util.List;
+import javax.annotation.Nonnull;
 
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
@@ -27,10 +27,10 @@ import jakarta.xml.bind.annotation.XmlTransient;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 import org.opensaml.security.credential.Credential;
-import swiss.trustbroker.common.saml.dto.SamlBinding;
-import swiss.trustbroker.common.saml.dto.SignatureParameters;
 
 /**
  * This class describes the configuration of a claims provider (CP).
@@ -48,10 +48,11 @@ import swiss.trustbroker.common.saml.dto.SignatureParameters;
 @XmlRootElement(name = "ClaimsParty")
 @XmlAccessorType(XmlAccessType.FIELD)
 @Data
-@Builder
+@EqualsAndHashCode(callSuper=true)
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ClaimsParty implements Serializable, PathReference {
+public class ClaimsParty extends CounterParty {
 
 	/**
 	 * Issuer ID of the claims provider that need to match ClaimsProvider entries in ClaimsProviderDefinitions for HRD display
@@ -155,6 +156,14 @@ public class ClaimsParty implements Serializable, PathReference {
 	// processing model
 
 	/**
+	 * Subject Name ID mappings for this CP.
+	 *
+	 * @since 1.8.0
+	 */
+	@XmlElement(name = "SubjectNameMappings")
+	private SubjectNameMappings subjectNameMappings;
+
+	/**
 	 * The filtering is done when the SAML response is received from the CP. This element therefore declares, which original
 	 * issuer attributes are acceptable for propagation to RPs.
 	 *
@@ -174,11 +183,6 @@ public class ClaimsParty implements Serializable, PathReference {
 
 	private transient List<Credential> cpEncryptionTrustCredentials;
 
-	private transient String subPath;
-
-	@Builder.Default
-	private transient ValidationStatus validationStatus = new ValidationStatus();
-
 	// XmlTransient not allowed on transient field (the Javadoc does not say transient is considered XmlTransient)
 	@XmlTransient
 	public List<Credential> getCpTrustCredential() {
@@ -188,18 +192,6 @@ public class ClaimsParty implements Serializable, PathReference {
 	@XmlTransient
 	public List<Credential> getCpEncryptionTrustCredentials() {
 		return cpEncryptionTrustCredentials;
-	}
-
-	@XmlTransient
-	@Override
-	public String getSubPath() { return subPath; }
-
-	@Override
-	public void setSubPath(String subPath) { this.subPath = subPath; }
-
-	@XmlTransient
-	public ValidationStatus getValidationStatus() {
-		return validationStatus;
 	}
 
 	// NP safe accessor
@@ -216,34 +208,11 @@ public class ClaimsParty implements Serializable, PathReference {
 		return authLevel;
 	}
 
-	public ProtocolEndpoints getSamlProtocolEndpoints() {
-		return saml != null ? saml.getProtocolEndpoints() : null;
-	}
-
-	public ArtifactBinding getSamlArtifactBinding() {
-		return saml != null ? saml.getArtifactBinding() : null;
-	}
-
-	public Signature getSignature() { return saml != null ? saml.getSignature() : null; }
-
-	public SignatureParameters.SignatureParametersBuilder getSignatureParametersBuilder() {
-		return saml != null && saml.getSignature() != null ?
-				saml.getSignature().getSignatureParametersBuilder() :
-				SignatureParameters.builder();
-	}
-
 	public Saml initializedSaml() {
 		if (saml == null) {
 			saml = new Saml();
 		}
 		return saml;
-	}
-
-	public boolean isValidInboundBinding(SamlBinding samlBinding) {
-		if (getSamlArtifactBinding() == null) {
-			return true;
-		}
-		return getSamlArtifactBinding().validInboundBinding(samlBinding);
 	}
 
 	// Pass on rpIssuer to CP in Scoping element - defaults to false
@@ -258,25 +227,10 @@ public class ClaimsParty implements Serializable, PathReference {
 		return authnRequestIssuerId;
 	}
 
-	public void invalidate(Throwable ex) {
-		enabled = FeatureEnum.INVALID;
-		initializedValidationStatus().addException(ex);
-	}
-
-	public void invalidate(String error) {
-		enabled = FeatureEnum.INVALID;
-		initializedValidationStatus().addError(error);
-	}
-
-	public ValidationStatus initializedValidationStatus() {
-		if (validationStatus == null) {
-			validationStatus = new ValidationStatus();
-		}
-		return validationStatus;
-	}
-
-	public boolean isValid() {
-		return enabled != FeatureEnum.INVALID;
+	@Nonnull
+	@Override
+	public String getShortType() {
+		return "CP";
 	}
 
 }

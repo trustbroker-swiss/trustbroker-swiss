@@ -44,9 +44,124 @@ public interface AttributeName {
 	 */
 	public List<String> getOidcNameList();
 
-	// false for null name
+	/**
+	 * @return true if this field is considered CID (client identifying data) - default is null (use global defaults)
+	 * @since 1.8.0
+	 */
+	@SuppressWarnings("java:S2447") // ternary with null
+	default Boolean getCid() {
+		return null;
+	}
+
+	/**
+	 * @return source of the attribute
+	 * @since 1.8.0
+	 */
+	@SuppressWarnings("java:S2447") // ternary with null
+	default String getSource() {
+		return null;
+	}
+
+	// default name comparison:
+
+	/**
+	 * @param name
+	 * @return true if name is not null and equals this by name
+	 */
+	default boolean equalsByName(String name) {
+		return name != null && name.equals(getName());
+	}
+
+	/**
+	 * @param namespace
+	 * @return true if namespace is not null and equals this by namespace
+	 */
+	default boolean equalsByNamespace(String namespace) {
+		return namespace != null && namespace.equals(getNamespaceUri());
+	}
+
+	/**
+	 * @param attributeName
+	 * @return true if attributeName is not null and equals this by name (ignoring the namespace)
+	 *
+	 * @see AttributeName#equalsByName(String)
+	 */
+	default boolean equalsByName(AttributeName attributeName) {
+		return attributeName != null && equalsByName(attributeName.getName());
+	}
+
+	/**
+	 * @param attributeName
+	 * @return true if attributeName is not null and equals this by namespace (ignoring the name)
+	 *
+	 * @see AttributeName#equalsByNamespace(String)
+	 * @since 1.8.0
+	 */
+	default boolean equalsByNamespace(AttributeName attributeName) {
+		return attributeName != null && equalsByNamespace(attributeName.getNamespaceUri());
+	}
+
+	/**
+	 * @param name
+	 * @return true if name is not null and equals this by name <strong>or</strong> namespace
+	 *
+	 * @see AttributeName#equalsByName(String)
+	 * @see AttributeName#equalsByNamespace(String)
+	 */
 	default boolean equalsByNameOrNamespace(String name) {
-		return name != null && (Objects.equals(getName(), name) || Objects.equals(getNamespaceUri(), name));
+		return equalsByNameOrNamespace(name, null);
+	}
+
+	/**
+	 * @param name
+	 * @param source
+	 * @return true if name is not null and equals this by name <strong>or</strong> namespace and source is null or matches,
+	 *
+	 * @see AttributeName#equalsByName(String)
+	 * @see AttributeName#equalsByNamespace(String)
+	 */
+	default boolean equalsByNameOrNamespace(String name, String source) {
+		return (equalsByName(name) || equalsByNamespace(name)) && (source == null || source.equals(getSource()));
+	}
+
+	/**
+	 * @param attributeName
+	 * @return true if attributeName is not null and equals this by name <strong>or</strong> namespace
+	 * (the matching names/namespaces must not be null)
+	 *
+	 * @see AttributeName#equalsByName(String)
+	 * @see AttributeName#equalsByNamespace(String)
+	 */
+	default boolean equalsByNameOrNamespace(AttributeName attributeName) {
+		return equalsByNameOrNamespace(attributeName, null);
+	}
+
+	/**
+	 * @param attributeName
+	 * @param source
+	 * @return true if attributeName is not null and equals this by name <strong>or</strong> namespace
+	 * (the matching names/namespaces must not be null)
+	 *
+	 * @see AttributeName#equalsByName(String)
+	 * @see AttributeName#equalsByNamespace(String)
+	 */
+	default boolean equalsByNameOrNamespace(AttributeName attributeName, String source) {
+		if (attributeName == null) {
+			return false;
+		}
+		return (equalsByName(attributeName.getName()) || equalsByNamespace(attributeName.getNamespaceUri()))
+				&& (source == null || source.equals(getSource()));
+	}
+
+	/**
+	 * @param attributeName
+	 * @return true if attributeName is not null and equals this by name <strong>and</strong> namespace
+	 * (the matching names/namespaces may be null)
+	 */
+	default boolean equalsByNameAndNamespace(AttributeName attributeName) {
+		return attributeName != null &&
+				Objects.equals(getName(), attributeName.getName()) &&
+				Objects.equals(getNamespaceUri(), attributeName.getNamespaceUri());
 	}
 
 }

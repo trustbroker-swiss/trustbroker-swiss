@@ -53,14 +53,14 @@
 		</script>
 	</head>
 	<body>
-		<h3 class="container">MOCK SAML Samples (
-			<a href="/authn/samples/refresh">MOCK Reload</a>,
+		<h3 class="container">MOCK SAML Samples
+			(<a href="/authn/samples/refresh">MOCK Reload</a>,
 			<a th:href="${tbApplicationUrl} + '/api/v1/monitoring/relyingparties?rpId=' + ${testRpIssuer} + '&cpId=' + ${testCpIssuer}"
 			   target="xtb-monitor">XTB Monitor</a>,
 			<a th:href="${tbApplicationUrl} + '/app/sso'" target="xtb-sso">XTB SSO</a>,
 			<!-- IDP initiated SSO is not supported by XTB, corresponding IDP samples should be sent to the SAML IDP directly -->
-			<a href="/auth/saml2/idp/samples">IDP Initiated</a>
-			)
+			<a href="/auth/saml2/idp/samples">IDP Initiated</a>,
+			<a href="/saml/metadata">Metadata</a>)
 		</h3>
 		<form id="sampleForm" method="POST" enctype="application/x-www-form-urlencoded">
 			<input type="hidden" id="SAMLRequest" name="SAMLRequest" disabled="disabled"/>

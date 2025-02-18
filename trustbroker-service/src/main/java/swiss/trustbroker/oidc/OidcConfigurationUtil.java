@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -28,6 +29,7 @@ import com.google.common.base.Functions;
 import com.google.common.collect.Lists;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationServerMetadataClaimNames;
@@ -98,7 +100,7 @@ public class OidcConfigurationUtil {
 		var registeredClient = RegisteredClient.withId(clientId)
 				.clientId(clientId)
 				// Must be unique/client
-				.clientSecret(client.getClientSecret())
+				.clientSecret(completeSecret(client.getClientSecret()))
 				.clientSettings(clientSettings)
 				.clientAuthenticationMethods(authenticationMethods ->
 						clientAuthenticationMethods.forEach(authenticationMethod ->
@@ -572,4 +574,10 @@ public class OidcConfigurationUtil {
 		}
 		return ok;
 	}
+
+	// always have a protected secret to handle IllegalArgumentException from DelegatingPasswordEncoder.NO_PASSWORD_ENCODER_PREFIX
+	private static String completeSecret(String secret) {
+		return secret != null ? secret : "{sha256}" + DigestUtils.sha256Hex(UUID.randomUUID().toString().getBytes());
+	}
+
 }

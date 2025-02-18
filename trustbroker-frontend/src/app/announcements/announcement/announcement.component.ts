@@ -54,7 +54,10 @@ export class AnnouncementComponent implements OnInit {
 	alertType: string;
 	contactUrl: string;
 
-	constructor(public readonly languageService: LanguageService, private readonly translateService: TranslateService) {}
+	constructor(
+		public readonly languageService: LanguageService,
+		private readonly translateService: TranslateService
+	) {}
 
 	ngOnInit(): void {
 		const currentLang = this.languageService.currentLang;

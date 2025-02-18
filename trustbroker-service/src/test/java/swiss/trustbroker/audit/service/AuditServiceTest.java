@@ -16,17 +16,22 @@
 package swiss.trustbroker.audit.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
@@ -42,14 +47,22 @@ class AuditServiceTest {
 	@MockBean
 	private AuditLogger mockLogger;
 
-	private AuditService auditService;
+	@MockBean
+	private AuditLogFilter mockFilter;
 
 	@MockBean
 	private MetricsService metricsService;
 
+	@Autowired
+	private AuditService auditService;
+
 	@BeforeEach
 	public void setUp() {
-		auditService = new AuditService(mockLogger, metricsService);
+		doReturn(false).when(mockFilter).isAdditionalAuditingEnabled();
+		doReturn(false).when(mockFilter).suppressAttribute(any(), any());
+		doReturn(false).when(mockFilter).suppressField(any(), any());
+		when(mockLogger.createAuditLogBuilder(anyString()))
+				.thenAnswer(invocation -> new AuditLogBuilder(mockFilter, invocation.getArgument(0)));
 	}
 
 	@Test
@@ -143,16 +156,19 @@ class AuditServiceTest {
 					   .destination("https://xtb.trustbroker.swiss/api/v1/saml/")
 					   .assertionConsumerUrl("https://rp.trustbroker.swiss/acs")
 					   .responseAttributes(Map.of(
-						CoreAttributeName.HOME_REALM.getName(), AuditDto.ResponseAttributeValue.of(
-								"urn:trustbroker:home", CoreAttributeName.HOME_REALM.getNamespaceUri(),
-								AuditDto.AttributeSource.IDP_RESPONSE, 1),
-						CoreAttributeName.CLAIMS_NAME.getName(), AuditDto.ResponseAttributeValue.of(
-								"user.12345", CoreAttributeName.CLAIMS_NAME.getNamespaceUri(),
-								AuditDto.AttributeSource.IDP_RESPONSE, 1),
-						CoreAttributeName.SSO_SESSION_ID.getName(), AuditDto.ResponseAttributeValue.of(
-								"sso-uuid", CoreAttributeName.SSO_SESSION_ID.getNamespaceUri(),
-								AuditDto.AttributeSource.IDP_RESPONSE, 1)
-				))
+						CoreAttributeName.HOME_REALM.getName(), AuditDto.ResponseAttributeValues.of(
+								   AuditDto.ResponseAttributeValue.of(
+										   "urn:trustbroker:home", CoreAttributeName.HOME_REALM.getNamespaceUri(),
+										   AuditDto.AttributeSource.CP_RESPONSE, null, true)),
+						CoreAttributeName.CLAIMS_NAME.getName(), AuditDto.ResponseAttributeValues.of(
+									   AuditDto.ResponseAttributeValue.of(
+											   "user.12345", CoreAttributeName.CLAIMS_NAME.getNamespaceUri(),
+											   AuditDto.AttributeSource.CP_RESPONSE, null, true)),
+						CoreAttributeName.SSO_SESSION_ID.getName(), AuditDto.ResponseAttributeValues.of(
+									   AuditDto.ResponseAttributeValue.of(
+											   "sso-uuid", CoreAttributeName.SSO_SESSION_ID.getNamespaceUri(),
+											   AuditDto.AttributeSource.CP_RESPONSE, null, true))
+						))
 					   .build();
 	}
 

@@ -59,7 +59,7 @@
 						class="{{ theme.name }} app-header-button"
 					>
 						<img class="{{ theme.name }} app-icon app-globe" src="{{ imageUrl('globe.svg') }}" alt="" aria-hidden="true" />
-						<span>{{ currentLang | languageDisplay : false }}</span>
+						<span>{{ currentLang | languageDisplay: false }}</span>
 						<img class="{{ theme.name }} app-expansion-indicator app-arrow-down" src="{{ imageUrl('arrow_down.svg') }}" alt="" aria-hidden="true" />
 						<span class="{{ theme.name }} mat-expansion-indicator app-arrow-down" aria-hidden="true"></span>
 					</button>
@@ -75,7 +75,7 @@
 										tabindex="21"
 										[attr.aria-label]="language | nativeLanguageDisplay"
 									>
-										<span>{{ language | languageDisplay : theme.fullLanguageName }}</span>
+										<span>{{ language | languageDisplay: theme.fullLanguageName }}</span>
 										<span *ngIf="currentLang === language" class="app-selected-language">
 											<img
 												class="app-selected-language-icon"

@@ -16,13 +16,13 @@
 package swiss.trustbroker.audit.service;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.allOf;
-import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doReturn;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -34,24 +34,25 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.slf4j.LoggerFactory;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import swiss.trustbroker.audit.dto.AuditDto;
 import swiss.trustbroker.audit.dto.EventType;
 
+@SpringBootTest(classes = AuditLogFilter.class)
 class AuditLogBuilderTest {
+
+	@MockBean
+	private AuditLogFilter filter;
 
 	@BeforeEach
 	void setUp() {
-		// we misuse the AuditLogger also as a config to flag message and postfix emitting
-		var log = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(AuditLogger.class.getName());
-		log.setLevel(ch.qos.logback.classic.Level.TRACE);
-		assertThat(AuditLogger.isAdditionalAuditingEnabled(), is(true)); // with FQ names
-		assertThat(AuditLogger.isDetailAuditingEnabled(), is(false)); // without saml message detail
+		doReturn(true).when(filter).isAdditionalAuditingEnabled();
 	}
 
 	@Test
 	void testEmpty() {
-		AuditLogBuilder auditLogBuilder = new AuditLogBuilder();
+		AuditLogBuilder auditLogBuilder = new AuditLogBuilder(filter);
 		String result = auditLogBuilder.build();
 		assertThat(result, is(""));
 	}
@@ -59,7 +60,7 @@ class AuditLogBuilderTest {
 	@Test
 	void testPrefix() {
 		String prefix = "something";
-		AuditLogBuilder auditLogBuilder = new AuditLogBuilder(prefix);
+		AuditLogBuilder auditLogBuilder = new AuditLogBuilder(filter, prefix);
 		String result = auditLogBuilder.build();
 		assertThat(result, is(prefix));
 	}
@@ -76,7 +77,7 @@ class AuditLogBuilderTest {
 			"name,value,postfix,name=\"value (postfix)\"",
 	})
 	void testKeyValue(String key, String value, String postfix, String expected) {
-		AuditLogBuilder auditLogBuilder = new AuditLogBuilder();
+		AuditLogBuilder auditLogBuilder = new AuditLogBuilder(filter);
 		auditLogBuilder.append(key, value, postfix);
 		String result = auditLogBuilder.build();
 		if (expected == null) {
@@ -87,7 +88,7 @@ class AuditLogBuilderTest {
 
 	@Test
 	void testList() {
-		AuditLogBuilder auditLogBuilder = new AuditLogBuilder();
+		AuditLogBuilder auditLogBuilder = new AuditLogBuilder(filter);
 		auditLogBuilder.append("roles", List.of("one", "two", "three"));
 		String result = auditLogBuilder.build();
 		assertThat(result, is("roles=\"[one, two, three]\""));
@@ -95,7 +96,7 @@ class AuditLogBuilderTest {
 
 	@Test
 	void testSet() {
-		AuditLogBuilder auditLogBuilder = new AuditLogBuilder();
+		AuditLogBuilder auditLogBuilder = new AuditLogBuilder(filter);
 		Set<Integer> set = new TreeSet<>(); // ensure stable toString with TreeSet
 		set.add(1);
 		set.add(2);
@@ -106,7 +107,7 @@ class AuditLogBuilderTest {
 
 	@Test
 	void testMap() {
-		AuditLogBuilder auditLogBuilder = new AuditLogBuilder();
+		AuditLogBuilder auditLogBuilder = new AuditLogBuilder(filter);
 		Map<String, List<String>> map = new TreeMap<>(); // ensure stable toString with TreeMap
 		map.put("key1", List.of("one"));
 		map.put("key2", List.of("two, three"));
@@ -117,7 +118,7 @@ class AuditLogBuilderTest {
 
 	@Test
 	void testSingletonList() {
-		AuditLogBuilder auditLogBuilder = new AuditLogBuilder();
+		AuditLogBuilder auditLogBuilder = new AuditLogBuilder(filter);
 		auditLogBuilder.append("roles", Collections.singletonList("theoneandonly"));
 		String result = auditLogBuilder.build();
 		assertThat(result, is("roles=theoneandonly"));
@@ -125,7 +126,7 @@ class AuditLogBuilderTest {
 
 	@Test
 	void testEmptySet() {
-		AuditLogBuilder auditLogBuilder = new AuditLogBuilder();
+		AuditLogBuilder auditLogBuilder = new AuditLogBuilder(filter);
 		auditLogBuilder.append("roles", Collections.emptySet());
 		String result = auditLogBuilder.build();
 		assertThat(result, is("roles="));
@@ -133,7 +134,7 @@ class AuditLogBuilderTest {
 
 	@Test
 	void testCombined() {
-		AuditLogBuilder auditLogBuilder = new AuditLogBuilder("Test line: ");
+		AuditLogBuilder auditLogBuilder = new AuditLogBuilder(filter, "Test line: ");
 		auditLogBuilder.append("url", "https://example.trustbroker.swiss/api?test");
 		auditLogBuilder.append("count", 42);
 		auditLogBuilder.append("name", "John Doe");
@@ -144,26 +145,42 @@ class AuditLogBuilderTest {
 
 	@Test
 	void testAppendDto() {
-		AuditDto auditDto = AuditDto.builder()
+		var auditDto = AuditDto.builder()
 				.conversationId("1af312")
 				.destination("target")
+				.billingId("suppressed")
 				.eventType(EventType.RESPONSE)
 				.responseAttributes(Map.of(
-						"custom", AuditDto.ResponseAttributeValue.of(List.of("single"), null,
-								AuditDto.AttributeSource.IDP_RESPONSE, 1),
-						"decided", AuditDto.ResponseAttributeValue.of(List.of("yes"), "maybe",
-								AuditDto.AttributeSource.IDP_RESPONSE, 1)
+						"custom",
+								AuditDto.ResponseAttributeValues.of(AuditDto.ResponseAttributeValue.of(
+										List.of("single"), null, AuditDto.AttributeSource.CP_RESPONSE, null, false)),
+						"nullValue", AuditDto.ResponseAttributeValues.of(AuditDto.ResponseAttributeValue.of(
+								null, "nothing", AuditDto.AttributeSource.CP_RESPONSE, null, false)),
+						"filtered", AuditDto.ResponseAttributeValues.of(AuditDto.ResponseAttributeValue.of(
+								List.of("ok"), "any", AuditDto.AttributeSource.CP_RESPONSE, null, true)),
+						"decided", AuditDto.ResponseAttributeValues.of(AuditDto.ResponseAttributeValue.of(
+								List.of("yes", "no"), "/ns/maybe", AuditDto.AttributeSource.CP_RESPONSE, null, false)),
+						"multi",
+							AuditDto.ResponseAttributeValues.of(
+									AuditDto.ResponseAttributeValue.of(
+											List.of("one"), null, AuditDto.AttributeSource.IDM_RESPONSE, "global", false),
+									AuditDto.ResponseAttributeValue.of(
+											List.of("other"), null, AuditDto.AttributeSource.IDM_RESPONSE, "tenant", false))
 				))
 				.build();
-		AuditLogBuilder auditLogBuilder = new AuditLogBuilder();
+		doReturn(true).when(filter).suppressAttribute(any(), argThat(AuditDto.ResponseAttributeValue::getCid));
+		doReturn(true).when(filter).suppressField(argThat(arg -> arg.equals("billingId")), any());
+		var auditLogBuilder = new AuditLogBuilder(filter);
 		auditLogBuilder.appendDtoFields(auditDto);
-		String result = auditLogBuilder.build();
-		assertThat(Arrays.asList(result.split(", ")),
-				allOf(
-						containsInAnyOrder("conversationId=1af312", "destination=target",
-								"custom=\"single (@c)\"", "decided=\"yes (@c maybe)\""),
-						not(contains("samlType=RESPONSE"))
-				));
+		var result = auditLogBuilder.build();
+		assertThat(result, containsString("conversationId=1af312"));
+		assertThat(result, containsString("destination=target"));
+		assertThat(result, containsString("custom=\"single (@c)\""));
+		assertThat(result, containsString("decided=\"[yes, no] (@c /ns/maybe)\""));
+		assertThat(result, containsString("multi=\"[one (@i/global), other (@i/tenant)]\""));
+		assertThat(result, not(containsString("filtered=")));
+		assertThat(result, not(containsString("nullValue=")));
+		assertThat(result, not(containsString("billingId=")));
 	}
 
 }

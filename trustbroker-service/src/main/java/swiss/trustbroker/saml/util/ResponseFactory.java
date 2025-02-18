@@ -17,13 +17,13 @@ package swiss.trustbroker.saml.util;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 import org.opensaml.saml.common.SAMLVersion;
 import org.opensaml.saml.saml2.core.Assertion;
 import org.opensaml.saml.saml2.core.Attribute;
@@ -31,7 +31,6 @@ import org.opensaml.saml.saml2.core.NameID;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.common.config.RegexNameValue;
-import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlFactory;
@@ -66,18 +65,10 @@ public class ResponseFactory {
 		// apply missing required parameters
 		applyContextAndDefaults(idpStateData, cpResponse, relyingParty, claimsParty, params);
 
-		// filter CP attributes on relying party side (CP side already done)
-		var idpAttributesDefinition = relyingPartySetupService.getRpAttributesDefinitions(
-				params.getRpIssuerId(), params.getRpReferer());
-		if (idpAttributesDefinition.isEmpty()) {
-			idpAttributesDefinition = relyingPartySetupService.getCpAttributeDefinitions(
-					cpResponse.getIssuer(), params.getRpIssuerId());
-		}
-
 		// assemble assertion
-		var attributesFromIdp =	filterAndCreateCpDefinitions(cpResponse.getAttributes(), idpAttributesDefinition);
+		params.setNameIdFormat(cpResponse.getNameIdFormat());
 		var constAttr = relyingParty.getConstAttributes();
-		var assertion = createAssertion(attributesFromIdp, cpResponse, constAttr, params);
+		var assertion = createSamlAssertion(cpResponse, constAttr, cpResponse.getContextClasses(), params, null);
 
 		// disable setting OriginalIssuer on Attribute
 		var removeOriginalIssuer = !relyingParty.isDelegateOrigin();
@@ -91,17 +82,17 @@ public class ResponseFactory {
 		// sign assertion
 		if (trustBrokerProperties.getSecurity().isDoSignAssertions()) {
 			var signatureParams = relyingParty.getSignatureParametersBuilder()
-					.credential(params.getCredential())
-					.skinnyAssertionNamespaces(params.getSkinnyAssertionStyle())
-					.build();
+											  .credential(params.getCredential())
+											  .skinnyAssertionNamespaces(params.getSkinnyAssertionStyle())
+											  .build();
 			SamlFactory.signAssertion(assertion, signatureParams);
 		}
 		return assertion;
 	}
 
 	// low level factory method, assembling everything according to RP input, CP response, configuration and state
-	public static Assertion createAssertion(List<Definition> attributesFromIdp, CpResponse cpResponse,
-			ConstAttributes constAttr, ResponseParameters params) {
+	public static Assertion createSamlAssertion(CpResponse cpResponse, ConstAttributes constAttr,
+		 List<String> contextClasses, ResponseParameters params, List<Attribute> additionalAttributes) {
 		var assertion = OpenSamlUtil.buildAssertionObject(params.getSkinnyAssertionStyle());
 		var assertionId = OpenSamlUtil.generateSecureRandomId();
 		if (params.getConversationId() != null) {
@@ -113,25 +104,30 @@ public class ResponseFactory {
 		assertion.setIssuer(SamlFactory.createIssuer(params.getFederationServiceIssuerId()));
 
 		// Note that audience condition and subject confirmation use the same tolerance (default 8min)
-		var nameId = SamlFactory.createNameId(params.getNameId(), cpResponse.getNameIdFormat(), null);
+		var nameId = SamlFactory.createNameId(params.getNameId(), params.getNameIdFormat(), params.getNameIdQualifier());
 		var rpAuthRequestId = params.getRpAuthnRequestId();
 		assertion.setSubject(SamlFactory.createSubject(nameId, rpAuthRequestId, params.getRecipientId(),
 				params.getSubjectValiditySeconds()));
 		assertion.setConditions(
 				SamlFactory.createConditions(params.getIssuerId(), params.getAudienceValiditySeconds()));
 
-		var attributes = createAttributes(cpResponse.getUserDetails(), params.getCpAttrOriginIssuer(),
-				constAttr, attributesFromIdp, params.getRpClientName(), cpResponse.getProperties());
-		var deduplicatedAttributes = SamlFactory.filterDuplicatedAttributes(attributes);
-		deduplicatedAttributes = SamlFactory.dropDuplicatedAttributeFromOriginalIssuer(
-				deduplicatedAttributes, params.getDropDuplicatedAttributeFromOriginalIssuer());
-		var attributeStatement = SamlFactory.createAttributeStatement(deduplicatedAttributes);
+		var attributes = createAttributes(params.getCpAttrOriginIssuer(), constAttr, cpResponse.getAttributes(),
+				params.getRpClientName(), cpResponse.getProperties(), cpResponse.getUserDetails());
+		var samlAttributes = attributes.stream()
+				.map(Pair::getRight)
+				.collect(Collectors.toList());
+
+		if (additionalAttributes != null && !additionalAttributes.isEmpty()) {
+			samlAttributes.addAll(additionalAttributes);
+		}
+
+		var attributeStatement = SamlFactory.createAttributeStatement(samlAttributes);
 
 		assertion.getAttributeStatements().add(attributeStatement);
-		if (cpResponse.getContextClasses() != null) {
+		if (contextClasses != null) {
+			var sessionIndex = params.isSetSessionIndex() ? assertionId : null;
 			assertion.getAuthnStatements()
-					 .addAll(SamlFactory.createAuthnState(cpResponse.getContextClasses(), assertionId,
-							 params.getAuthnStatementInstant()));
+					 .addAll(SamlFactory.createAuthnState(contextClasses, sessionIndex, params.getAuthnStatementInstant()));
 		}
 
 		// audit input
@@ -151,7 +147,8 @@ public class ResponseFactory {
 
 	private static void applyRpSideDefaults(StateData idpStateData, CpResponse cpResponse, RelyingParty relyingParty,
 			ResponseParameters params) {
-		params.setRpAuthnRequestId(idpStateData.getSpStateData().getId());
+		params.setRpAuthnRequestId(idpStateData.getSpStateData()
+											   .getId());
 		if (params.getIssuerId() == null) {
 			params.setIssuerId(idpStateData.getRpIssuer());
 		}
@@ -207,7 +204,9 @@ public class ResponseFactory {
 			return null;
 		}
 		for (var mapping : homeNameIssuerMappings) {
-			if (mapping.getPattern().matcher(cpId).matches()) {
+			if (mapping.getPattern()
+					   .matcher(cpId)
+					   .matches()) {
 				return mapping.getValue();
 			}
 		}
@@ -248,104 +247,86 @@ public class ResponseFactory {
 			return cpResponse.getRpDestination();
 		}
 		// note that the RP AuthnRequest AssertionConsumerServiceUrl must have been accepted by the ACWhitelist
-		return idpStateData.getSpStateData().getAssertionConsumerServiceUrl();
-	}
-
-	public static List<Definition> filterAndCreateCpDefinitions(Map<Definition, List<String>> idpConfAttributes,
-			Collection<Definition> idpAttributes) {
-		if (idpAttributes == null) {
-			throw new TechnicalException("Missing IDP response attributes");
-		}
-		List<Definition> respIdpAttributes = new ArrayList<>();
-		for (Definition definition : idpAttributes) {
-			var attributeValues = getAttributeValues(idpConfAttributes, definition);
-			if (!attributeValues.isEmpty()) {
-				var newDefinition = definition.toBuilder()
-					.values(attributeValues)
-					.build();
-				respIdpAttributes.add(newDefinition);
-			}
-		}
-		return respIdpAttributes;
-	}
-
-	private static List<String> getAttributeValues(Map<Definition, List<String>> userDetails, Definition definition) {
-		return userDetails.entrySet().stream()
-				.filter(userAttribute ->
-						userAttribute.getKey().equalsByNameOrNamespace(definition))
-				.map(Map.Entry::getValue)
-				.findFirst()
-				.orElse(Collections.emptyList());
-
+		return idpStateData.getSpStateData()
+						   .getAssertionConsumerServiceUrl();
 	}
 
 	public static void filterCpAttributes(CpResponse cpResponseDTO, List<Definition> cpAttributeDefinitions) {
-		cpResponseDTO.getAttributes().entrySet()
+		cpResponseDTO.getAttributes()
+					 .entrySet()
 					 .removeIf(att -> attributeHasNoDefinition(att.getKey(), cpAttributeDefinitions));
 	}
 
 	private static boolean attributeHasNoDefinition(Definition key, List<Definition> cpAttributeDefinitions) {
 		for (Definition definition : cpAttributeDefinitions) {
 			if (key.equalsByNameOrNamespace(definition)) {
+				key.setCid(definition.getCid()); // use flag from configuration
 				return false;
 			}
 		}
 		return true;
 	}
 
-	public static List<Attribute> createCpResponseAttributes(String attrOriginIssuer, List<Definition> attributesForIdp,
-			String clientName) {
-		List<Attribute> attributeList = new ArrayList<>();
+	public static List<Pair<Definition, Attribute>> createCpResponseAttributes(String attrOriginIssuer,
+			Map<Definition, List<String>> attributesForIdp, String clientName) {
+		List<Pair<Definition, Attribute>> attributeList = new ArrayList<>();
 		if (attributesForIdp == null) {
 			return attributeList;
 		}
-		for (Definition idpAttribute : attributesForIdp) {
-			String nameURI = idpAttribute.getNamespaceUri();
-			var values = idpAttribute.getMultiValues();
+		for (Map.Entry<Definition, List<String>>  idpAttribute : attributesForIdp.entrySet()) {
+			Definition definition = idpAttribute.getKey();
+			String nameURI = definition.getNamespaceUri();
+			List<String> multiValues = definition.getMultiValues();
+			var values = multiValues != null && !multiValues.isEmpty() ? multiValues : idpAttribute.getValue();
 			if (nameURI != null) {
 				nameURI = SamlFactory.replaceClientNameInUri(nameURI, clientName);
-				attributeList.add(SamlFactory.createAttribute(nameURI, values, attrOriginIssuer));
+				attributeList.add(Pair.of(definition, SamlFactory.createAttribute(nameURI, values, attrOriginIssuer)));
 			}
 		}
 		return attributeList;
 	}
 
-	public static List<Attribute> createUserDetailsAttributes(Map<Definition, List<String>> userDetails, String clientName) {
-		List<Attribute> attributeList = new ArrayList<>();
+	public static List<Pair<Definition, Attribute>> createUserDetailsAttributes(Map<Definition, List<String>> userDetails,
+			String clientName) {
+		List<Pair<Definition, Attribute>> attributeList = new ArrayList<>();
 		if (userDetails == null) {
 			return attributeList;
 		}
 		for (Map.Entry<Definition, List<String>> entry : userDetails.entrySet()) {
-			String namespaceUri = entry.getKey().getNamespaceUri();
-			String name = entry.getKey().getName();
+			Definition key = entry.getKey();
+			String namespaceUri = key.getNamespaceUri();
+			String name = key.getName();
+			List<String> entryValue = entry.getValue();
+			List<String> value = entryValue != null && !entryValue.isEmpty() ? entryValue : key.getMultiValues();
 			if (namespaceUri != null) {
 				namespaceUri = SamlFactory.replaceClientNameInUri(namespaceUri, clientName);
-				attributeList.add(SamlFactory.createResponseAttribute(namespaceUri, entry.getValue()));
+				attributeList.add(Pair.of(key, SamlFactory.createResponseAttribute(namespaceUri, value)));
 			}
 			else if (name != null) {
-				attributeList.add(SamlFactory.createResponseAttribute(name, entry.getValue()));
+				attributeList.add(Pair.of(key, SamlFactory.createResponseAttribute(name, value)));
 			}
 		}
 
 		return attributeList;
 	}
 
-	static Collection<Attribute> createAttributes(Map<Definition, List<String>> userDetailsFromIdm,
-			String attrOriginIssuer, ConstAttributes constAttr, List<Definition> idpAttributes, String clientName,
-			Map<Definition, List<String>> properties) {
+	public static List<Pair<Definition, Attribute>> createAttributes(
+			String attrOriginIssuer, ConstAttributes constAttr, Map<Definition, List<String>> idpAttributes, String clientName,
+			Map<Definition, List<String>> properties, Map<Definition, List<String>> idmAttributes) {
 
 		// assemble all output SAML attributes in the order of 'last-one-wins' in a multiValued=false handling
-		var attributeList = new ArrayList<Attribute>();
-		attributeList.addAll(createCpResponseAttributes(attrOriginIssuer, idpAttributes, clientName));
-		attributeList.addAll(createUserDetailsAttributes(userDetailsFromIdm, clientName));
+		List<Pair<Definition, Attribute>> attributeList = new ArrayList<>();
+		if (idpAttributes != null) {
+			attributeList.addAll(createCpResponseAttributes(attrOriginIssuer, idpAttributes, clientName));
+		}
+		attributeList.addAll(createUserDetailsAttributes(idmAttributes, clientName));
 		attributeList.addAll(createUserDetailsAttributes(properties, clientName));
 		attributeList.addAll(createConstAttributes(constAttr, clientName));
 		return attributeList;
 	}
 
-
-	public static List<Attribute> createConstAttributes(ConstAttributes constAttr, String clientName) {
-		List<Attribute> attributeList = new ArrayList<>();
+	public static List<Pair<Definition, Attribute>> createConstAttributes(ConstAttributes constAttr, String clientName) {
+		List<Pair<Definition, Attribute>> attributeList = new ArrayList<>();
 		if (constAttr == null || constAttr.getAttributeDefinitions() == null) {
 			return attributeList;
 		}
@@ -354,15 +335,18 @@ public class ResponseFactory {
 			var values = definition.getMultiValues();
 			if (nameURI != null && values != null && !values.isEmpty()) {
 				nameURI = SamlFactory.replaceClientNameInUri(nameURI, clientName);
-				attributeList.add(SamlFactory.createAttribute(nameURI, values, null));
+				attributeList.add(Pair.of(definition, SamlFactory.createAttribute(nameURI, values, null)));
 			}
 		}
 		return attributeList;
 	}
 
-	private static void addAttributesToDtoResults(CpResponse cpResponse, Collection<Attribute> attributes) {
-		attributes.forEach(attribute -> cpResponse.setResult(attribute.getName(),
-				SamlFactory.attributeValueToStrings(attribute.getAttributeValues())));
+	private static void addAttributesToDtoResults(CpResponse cpResponse, List<Pair<Definition, Attribute>> attributes) {
+		if (cpResponse == null) {
+			return;
+		}
+		attributes.forEach(attribute -> cpResponse.setResult(attribute.getLeft().toBuilder().build(),
+				SamlFactory.attributeValueToStrings(attribute.getRight().getAttributeValues())));
 	}
 
 	public static NameID createNameId(CpResponse cpResponse) {

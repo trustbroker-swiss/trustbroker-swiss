@@ -1032,7 +1032,7 @@ public class SsoService {
 		setSsoGroupInSession(ssoGroup, stateData, implicitSsoGroup);
 		var rpIssuerId = stateData.getRpIssuer();
 		var acsUrl = stateData.getSpStateData().getAssertionConsumerServiceUrl();
-		var cpIssuerId = stateData.getCpResponse().getIssuer();
+		var cpIssuerId = stateData.getCpIssuer();
 		var participant = SsoSessionParticipant.builder()
 											   .rpIssuerId(rpIssuerId)
 											   .cpIssuerId(cpIssuerId)
@@ -1044,8 +1044,10 @@ public class SsoService {
 
 		var ssoSessionId = stateData.getSsoSessionId();
 		var oidcSessionId = stateData.getOidcSessionId();
-		log.info("SSO established for cpIssuer={} cpSessionId={} ssoSessionId={} on rpParticipant={} rpSession={} oidcSession={}",
-				cpIssuerId, stateData.getId(), ssoSessionId, rpIssuerId, stateData.getSpStateData().getId(), oidcSessionId);
+		log.info("SSO established for cpIssuer={} cpResponseIssuer={} cpSessionId={} ssoSessionId={} on rpParticipant={} "
+						+ "rpSession={} oidcSession={}",
+				cpIssuerId, stateData.getCpResponse().getIssuer(), stateData.getId(), ssoSessionId, rpIssuerId,
+				stateData.getSpStateData().getId(), oidcSessionId);
 	}
 
 	static void updateSubjectNameIdInSession(StateData ssoStateData) {
@@ -1136,7 +1138,7 @@ public class SsoService {
 			throw new RequestDeniedException(String.format("SSO group name mismatch session %s vs. RP %s",
 					sessionSsoGroupName, ssoGroupName));
 		}
-		var cpIssuerId = ssoStateData.getCpResponse().getIssuer();
+		var cpIssuerId = ssoStateData.getCpIssuer();
 		var participant = SsoSessionParticipant.builder()
 											   .rpIssuerId(rpIssuerId)
 											   .cpIssuerId(cpIssuerId)
@@ -1565,7 +1567,8 @@ public class SsoService {
 		// no signature or binding check as the LogoutResponse has no effect
 		var stateDataOpt = stateCacheService.findOptional(relayState, this.getClass().getSimpleName());
 		// state may already be gone when we receive a LogoutResponse, in that case just audit the ID received as RelayState
-		var stateData = stateDataOpt.isPresent() ? stateDataOpt.get() : StateData.builder().id(relayState).build();
+		var sessionId = relayState != null ? relayState : "unknown";
+		var stateData = stateDataOpt.isPresent() ? stateDataOpt.get() : StateData.builder().id(sessionId).build();
 		auditLogoutResponseFromRp(httpRequest, response, stateData);
 	}
 

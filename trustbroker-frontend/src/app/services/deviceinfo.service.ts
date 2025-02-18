@@ -56,9 +56,7 @@ export class DeviceInfoService {
 
 	generateDeviceToken(): Observable<string> {
 		// these return just plain values wrapped in resolved Promises to unify handling
-		let fingerprint = this.fingerprintUserAgent();
-		fingerprint = fingerprint.concat(this.fingerprintTimezone());
-		fingerprint = fingerprint.concat(this.fingerprintRenderingContext());
+		const fingerprint = this.fingerprintUserAgent().concat(this.fingerprintTimezone()).concat(this.fingerprintRenderingContext());
 		const part1 = Promise.all(fingerprint)
 			.catch(() => {
 				// NOSONAR

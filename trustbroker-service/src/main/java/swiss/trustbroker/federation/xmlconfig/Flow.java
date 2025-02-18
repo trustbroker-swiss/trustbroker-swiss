@@ -19,7 +19,6 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
 import jakarta.xml.bind.annotation.XmlAttribute;
@@ -84,6 +83,14 @@ public class Flow implements Serializable {
 	private Boolean appContinue = Boolean.FALSE;
 
 	/**
+	 * Redirect to (application specific) URL instead of showing an error page.
+	 *
+	 * @since 1.8.0
+	 */
+	@XmlAttribute
+	private String appRedirectUrl;
+
+	/**
 	 * Show link to further information on the error page (general error information on the application or specific to this
 	 * error code).
 	 */
@@ -102,12 +109,12 @@ public class Flow implements Serializable {
 	@XmlAttribute
 	private String supportPhone;
 
-	@JsonIgnore // bean method
 	public boolean showErrorPage() {
-		return doShowSupportInfo() || doReLogin() || doAppContinue();
+		return doShowSupportInfo() || doReLogin() || doAppContinue() || doAppRedirect();
 	}
 
-	@JsonIgnore // bean method
+	public boolean doAppRedirect() { return appRedirectUrl != null; }
+
 	public List<String> uiFlags() {
 		List<String> flags = new ArrayList<>();
 		if (doShowSupportInfo()) {

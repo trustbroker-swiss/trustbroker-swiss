@@ -53,8 +53,8 @@ import org.springframework.test.web.servlet.RequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import swiss.trustbroker.api.announcements.service.AnnouncementService;
-import swiss.trustbroker.api.profileselection.dto.ProfileData;
 import swiss.trustbroker.api.profileselection.dto.ProfileResponse;
+import swiss.trustbroker.api.profileselection.dto.ProfileSelectionData;
 import swiss.trustbroker.api.profileselection.service.ProfileSelectionService;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.config.TrustBrokerProperties;
@@ -321,8 +321,8 @@ class HrdControllerTest {
 		var cpResponse = CpResponse.builder().build();
 		stateData.setCpResponse(cpResponse);
 		doReturn(stateData).when(stateCacheService).find(PROFILE_ID, HrdController.class.getSimpleName());
-		doReturn(result).when(profileSelectionService).buildProfileResponse(
-				ProfileData.builder().profileId(PROFILE_ID).build(), stateData.getCpResponse());
+		var profileSelectionData = ProfileSelectionData.builder().selectedProfileId(PROFILE_ID).build();
+		doReturn(result).when(profileSelectionService).buildProfileResponse(profileSelectionData, stateData.getCpResponse());
 		this.mockMvc.perform(get(apiSupport.getProfilesApi()).header(WebSupport.HTTP_HEADER_XTB_PROFILE_ID, PROFILE_ID))
 				.andExpect(status().isOk())
 				.andExpect(content().json(resultJson));

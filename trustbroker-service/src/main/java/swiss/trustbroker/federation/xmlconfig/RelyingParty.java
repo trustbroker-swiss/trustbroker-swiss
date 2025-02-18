@@ -15,10 +15,10 @@
 
 package swiss.trustbroker.federation.xmlconfig;
 
-import java.io.Serializable;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import javax.annotation.Nonnull;
 
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
@@ -29,12 +29,13 @@ import jakarta.xml.bind.annotation.XmlTransient;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 import org.apache.commons.collections.ListUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.opensaml.security.credential.Credential;
 import swiss.trustbroker.api.relyingparty.dto.RelyingPartyConfig;
-import swiss.trustbroker.common.saml.dto.SamlBinding;
 import swiss.trustbroker.common.saml.dto.SignatureParameters;
 import swiss.trustbroker.util.PropertyUtil;
 
@@ -55,10 +56,11 @@ import swiss.trustbroker.util.PropertyUtil;
 @XmlRootElement(name = "RelyingParty")
 @XmlAccessorType(XmlAccessType.FIELD)
 @Data
-@Builder
+@EqualsAndHashCode(callSuper=true)
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class RelyingParty implements Serializable, RelyingPartyConfig, PathReference {
+public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 
 	@XmlAttribute(name = "id")
 	private String id;
@@ -230,15 +232,36 @@ public class RelyingParty implements Serializable, RelyingPartyConfig, PathRefer
 
 	private transient Credential rpEncryptionCred;
 
-	private transient String subPath;
+	// Lombok would generate these, but schemagen compilation complains about not implementing RelyingPartyConfig / CounterParty
 
-	@Builder.Default
-	private transient ValidationStatus validationStatus = new ValidationStatus();
-
-	// Lombok would generate this, but the compiler complains about not implementing RelyingPartyConfig
 	@Override
 	public String getId() {
 		return id;
+	}
+
+	@Override
+	public FeatureEnum getEnabled() {
+		return enabled;
+	}
+
+	@Override
+	public void setEnabled(FeatureEnum enabled) {
+		this.enabled = enabled;
+	}
+
+	@Override
+	public SubjectNameMappings getSubjectNameMappings() {
+		return subjectNameMappings;
+	}
+
+	@Override
+	public Saml getSaml() {
+		return saml;
+	}
+
+	@Override
+	public Scripts getScripts() {
+		return scripts;
 	}
 
 	// XmlTransient not allowed on transient fields (the Javadoc does not say transient is considered XmlTransient):
@@ -256,18 +279,6 @@ public class RelyingParty implements Serializable, RelyingPartyConfig, PathRefer
 	@XmlTransient
 	public Credential getEncryptionCred() {
 		return rpEncryptionCred;
-	}
-
-	@XmlTransient
-	@Override
-	public String getSubPath() { return subPath; }
-
-	@Override
-	public void setSubPath(String subPath) { this.subPath = subPath; }
-
-	@XmlTransient
-	public ValidationStatus getValidationStatus() {
-		return validationStatus;
 	}
 
 	// derived
@@ -322,18 +333,6 @@ public class RelyingParty implements Serializable, RelyingPartyConfig, PathRefer
 		return oidc != null && oidc.getClients() != null ? oidc.getClients() : Collections.emptyList();
 	}
 
-	public ProtocolEndpoints getSamlProtocolEndpoints() {
-		return saml != null ? saml.getProtocolEndpoints() : null;
-	}
-
-	public ArtifactBinding getSamlArtifactBinding() {
-		return saml != null ? saml.getArtifactBinding() : null;
-	}
-
-	public Encryption getEncryption() { return saml != null ? saml.getEncryption() : null; }
-
-	public Signature getSignature() { return saml != null ? saml.getSignature() : null; }
-
 	public Saml initializedSaml() {
 		if (saml == null) {
 			saml = new Saml();
@@ -341,19 +340,10 @@ public class RelyingParty implements Serializable, RelyingPartyConfig, PathRefer
 		return saml;
 	}
 
+	@Override
 	public SignatureParameters.SignatureParametersBuilder getSignatureParametersBuilder() {
-		var builder = saml != null && saml.getSignature() != null ?
-				saml.getSignature().getSignatureParametersBuilder() :
-				SignatureParameters.builder();
-		return builder
-				.credential(getRpSigner());
-	}
-
-	public boolean isValidInboundBinding(SamlBinding samlBinding) {
-		if (getSamlArtifactBinding() == null) {
-			return true;
-		}
-		return getSamlArtifactBinding().validInboundBinding(samlBinding);
+		var builder = super.getSignatureParametersBuilder();
+		return builder.credential(getRpSigner());
 	}
 
 	// disable setting OriginalIssuer on Attribute - defaults to true
@@ -383,25 +373,9 @@ public class RelyingParty implements Serializable, RelyingPartyConfig, PathRefer
 				.filter(cpRp -> rpAliasId.equals(cpRp.getRelyingPartyAlias())).findFirst();
 	}
 
-	public void invalidate(Throwable ex) {
-		enabled = FeatureEnum.INVALID;
-		initializedValidationStatus().addException(ex);
+	@Nonnull
+	@Override
+	public String getShortType() {
+		return "RP";
 	}
-
-	public void invalidate(String error) {
-		enabled = FeatureEnum.INVALID;
-		initializedValidationStatus().addError(error);
-	}
-
-	public ValidationStatus initializedValidationStatus() {
-		if (validationStatus == null) {
-			validationStatus = new ValidationStatus();
-		}
-		return validationStatus;
-	}
-
-	public boolean isValid() {
-		return enabled != FeatureEnum.INVALID;
-	}
-
 }

@@ -14,9 +14,8 @@
  */
 
 export class Theme {
-
 	constructor(
-		readonly name : string,
+		readonly name: string,
 		readonly hasHeader: boolean,
 		readonly hasFooter: boolean,
 		readonly hasBackdrop: boolean,

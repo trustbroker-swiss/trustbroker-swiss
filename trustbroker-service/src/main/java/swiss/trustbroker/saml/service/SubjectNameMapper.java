@@ -18,17 +18,17 @@ package swiss.trustbroker.saml.service;
 import java.util.Optional;
 
 import lombok.extern.slf4j.Slf4j;
-import swiss.trustbroker.federation.xmlconfig.RelyingParty;
+import swiss.trustbroker.federation.xmlconfig.CounterParty;
 import swiss.trustbroker.federation.xmlconfig.SubjectName;
 import swiss.trustbroker.saml.dto.CpResponse;
 
 @Slf4j
-public class SubjectNameMapper {
+class SubjectNameMapper {
 
 	private SubjectNameMapper() {}
 
-	static void adjustSubjectNameId(CpResponse cpResponse, RelyingParty relyingParty) {
-		var nameIdMappings = relyingParty.getSubjectNameMappings();
+	static void adjustSubjectNameId(CpResponse cpResponse, CounterParty counterParty) {
+		var nameIdMappings = counterParty.getSubjectNameMappings();
 		var reason = "No matching mapping found";
 		var cpIssuer = cpResponse.getIssuerId();
 		Optional<SubjectName> subjectMapping = Optional.empty();
@@ -39,18 +39,18 @@ public class SubjectNameMapper {
 			else {
 				subjectMapping = nameIdMappings.getSubjects()
 						.stream()
-						.filter(m -> m.isIssuerMatching(cpIssuer) && mapSubject(m, relyingParty, cpResponse))
+						.filter(m -> m.isIssuerMatching(cpIssuer) && mapSubject(m, counterParty, cpResponse))
 						.findFirst();
 			}
 		}
 		if (subjectMapping.isEmpty()) {
-			log.info("Preserve federation principal for cpIssuer={} cpNameId={} rpIssuer={} rpNameId={} using format={}: {}",
-					cpIssuer, cpResponse.getOriginalNameId(), relyingParty.getId(), cpResponse.getNameId(),
-					cpResponse.getNameIdFormat(), reason);
+			log.info("Preserve federation principal for {} issuer={} cpIssuer={} cpNameId={} rpNameId={} using format={}: {}",
+					counterParty.getShortType(), counterParty.getId(), cpIssuer, cpResponse.getOriginalNameId(),
+					cpResponse.getNameId(), cpResponse.getNameIdFormat(), reason);
 		}
 	}
 
-	private static boolean mapSubject(SubjectName subjectMapping, RelyingParty relyingParty, CpResponse cpResponse) {
+	private static boolean mapSubject(SubjectName subjectMapping, CounterParty counterParty, CpResponse cpResponse) {
 		var cpIssuer = cpResponse.getIssuerId();
 		var nameIdSource = subjectMapping.getSource();
 		var claimSource = "AttributesSelection";
@@ -71,16 +71,16 @@ public class SubjectNameMapper {
 			}
 			cpResponse.setNameId(nameId);
 			cpResponse.setNameIdFormat(nameIdFormat);
-			log.info("Change federation principal from cpIssuer={} cpNameId={} to rpIssuer={} rpNameId={}"
+			log.info("Change federation principal from cpIssuer={} cpNameId={} to {} issuer={} rpNameId={}"
 							+ " using source='{} ({})' format={}",
-					cpIssuer, cpResponse.getOriginalNameId(), relyingParty.getId(), cpResponse.getNameId(),
-					nameIdSource, claimSource, nameIdFormat);
+					cpIssuer, cpResponse.getOriginalNameId(), counterParty.getShortType(), counterParty.getId(),
+					cpResponse.getNameId(), nameIdSource, claimSource, nameIdFormat);
 			return true;
 		}
-		log.debug("Preserve federation principal for cpIssuer={} cpNameId={} rpIssuer={} rpNameId={}"
+		log.debug("Preserve federation principal for {} issuer={} cpIssuer={} cpNameId={} rpNameId={}"
 						+ " using format={} because source={} is undefined",
-				cpIssuer, cpResponse.getOriginalNameId(), relyingParty.getId(), cpResponse.getNameId(),
-				cpResponse.getNameIdFormat(), nameIdSource);
+				counterParty.getShortType(), counterParty.getId(), cpIssuer, cpResponse.getOriginalNameId(),
+				cpResponse.getNameId(), cpResponse.getNameIdFormat(), nameIdSource);
 		return false;
 	}
 

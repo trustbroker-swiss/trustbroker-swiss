@@ -13,7 +13,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 
@@ -25,7 +25,11 @@ import { DeviceInfoService } from '../services/deviceinfo.service';
 	styleUrls: ['./device-info.component.scss']
 })
 export class DeviceInfoComponent implements OnInit {
-	constructor(private readonly deviceInfoService: DeviceInfoService, private readonly route: ActivatedRoute, private readonly router: Router) {}
+	constructor(
+		private readonly deviceInfoService: DeviceInfoService,
+		private readonly route: ActivatedRoute,
+		private readonly router: Router
+	) {}
 
 	ngOnInit(): void {
 		this.route.params.subscribe((params: Params) => {
@@ -34,23 +38,7 @@ export class DeviceInfoComponent implements OnInit {
 			const id = params.id;
 			this.deviceInfoService.sendDeviceInfo(cpUrn, rpUrn, id).subscribe({
 				next: resp => {
-					// document.write for error page does not work here
-					const url = resp?.url.replace(/^.*(\/failure\/.*$)/, '$1');
-					if (url !== resp?.url) {
-						void this.router.navigate([url]);
-						return;
-					}
-					if (resp?.body?.includes('redirectUrl')) {
-						const profile = JSON.parse(resp.body);
-						void this.router.navigate([profile.redirectUrl]);
-						return;
-					}
-					window.document.write(resp?.body);
-					if (document.forms.length > 0) {
-						document.forms.item(0).submit();
-					} else {
-						void this.router.navigate(['/failure']);
-					}
+					this.handleDeviceInfoResponse(resp);
 				},
 				error: (errorResponse: HttpErrorResponse) => {
 					if (errorResponse.status === 500) {
@@ -62,5 +50,25 @@ export class DeviceInfoComponent implements OnInit {
 				}
 			});
 		});
+	}
+
+	private handleDeviceInfoResponse(resp: HttpResponse<string>): void {
+		// document.write for error page does not work here
+		const url = resp?.url.replace(/^.*(\/failure\/.*$)/, '$1');
+		if (url !== resp?.url) {
+			void this.router.navigate([url]);
+			return;
+		}
+		if (resp?.body?.includes('redirectUrl')) {
+			const profile = JSON.parse(resp.body);
+			void this.router.navigate([profile.redirectUrl]);
+			return;
+		}
+		window.document.write(resp?.body);
+		if (document.forms.length > 0) {
+			document.forms.item(0).submit();
+		} else {
+			void this.router.navigate(['/failure']);
+		}
 	}
 }

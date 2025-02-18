@@ -170,8 +170,7 @@ public class StateCacheService {
 				if (log.isTraceEnabled()) {
 					log.trace("State FETCH actor={} sessionId={} spSessionId={} oidcSessionId={} expiresInSec={}: {}",
 							actor, stateEntity.getId(), stateEntity.getSpSessionId(), stateEntity.getOidcSessionId(),
-							expDuration.toSeconds(),
-							stateEntity.getJsonData());
+							expDuration.toSeconds(), stateEntity.getJsonData());
 				}
 				else {
 					log.debug("State FETCH actor={} sessionId={} spSessionId={} oidcSessionId={} expiresInSec={}",

@@ -1810,7 +1810,8 @@ class SsoServiceTest {
 		var stateData = buildStateWithSpState(SESSION_ID);
 		var qoa = getQoa(40);
 		var cpResponse = buildCpResponseWithContextClasses(List.of(qoa));
-		cpResponse.setIssuer(CP_ISSUER_ID);
+		cpResponse.setIssuer("response_cp_issuer");
+		stateData.setIssuer(CP_ISSUER_ID);
 		setNameId(cpResponse, null, SUBJECT_NAME_ID);
 		stateData.setCpResponse(cpResponse);
 		var ssoGroup = buildSsoGroup();
@@ -1911,7 +1912,8 @@ class SsoServiceTest {
 
 		// step-up only resulted in too low QOA
 		var cpResponse = buildCpResponseWithContextClasses(List.of(getQoa(10)));
-		cpResponse.setIssuer(CP_ISSUER_ID);
+		cpResponse.setIssuer("response_cp_issuer");
+		stateData.setIssuer(CP_ISSUER_ID);
 		setNameId(cpResponse, subjectNameId, subjectNameId);
 		stateData.setCpResponse(cpResponse);
 
@@ -2343,12 +2345,13 @@ class SsoServiceTest {
 		verify(auditService).logInboundSamlFlow(any());
 	}
 
-	@Test
-	void handleLogoutResponseWithoutState() {
+	@ParameterizedTest
+	@CsvSource(value = { "null", SESSION_ID }, nullValues = "null")
+	void handleLogoutResponseWithoutState(String relayState) {
 		var httpRequest = new MockHttpServletRequest();
 		var response = SamlFactory.createResponse(LogoutResponse.class, RELYING_PARTY_ID);
-		doReturn(Optional.empty()).when(stateCacheService).findOptional(SESSION_ID, SsoService.class.getSimpleName());
-		ssoService.handleLogoutResponse(response, SESSION_ID, httpRequest);
+		doReturn(Optional.empty()).when(stateCacheService).findOptional(relayState, SsoService.class.getSimpleName());
+		ssoService.handleLogoutResponse(response, relayState, httpRequest);
 		verify(auditService).logInboundSamlFlow(any());
 	}
 

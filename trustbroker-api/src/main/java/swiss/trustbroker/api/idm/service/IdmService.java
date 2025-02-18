@@ -30,6 +30,11 @@ import swiss.trustbroker.api.sessioncache.dto.CpResponseData;
  * <br/>
  * An implementation can be configured via Spring @Value binding or by injecting swiss.trustbroker.config.TrustbrokerProperties
  * and using swiss.trustbroker.config.dto.IdmConfig (${trustbroker.config.idm}).
+ *
+ * Breaking changes:
+ * <ul>
+ *     <li>With 1.8.0 getAttributesFromIdm renamed to getAttributes.</li>
+ * </ul> 
  */
 public interface IdmService {
 
@@ -39,9 +44,22 @@ public interface IdmService {
 	 * @param idmRequests          Defines the requests to be performed by this call to query the IDM.
 	 * @param statusPolicyCallback callback for status policy enforcement
 	 * @return Optional.empty if this service does not apply for these queries. A non-null result otherwise
+	 * 
+	 * @since 1.8.0
 	 */
-	Optional<IdmResult> getAttributesFromIdm(RelyingPartyConfig relyingPartyConfig, CpResponseData cpResponse,
+	Optional<IdmResult> getAttributes(RelyingPartyConfig relyingPartyConfig, CpResponseData cpResponse,
 			IdmRequests idmRequests, IdmStatusPolicyCallback statusPolicyCallback);
+
+	/**
+	 * Implements getAttributes as well but signals, that the IDM data is fetched based on a federated login
+	 * for the first time and therefore might need additional auditing (write operations on an otherwise read-only access).
+	 * 
+	 * @since 1.8.0
+	 */
+	default Optional<IdmResult> getAttributesAudited(RelyingPartyConfig relyingPartyConfig, CpResponseData cpResponse,
+			IdmRequests idmRequests, IdmStatusPolicyCallback statusPolicyCallback) {
+		return getAttributes(relyingPartyConfig, cpResponse, idmRequests, statusPolicyCallback);
+	}
 
 	/**
 	 * @param idmRequests        Defines the requests to be performed by the call to query the IDM.

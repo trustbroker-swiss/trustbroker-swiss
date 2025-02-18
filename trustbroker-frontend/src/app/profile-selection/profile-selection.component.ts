@@ -33,7 +33,11 @@ export class ProfileSelectionComponent implements OnInit {
 	profiles: Profile[];
 	stateId: string;
 
-	constructor(private readonly profileService: ProfileService, private readonly route: ActivatedRoute, private readonly router: Router) {}
+	constructor(
+		private readonly profileService: ProfileService,
+		private readonly route: ActivatedRoute,
+		private readonly router: Router
+	) {}
 
 	ngOnInit(): void {
 		this.route.params.subscribe((params: Params) => {

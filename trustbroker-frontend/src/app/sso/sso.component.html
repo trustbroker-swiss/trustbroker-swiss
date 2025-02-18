@@ -30,11 +30,11 @@
 				[id]="'sso-group.' + ssoGroupParticipants.ssoGroupName + '.' + ssoGroupParticipants.ssoSubject"
 			>
 				<legend>
-					{{ "trustbroker.sso.group." + ssoGroupParticipants.ssoGroupName + ".subtitle" | translate : { Default: ssoGroupParticipants.ssoGroupName } }}
+					{{ "trustbroker.sso.group." + ssoGroupParticipants.ssoGroupName + ".subtitle" | translate: { Default: ssoGroupParticipants.ssoGroupName } }}
 					<span *ngIf="ssoGroupParticipants.ssoSubject">({{ ssoGroupParticipants.ssoSubject }})</span>
 				</legend>
-				<p>{{ "trustbroker.sso.main.created" | translate }} {{ ssoGroupParticipants.ssoEstablishedTime | date : "dd.MM.yyyy HH:mm:ss" }}</p>
-				<p>{{ "trustbroker.sso.main.expires" | translate }} {{ ssoGroupParticipants.expirationTime | date : "dd.MM.yyyy HH:mm:ss" }}</p>
+				<p>{{ "trustbroker.sso.main.created" | translate }} {{ ssoGroupParticipants.ssoEstablishedTime | date: "dd.MM.yyyy HH:mm:ss" }}</p>
+				<p>{{ "trustbroker.sso.main.expires" | translate }} {{ ssoGroupParticipants.expirationTime | date: "dd.MM.yyyy HH:mm:ss" }}</p>
 				<div class="cards-container" role="list" id="cardcontainer">
 					<div *ngFor="let participant of ssoGroupParticipants.participants" class="card-container" role="listitem">
 						<!--Normal cards -->
@@ -45,7 +45,7 @@
 							*ngIf="!isButtonSize"
 							tabindex="1"
 							role="button"
-							[attr.aria-label]="'trustbroker.sso.rp.' + participant.name + '.title' | translate : { Default: participant.name }"
+							[attr.aria-label]="'trustbroker.sso.rp.' + participant.name + '.title' | translate: { Default: participant.name }"
 							(keydown.enter)="onClickCard(ssoGroupParticipants.ssoGroupName, participant.rpId, participant.cpId, ssoGroupParticipants.ssoSubject)"
 							(keydown.space)="onClickCard(ssoGroupParticipants.ssoGroupName, participant.rpId, participant.cpId, ssoGroupParticipants.ssoSubject)"
 							(click)="onClickCard(ssoGroupParticipants.ssoGroupName, participant.rpId, participant.cpId, ssoGroupParticipants.ssoSubject)"
@@ -59,7 +59,7 @@
 							<mat-card-title class="high-emphasis">
 								<h2
 									[id]="'sso-participant.' + +ssoGroupParticipants.ssoGroupName + '.' + ssoGroupParticipants.ssoSubject + '.' + participant.name"
-									[innerHTML]="'trustbroker.sso.rp.' + participant.name + '.title' | translate : { Default: participant.name } | safeMarkup"
+									[innerHTML]="'trustbroker.sso.rp.' + participant.name + '.title' | translate: { Default: participant.name } | safeMarkup"
 								></h2>
 							</mat-card-title>
 						</mat-card>
@@ -70,7 +70,7 @@
 							[inputColor]="participant.color"
 							[inputShortcut]="participant.shortcut"
 							[theme]="theme"
-							[cardText]="'trustbroker.sso.rp.' + participant.name + '.title' | translate : { Default: participant.name } | safeMarkup"
+							[cardText]="'trustbroker.sso.rp.' + participant.name + '.title' | translate: { Default: participant.name } | safeMarkup"
 							(cardClick)="onClickCard(ssoGroupParticipants.ssoGroupName, participant.rpId, participant.cpId, ssoGroupParticipants.ssoSubject)"
 						>
 						</app-small-card>

@@ -31,6 +31,7 @@ import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.dto.AccessRequestConfig;
 import swiss.trustbroker.config.dto.AnnouncementConfig;
 import swiss.trustbroker.config.dto.AttributeConfig;
+import swiss.trustbroker.config.dto.AuditConfig;
 import swiss.trustbroker.config.dto.ContentSecurityPolicies;
 import swiss.trustbroker.config.dto.CorsPolicies;
 import swiss.trustbroker.config.dto.FrameOptionsPolicies;
@@ -248,6 +249,13 @@ public class TrustBrokerProperties {
 	 * @since 1.7.0
 	 */
 	private Support support;
+
+	/**
+	 * Audit configuration.
+	 *
+	 * @since 1.8.0
+	 */
+	private AuditConfig audit = new AuditConfig();
 
 	/**
 	 * Default should be secure, disable in DEV only if needed for picky user-agents.

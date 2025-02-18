@@ -42,7 +42,11 @@ export class ErrorPageComponent implements OnInit {
 	supportContactText: string;
 	theme: Theme;
 
-	constructor(private readonly route: ActivatedRoute, private readonly themeService: ThemeService, private readonly apiService: ApiService) {
+	constructor(
+		private readonly route: ActivatedRoute,
+		private readonly themeService: ThemeService,
+		private readonly apiService: ApiService
+	) {
 		this.referenceKey = 'trustbroker.error.main.reference';
 		this.theme = this.themeService.getTheme();
 		this.themeService.subscribe({

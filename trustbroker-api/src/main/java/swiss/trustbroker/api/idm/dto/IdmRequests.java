@@ -20,12 +20,15 @@ import java.util.List;
 /**
  * Definition of the requests to perform for querying the IDM.<br/>
  * (Corresponds to the RelyingParty IdmLookup configuration.)
+ * <br>
+ * Potentially breaking changes:
+ * <ul>
+ *     <li>With 1.8.0 dropped <code>getMultiQueryPolicy</code> as <code>IdmService</code> is no longer expected to use this.</li>
+ * </ul>
  */
 public interface IdmRequests {
 
 	public String getStore();
-
-	public String getMultiQueryPolicy();
 
 	public List<IdmRequest> getQueryList();
 

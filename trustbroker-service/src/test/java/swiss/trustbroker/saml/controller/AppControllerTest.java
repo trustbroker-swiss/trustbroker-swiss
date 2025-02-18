@@ -110,7 +110,6 @@ import swiss.trustbroker.sso.service.SsoService;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
 import swiss.trustbroker.util.ApiSupport;
 import swiss.trustbroker.util.SamlValidator;
-import swiss.trustbroker.util.WebSupport;
 
 // hacky class requiring to mock out new unused/untested facilities
 @ExtendWith(SpringExtension.class)
@@ -893,7 +892,7 @@ class AppControllerTest {
 	@ParameterizedTest
 	@CsvSource(value = {
 			URL_TEMPLATE,
-			WebSupport.ADFS_ENTRY_URL_TRAILING_SLASH
+			ApiSupport.ADFS_ENTRY_URL_TRAILING_SLASH
 	})
 	void handleIncomingMessagesValidResponseTest(String entryUrl) throws Exception {
 		Response authnResponse = ServiceSamlTestUtil.loadAuthnResponse();

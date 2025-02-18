@@ -96,8 +96,8 @@ public class AppController extends AbstractSamlController {
 	 * @param response is the web response according to servlet spec 3.x
 	 * @return redirect routing or null when no redirect is needed.
 	 */
-	@PostMapping(path = { ApiSupport.SAML_API, WebSupport.ADFS_ENTRY_URL,
-			WebSupport.ADFS_ENTRY_URL_TRAILING_SLASH, WebSupport.XTB_LEGACY_ENTRY_URL },
+	@PostMapping(path = { ApiSupport.SAML_API, ApiSupport.ADFS_ENTRY_URL,
+			ApiSupport.ADFS_ENTRY_URL_TRAILING_SLASH, ApiSupport.XTB_LEGACY_ENTRY_URL },
 			consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
 	public String handleIncomingPostMessages(HttpServletRequest request, HttpServletResponse response) {
 		return handleIncomingMessage(request, response, false);
@@ -111,7 +111,7 @@ public class AppController extends AbstractSamlController {
 	 * @param response is the web response according to servlet spec 3.x
 	 * @return redirect routing or null when no redirect is needed.
 	 */
-	@GetMapping(path = { ApiSupport.SAML_API, WebSupport.ADFS_ENTRY_URL, WebSupport.XTB_LEGACY_ENTRY_URL })
+	@GetMapping(path = { ApiSupport.SAML_API, ApiSupport.ADFS_ENTRY_URL, ApiSupport.XTB_LEGACY_ENTRY_URL })
 	public String handleIncomingGetMessages(HttpServletRequest request, HttpServletResponse response) {
 		return handleIncomingMessage(request, response, true);
 	}
@@ -177,9 +177,10 @@ public class AppController extends AbstractSamlController {
 
 	// Federation metadata endpoint XML
 	@GetMapping(path = {
+			ApiSupport.SAML_METADATA_URL,
 			ApiSupport.METADATA_URL,
-			WebSupport.LOWER_CASE_METADATA_ENDPOINT,
-			WebSupport.XTB_ALTERNATE_METADATA_ENDPOINT // camel-case deprecated but documented in old MS docs
+			ApiSupport.XTB_LOWER_CASE_ALTERNATE_METADATA_ENDPOINT,
+			ApiSupport.XTB_ALTERNATE_METADATA_ENDPOINT // camel-case deprecated but documented in old MS docs
 	}, produces = MediaType.APPLICATION_XML_VALUE)
 	@ResponseBody
 	public String handleFederationMetadata(HttpServletRequest request, HttpServletResponse response) {

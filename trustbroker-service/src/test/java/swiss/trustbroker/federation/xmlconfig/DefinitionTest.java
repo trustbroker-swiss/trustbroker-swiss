@@ -20,13 +20,21 @@ import static org.hamcrest.Matchers.equalToObject;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import swiss.trustbroker.api.sessioncache.dto.AttributeName;
 import swiss.trustbroker.common.saml.util.CoreAttributeInitializer;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
+import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
 
 class DefinitionTest {
 
@@ -134,5 +142,30 @@ class DefinitionTest {
 				{ new Definition(CoreAttributeName.NAME), CoreAttributeName.NAME.getName(), true },
 				{ new Definition(CoreAttributeName.NAME), CoreAttributeName.NAME.getNamespaceUri(), true },
 		};
+	}
+
+	@Test
+	void putOrRemoveCpAttributeValuesTest() {
+		Map<AttributeName, List<String>> attributes = givenAttributeMap();
+		var initialSize = attributes.size();
+		DefinitionUtil.putOrRemoveCpAttributeValues(attributes, CoreAttributeName.FIRST_NAME.getName(),
+				CoreAttributeName.FIRST_NAME.getNamespaceUri(), null, null);
+		assertTrue(attributes.size() < initialSize);
+
+		DefinitionUtil.putOrRemoveCpAttributeValues(attributes,  CoreAttributeName.FIRST_NAME.getName(),
+				CoreAttributeName.FIRST_NAME.getNamespaceUri(), "anySource", List.of("values"));
+		assertEquals(attributes.size(), initialSize);
+	}
+
+
+	private static Map<AttributeName, List<String>> givenAttributeMap() {
+		Map<AttributeName, List<String>> map = new HashMap<>();
+		map.put(Definition.builder()
+						  .name(CoreAttributeName.FIRST_NAME.getName())
+						  .namespaceUri(CoreAttributeName.FIRST_NAME.getNamespaceUri())
+						  .build(),
+				List.of("name1"));
+		map.put(CoreAttributeName.CLAIMS_NAME, List.of("wrong"));
+		return map;
 	}
 }

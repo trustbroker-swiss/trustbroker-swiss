@@ -17,7 +17,7 @@ package swiss.trustbroker.wstrust.service;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,10 +28,11 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.opensaml.core.xml.XMLObject;
 import org.opensaml.core.xml.util.XMLObjectSupport;
-import org.opensaml.saml.common.SAMLVersion;
 import org.opensaml.saml.saml2.core.Assertion;
 import org.opensaml.saml.saml2.core.Attribute;
 import org.opensaml.saml.saml2.core.AttributeStatement;
+import org.opensaml.saml.saml2.core.NameID;
+import org.opensaml.saml.saml2.core.Subject;
 import org.opensaml.soap.wstrust.KeyType;
 import org.opensaml.soap.wstrust.RequestSecurityToken;
 import org.opensaml.soap.wstrust.RequestSecurityTokenResponse;
@@ -47,6 +48,7 @@ import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.audit.service.OutboundAuditMapper;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.saml.dto.SignatureParameters;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlFactory;
@@ -54,15 +56,16 @@ import swiss.trustbroker.common.saml.util.SamlTracer;
 import swiss.trustbroker.common.saml.util.SamlUtil;
 import swiss.trustbroker.common.util.WSSConstants;
 import swiss.trustbroker.config.TrustBrokerProperties;
-import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.homerealmdiscovery.util.DefaultIdmStatusPolicyCallback;
 import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
 import swiss.trustbroker.saml.dto.CpResponse;
+import swiss.trustbroker.saml.dto.ResponseParameters;
 import swiss.trustbroker.saml.service.RelyingPartyService;
 import swiss.trustbroker.saml.util.AssertionValidator;
+import swiss.trustbroker.saml.util.AttributeFilterUtil;
 import swiss.trustbroker.saml.util.ResponseFactory;
 import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.wstrust.util.WsTrustUtil;
@@ -84,21 +87,20 @@ public class WsTrustService {
 
 	private final AuditService auditService;
 
-	public RequestSecurityTokenResponseCollection createResponse(Map<Definition, List<String>> idmResponse,
-			List<Attribute> cpAttributes, Map<Definition, List<String>> properties, Assertion requestHeaderAssertion,
-			String addressFromRequest) {
+	private RequestSecurityTokenResponseCollection createResponse(List<Attribute> cpAttributes, CpResponse cpResponse,
+			Assertion requestHeaderAssertion, String addressFromRequest) {
 
 		RequestSecurityTokenResponseCollection responseCollection = (RequestSecurityTokenResponseCollection) XMLObjectSupport
 				.buildXMLObject(RequestSecurityTokenResponseCollection.ELEMENT_NAME);
 
-		responseCollection.getRequestSecurityTokenResponses().add(createSecurityTokenResponse(idmResponse, cpAttributes,
-				properties, requestHeaderAssertion, addressFromRequest));
+		responseCollection.getRequestSecurityTokenResponses().add(createSecurityTokenResponse(cpAttributes,
+				cpResponse, requestHeaderAssertion, addressFromRequest));
 
 		return responseCollection;
 	}
 
-	private RequestSecurityTokenResponse createSecurityTokenResponse(Map<Definition, List<String>> idmResponse,
-			List<Attribute> cpAttributes, Map<Definition, List<String>> properties, Assertion requestHeaderAssertion, String addressFromRequest) {
+	private RequestSecurityTokenResponse createSecurityTokenResponse(List<Attribute> cpAttributes,
+			CpResponse cpResponse, Assertion requestHeaderAssertion, String addressFromRequest) {
 		var requestSecurityTokenResponse =
 				(RequestSecurityTokenResponse) XMLObjectSupport.buildXMLObject(RequestSecurityTokenResponse.ELEMENT_NAME);
 
@@ -111,7 +113,7 @@ public class WsTrustService {
 
 		var assertionId = OpenSamlUtil.generateSecureRandomId();
 
-		var requestedSecurityToken = createRequestedSecurityToken(idmResponse, cpAttributes, properties,
+		var requestedSecurityToken = createRequestedSecurityToken(cpAttributes, cpResponse,
 				assertionId, requestHeaderAssertion, addressFromRequest);
 		requestSecurityTokenResponse.getUnknownXMLObjects().add(requestedSecurityToken);
 
@@ -133,13 +135,13 @@ public class WsTrustService {
 		return requestSecurityTokenResponse;
 	}
 
-	private RequestedSecurityToken createRequestedSecurityToken(Map<Definition, List<String>> idmResponse,
-			List<Attribute> cpAttributes, Map<Definition, List<String>> properties, String assertionId,
-			Assertion requestHeaderAssertion, String addressFromRequest) {
+	private RequestedSecurityToken createRequestedSecurityToken(List<Attribute> cpAttributes,
+			CpResponse cpResponse, String assertionId, Assertion requestHeaderAssertion, String addressFromRequest) {
 		var requestedSecurityToken =
 				(RequestedSecurityToken) XMLObjectSupport.buildXMLObject(RequestedSecurityToken.ELEMENT_NAME);
-		var assertion = createAssertion(idmResponse, cpAttributes, properties, assertionId, requestHeaderAssertion,
-				addressFromRequest);
+
+		var assertion = createAssertion(cpAttributes, cpResponse, assertionId, requestHeaderAssertion, addressFromRequest);
+
 		requestedSecurityToken.setUnknownXMLObject(assertion);
 
 		// trace
@@ -151,77 +153,74 @@ public class WsTrustService {
 		return requestedSecurityToken;
 	}
 
-	private Assertion createAssertion(Map<Definition, List<String>> idmResponse, List<Attribute> cpAttributes,
-			Map<Definition, List<String>> properties, String assertionId, Assertion requestHeaderAssertion, String addressFromRequest) {
-		var assertion = OpenSamlUtil.buildAssertionObject(trustBrokerProperties.getSkinnyAssertionNamespaces());
+	Assertion createAssertion(List<Attribute> cpAttributes,
+			CpResponse cpResponse, String assertionId, Assertion requestHeaderAssertion, String addressFromRequest) {
 
-		assertion.setID(assertionId);
-		assertion.setIssueInstant(Instant.now());
-		assertion.setVersion(SAMLVersion.VERSION_20);
+		var params = buildResponseParams(assertionId, requestHeaderAssertion, addressFromRequest);
 
-		var issuer = trustBrokerProperties.getIssuer();
-		assertion.setIssuer(SamlFactory.createIssuer(issuer));
+		var rp = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(params.getIssuerId(), null);
+		var constAttr = relyingPartySetupService.getConstantAttributes(addressFromRequest, null);
+		List<String> contextClasses = getAuthnContextClasses(requestHeaderAssertion);
 
-		var rp = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, null);
-		var signature = SamlFactory.prepareSignableObject(
-				assertion,
-				rp.getSignatureParametersBuilder().build());
+		var userDetails = AttributeFilterUtil.filteredUserDetails(cpResponse.getUserDetails(), cpResponse.getIdmLookup());
+		cpResponse.setUserDetails(DefinitionUtil.deduplicatedRpAttributes(userDetails, cpResponse.getProperties(),
+				constAttr));
+		cpAttributes = SamlFactory.filterDuplicatedAttributes(cpAttributes);
 
-		var requestNameId = requestHeaderAssertion.getSubject().getNameID();
-		var nameIdFormat = requestNameId.getFormat();
-		var nameId = SamlFactory.createNameId(requestNameId.getValue(), nameIdFormat,
-				requestNameId.getNameQualifier());
+		var assertion = ResponseFactory.createSamlAssertion(cpResponse, constAttr, contextClasses, params, cpAttributes);
 
-		// Allow Condition.notOnOrAfter to be customizable per calling RP
-		var tokenLifetime = relyingPartySetupService.getTokenLifetime(addressFromRequest, null);
-		assertion.setSubject(SamlFactory.createSubject(nameId, null, null, tokenLifetime));
-		assertion.setConditions(SamlFactory.createConditions(addressFromRequest, tokenLifetime));
-
-		ConstAttributes constantAttributes = relyingPartySetupService.getConstantAttributes(addressFromRequest, null);
-
-		var rpClientName = relyingPartySetupService.getRpClientName(addressFromRequest, null);
-		assertion.getAttributeStatements()
-				.add(createAttributeStatement(idmResponse, constantAttributes, cpAttributes, properties, rpClientName));
-		var authnContextClassRef =
-				requestHeaderAssertion.getAuthnStatements().get(0).getAuthnContext().getAuthnContextClassRef().getURI();
-		List<String> requestAuthnContextClassRefs = List.of(authnContextClassRef);
-		assertion.getAuthnStatements().addAll(SamlFactory.createAuthnState(requestAuthnContextClassRefs, null, Instant.now()));
-
-		SamlUtil.signSamlObject(assertion, signature, trustBrokerProperties.getSkinnyAssertionNamespaces());
+		SignatureParameters signatureParameters = rp.getSignatureParametersBuilder()
+									  .skinnyAssertionNamespaces(trustBrokerProperties.getSkinnyAssertionNamespaces())
+									  .build();
+		SamlFactory.signSignableObject(assertion, signatureParameters);
 
 		return assertion;
 	}
 
-	public static AttributeStatement createAttributeStatement(Map<Definition, List<String>> userDetailsFromIdm,
-			ConstAttributes constAttr, List<Attribute> cpAttributes, Map<Definition, List<String>> properties, String clientName) {
-		Collection<Attribute> attributes = createAttributes(userDetailsFromIdm, constAttr, properties, clientName);
-		if (cpAttributes != null && !cpAttributes.isEmpty()) {
-			attributes.addAll(cpAttributes);
-		}
-		List<Attribute> filteredAttributes = SamlFactory.filterDuplicatedAttributes(attributes);
-		return SamlFactory.createAttributeStatement(filteredAttributes);
+	private ResponseParameters buildResponseParams(String assertionId, Assertion requestHeaderAssertion,
+			String addressFromRequest) {
+		var requestNameId = getNameID(requestHeaderAssertion);
+		var tokenLifetime = relyingPartySetupService.getTokenLifetime(addressFromRequest, null);
+		return ResponseParameters.builder()
+								 .conversationId(assertionId)
+								 .issuerInstant(Instant.now())
+								 .issuerId(addressFromRequest)
+								 .federationServiceIssuerId(trustBrokerProperties.getIssuer())
+								 .nameId(requestNameId.getValue())
+								 .nameIdFormat(requestNameId.getFormat())
+								 .nameIdQualifier(requestNameId.getNameQualifier())
+								 .rpAuthnRequestId(null)
+								 .recipientId(null)
+								 .authnStatementInstant(Instant.now())
+								 .subjectValiditySeconds(tokenLifetime)
+								 .audienceValiditySeconds(tokenLifetime)
+								 .cpAttrOriginIssuer(null)
+								 .setSessionIndex(false)
+								 .rpClientName(relyingPartySetupService.getRpClientName(addressFromRequest, null))
+								 .skinnyAssertionStyle(trustBrokerProperties.getSkinnyAssertionNamespaces())
+								 .build();
 	}
 
-	static Collection<Attribute> createAttributes(Map<Definition, List<String>> userDetailsFromIdm,
-			ConstAttributes constAttr, Map<Definition, List<String>> properties, String clientName) {
-		List<Attribute> attributeList = new ArrayList<>();
-
-		List<Attribute> idmAttributes = ResponseFactory.createUserDetailsAttributes(userDetailsFromIdm, clientName);
-		if (!idmAttributes.isEmpty()) {
-			attributeList.addAll(idmAttributes);
+	private static NameID getNameID(Assertion assertion) {
+		Subject subject = assertion.getSubject();
+		if (subject == null) {
+			throw new TechnicalException(String.format("Missing Assertion.Subject from RST with id=%s", assertion.getID()));
 		}
+		return subject.getNameID();
+	}
 
-		List<Attribute> constAttributes = ResponseFactory.createConstAttributes(constAttr, clientName);
-		if (!constAttributes.isEmpty()) {
-			attributeList.addAll(constAttributes);
+	private static List<String> getAuthnContextClasses(Assertion requestHeaderAssertion) {
+		List<String> contextClasses = Collections.emptyList();
+		if (requestHeaderAssertion == null || requestHeaderAssertion.getAuthnStatements().isEmpty()) {
+			return contextClasses;
 		}
-
-		List<Attribute> userProperties = ResponseFactory.createUserDetailsAttributes(properties, clientName);
-		if (!userProperties.isEmpty()) {
-			attributeList.addAll(userProperties);
+		var authnContext = requestHeaderAssertion.getAuthnStatements().get(0).getAuthnContext();
+		if(authnContext != null && authnContext.getAuthnContextClassRef() != null &&
+				authnContext.getAuthnContextClassRef().getURI() != null) {
+			var authnContextClassRef = authnContext.getAuthnContextClassRef().getURI();
+			contextClasses = List.of(authnContextClassRef);
 		}
-
-		return attributeList;
+		return contextClasses;
 	}
 
 	public RequestSecurityTokenResponseCollection processSecurityTokenRequest(
@@ -234,8 +233,6 @@ public class WsTrustService {
 		else {
 			log.warn("trustbroker.config.security.validateSecurityTokenRequestAssertion=false, XTB validation disabled!!!");
 		}
-
-		List<AttributeStatement> requestAttributeStatements = headerAssertion.getAttributeStatements();
 
 		// trace
 		SamlTracer.logSamlObject(">>>>> Incoming RST", headerAssertion);
@@ -262,8 +259,7 @@ public class WsTrustService {
 
 		scriptService.processRpBeforeIdm(cpResponse, null, addressFromRequest, "");
 
-		Map<Definition, List<String>> queryResponse = getResponseQueryElements(headerAssertion, addressFromRequest, cpResponse);
-		cpResponse.getUserDetails().putAll(queryResponse);
+		getResponseQueryElements(headerAssertion, addressFromRequest, cpResponse);
 
 		// Filter by RP config AttributeSelection
 		List<Definition> rpConfigAttributesDefinition =
@@ -276,11 +272,13 @@ public class WsTrustService {
 
 		relyingPartyService.filterPropertiesSelection(cpResponse, addressFromRequest, "");
 
+		List<AttributeStatement> requestAttributeStatements = headerAssertion.getAttributeStatements();
 		List<Attribute> cpAttributes = createCpAttributes(cpResponse.getAttributes(), rpConfigAttributesDefinition,
 				requestAttributeStatements, headerAssertion);
 
-		return createResponse(cpResponse.getUserDetails(), cpAttributes, cpResponse.getProperties(), headerAssertion,
-				addressFromRequest);
+		cpResponse.setAttributes(null);
+
+		return createResponse(cpAttributes, cpResponse, headerAssertion, addressFromRequest);
 	}
 
 	private static void filterCpAttributesByRpConfig(List<Definition> rpConfigAttributesDefinition, CpResponse cpResponse) {
@@ -393,10 +391,11 @@ public class WsTrustService {
 		return null;
 	}
 
-	private Map<Definition, List<String>> getResponseQueryElements(Assertion headerAssertion, String addressFromRequest,
+	private void getResponseQueryElements(Assertion headerAssertion, String addressFromRequest,
 			CpResponse cpResponse) {
 
-		if (headerAssertion.getSubject().getNameID() == null || headerAssertion.getSubject().getNameID().getValue() == null) {
+		Subject subject = headerAssertion.getSubject();
+		if (subject == null || subject.getNameID() == null || subject.getNameID().getValue() == null) {
 			throw new TechnicalException(String.format("Missing NameId from Assertion with id=%s for Address=%s",
 					headerAssertion.getID(), addressFromRequest));
 		}
@@ -405,18 +404,16 @@ public class WsTrustService {
 			throw new TechnicalException(String.format("Missing Issuer from Assertion with id=%s ", headerAssertion.getID()));
 		}
 
-		Map<Definition, List<String>> response = new HashMap<>();
 		var relyingPartyConfig = RelyingParty.builder().id(addressFromRequest).build();
 		var callback = new DefaultIdmStatusPolicyCallback(cpResponse);
 
 		for (var idmService : idmServices) {
-			var queryResponse = idmService.getAttributesFromIdm(
-					relyingPartyConfig, cpResponse, cpResponse.getIdmLookup(), callback);
-			queryResponse.ifPresent(idmResult -> DefinitionUtil.mapCpAttributeList(idmResult.getUserDetails(), response));
+			var queryResponse = idmService.getAttributes(relyingPartyConfig, cpResponse, cpResponse.getIdmLookup(), callback);
+			if (queryResponse.isPresent()) {
+				DefinitionUtil.mapCpAttributeList(queryResponse.get().getUserDetails(), cpResponse.getUserDetails());
+			}
 		}
-		return response;
 	}
-
 
 	private CpResponse createCpResponseDto(Assertion headerAssertion, String addressFromRequest) {
 		var issuer = headerAssertion.getIssuer();

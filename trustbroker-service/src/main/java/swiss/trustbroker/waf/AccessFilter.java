@@ -50,7 +50,7 @@ public class AccessFilter implements Filter {
 			// APIs (/adfs/ls included below)
 			+ "|/api/v1/.*"
 			// SAML endpoints
-			+ "|/adfs/.*|/HRD|/HRD/.*|/AdfsGui/.*|/[F|f]ederation[M|m]etadata/.*"
+			+ "|/adfs/.*|/HRD|/HRD/.*|/AdfsGui/.*|/FederationMetadata/.*|/federationmetadata/.*"
 			// assets referenced by UI (some of which are unfortunately in the context root)
 			+ "|/assets/.*|/js/.*|/[^/]*.(js|css|woff2?|ttf|eot|svg|html)"
 			+ "|/favicon.ico"
@@ -80,20 +80,6 @@ public class AccessFilter implements Filter {
 		var httpRequest = (HttpServletRequest) request;
 		var httpResponse = (HttpServletResponse) response;
 		var path = httpRequest.getRequestURI();
-
-		// ADFS migration workarounds: When case-insensitive access is used, provide an ERROR because
-		// when we get rid of ADFS REST endpoints are always case-sensitive and clients need to change this
-		// HttpServletRequestWrapper does not work as servlet chain is computed before we patch the URL in a wrapper.
-		// maybe we will need some stupid workaround for our AppController REST endpoint e.g.
-		// https://github.com/spring-projects/spring-framework/issues/17876
-		if (WebSupport.isFederationMetaRequest(httpRequest) && !WebSupport.isSupportedFederationMeta(path)) {
-			if (log.isErrorEnabled()) {
-				log.error("Access to federationmetadata={} will break with ADFS gone, use [{}, {}]",
-						path, WebSupport.XTB_ALTERNATE_METADATA_ENDPOINT,
-						WebSupport.XTB_ALTERNATE_METADATA_ENDPOINT.toLowerCase());
-			}
-			path = path.toLowerCase();
-		}
 
 		// firewall
 		if (INTERNAL_ALLOWED_PATHS.matcher(path).matches()) {

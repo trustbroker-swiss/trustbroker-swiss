@@ -46,7 +46,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 import jakarta.servlet.http.Cookie;
 import org.apache.xml.security.utils.EncryptionConstants;
@@ -228,7 +227,10 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 	@Autowired
 	private RelyingPartyService relyingPartyService;
 
-	private ServiceSamlTestUtil samlTestUtil = new ServiceSamlTestUtil();
+	private final ServiceSamlTestUtil samlTestUtil = new ServiceSamlTestUtil();
+
+	@Autowired
+	private ApiSupport apiSupport;
 
 	@BeforeAll
 	static void setup() {
@@ -250,11 +252,11 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 	}
 
 	@ParameterizedTest
-	@CsvSource(value = { "true,true", "false,false", "false,true" })
-	void handleLogoutRequest(boolean succeedLogout, boolean isStatePresent) throws UnsupportedEncodingException {
+	@CsvSource(value = { "true", "false", "false" })
+	void handleLogoutRequest(boolean succeedLogout) throws UnsupportedEncodingException {
 		var request = new MockHttpServletRequest();
 		var response = new MockHttpServletResponse();
-		var logoutRequest = setupMockData(request, succeedLogout, isStatePresent, null);
+		var logoutRequest = setupMockData(request, succeedLogout, null);
 
 		var signatureContext = SignatureContext.forPostBinding();
 		relyingPartyService.handleLogoutRequest(outputService, logoutRequest, RELAY_STATE, request, response, signatureContext);
@@ -270,7 +272,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 	void handleLogoutRequestInvalidBinding(ArtifactBindingMode mode, SignatureContext signatureContext) {
 		var request = new MockHttpServletRequest();
 		var response = new MockHttpServletResponse();
-		var logoutRequest = setupMockData(request, Boolean.valueOf(true), true, mode);
+		var logoutRequest = setupMockData(request, true, mode);
 
 		var ex = assertThrows(RequestDeniedException.class, () -> relyingPartyService.handleLogoutRequest(outputService,
 				logoutRequest, RELAY_STATE,	request, response, signatureContext));
@@ -338,9 +340,10 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		int propertiesSize = definitionListMap.size();
 
 		assertEquals(1, propertiesSize);
-		List<String> definitionNames = definitionListMap.keySet().stream()
+		List<String> definitionNames = definitionListMap.keySet()
+				.stream()
 				.map(Definition::getName)
-				.collect(Collectors.toList());
+				.toList();
 		assertTrue(definitionNames.contains(CoreAttributeName.HOME_REALM.getName()));
 		assertFalse(definitionNames.contains(CoreAttributeName.HOME_NAME.getName()));
 		assertFalse(definitionNames.contains(CoreAttributeName.ISSUED_CLIENT_EXT_ID.getName()));
@@ -393,7 +396,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var cpResponseData = ArgumentCaptor.forClass(CpResponseData.class);
 		var queryData = ArgumentCaptor.forClass(IdmRequests.class);
 		var callback = ArgumentCaptor.forClass(IdmStatusPolicyCallback.class);
-		verify(idmService, times(2)).getAttributesFromIdm(relyingPartyConfig.capture(),
+		verify(idmService, times(1)).getAttributesAudited(relyingPartyConfig.capture(),
 				cpResponseData.capture(), queryData.capture(), callback.capture());
 		assertThat(relyingPartyConfig.getValue().getId(), is(rpIssuer));
 		assertThat(cpResponseData.getValue().getIssuerId(), is(cpResponse.getIssuer()));
@@ -498,26 +501,26 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var relyingParty = givenMockedRelyingParty(false);
 		givenMockedOidcProperties(PERIMETER_URL);
 
-		relyingPartyService.setAssertion(authnResponse, assertion, relyingParty);
+		relyingPartyService.addAssertionToResponse(authnResponse, assertion, relyingParty);
 		assertNotNull(authnResponse.getAssertions());
 		assertNotNull(authnResponse.getAssertions().get(0));
 		assertEquals(1, authnResponse.getAssertions().size());
 	}
 
 	@Test
-	void testSetAssertionEncryptionWithDefaults() {
+	void testAddAssertionToResponseEncryptionWithDefaults() {
 		Response authnResponse = givenResponseWithoutAssertion();
 		Assertion assertion = givenAssertion();
 		RelyingParty relyingParty = givenRelyingPartyWithEncryptionCred();
 		givenMockedOidcProperties(PERIMETER_URL);
 
-		relyingPartyService.setAssertion(authnResponse, assertion, relyingParty);
+		relyingPartyService.addAssertionToResponse(authnResponse, assertion, relyingParty);
 		expectedResult(authnResponse, EncryptionConstants.ALGO_ID_BLOCKCIPHER_AES256,
 				EncryptionConstants.ALGO_ID_KEYTRANSPORT_RSAOAEP);
 	}
 
 	@Test
-	void testSetAssertionEncryption() {
+	void testAddAssertionToResponseEncryption() {
 		Response authnResponse = givenResponseWithoutAssertion();
 		Assertion assertion = givenAssertion();
 		String dataEncryAlg = EncryptionConstants.ALGO_ID_BLOCKCIPHER_AES192;
@@ -525,7 +528,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		givenMockedOidcProperties(PERIMETER_URL);
 		RelyingParty relyingParty = givenRelyingPartyWithEncryption(dataEncryAlg, keyEncryAlg);
 
-		relyingPartyService.setAssertion(authnResponse, assertion, relyingParty);
+		relyingPartyService.addAssertionToResponse(authnResponse, assertion, relyingParty);
 		expectedResult(authnResponse, dataEncryAlg, keyEncryAlg);
 	}
 
@@ -544,10 +547,11 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		assertThat(traceId, startsWith(requestId));
 		assertThat(traceId.length(), is(49));
 		var stateData = givenState(RP_ISSUER_ID);
+		stateData.setCpResponse(cpResponse);
 		doReturn(stateData).when(stateCacheService).find(RELAY_STATE, RelyingPartyService.class.getSimpleName());
 		var mockHttpResponse = new MockHttpServletResponse();
-		var result = relyingPartyService.sendSuccessSamlResponseToRp(outputService, responseData, cpResponse, stateData,
-				mockHttpRequest, mockHttpResponse, null, null);
+		var result = relyingPartyService.sendSuccessSamlResponseToRp(outputService, responseData, stateData, null,
+				mockHttpRequest, mockHttpResponse);
 		assertThat(result, is("/app/failure/denied/" + traceId + "/" + ApiSupport.encodeUrlParameter("sessionId") + "/continue"));
 	}
 
@@ -564,12 +568,13 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		cpResponse.setStatusNestedCode(nestedCode);
 		cpResponse.setStatusMessage(statusMessage);
 		var stateData = givenState(RP_ISSUER_ID);
+		stateData.setCpResponse(cpResponse);
 		var mockHttpRequest = new MockHttpServletRequest();
 		var mockHttpResponse = new MockHttpServletResponse();
 		doReturn(stateData).when(stateCacheService).find(RELAY_STATE, RelyingPartyService.class.getSimpleName());
 		mockSecurityChecks();
-		var result = relyingPartyService.sendSuccessSamlResponseToRp(outputService, responseData, cpResponse, stateData,
-				mockHttpRequest, mockHttpResponse, null, null);
+		var result = relyingPartyService.sendSuccessSamlResponseToRp(outputService, responseData, stateData, null,
+				mockHttpRequest, mockHttpResponse);
 		assertThat(result, is(nullValue()));
 		var response = samlTestUtil.extractSamlPostResponse(mockHttpResponse.getContentAsString());
 		assertThat(response.getStatus().getStatusCode().getValue(), is(StatusCode.RESPONDER));
@@ -584,14 +589,14 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		givenMockedOidcProperties(PERIMETER_URL);
 		var responseData = ResponseData.of(authnResponse, RELAY_STATE, null);
 		var relyingParty = givenMockedRelyingParty(useArtifactBinding);
-		var cpResponse = givenCpResponse(CP_ISSUER_ID, CLIENT_EXT_ID, HOME_NAME, USER_NAME_ID, false);
-		cpResponse.setRpDestination(DESTINATION_URL);
+		var cpResponse = givenCpResponse();
 		var stateData = givenState(RP_ISSUER_ID);
 		stateData.getSpStateData().setOidcClientId(CLIENT_ID);
+		stateData.setCpResponse(cpResponse);
 		var mockHttpRequest = new MockHttpServletRequest();
 		var mockHttpResponse = new MockHttpServletResponse();
 		mockSecurityChecks();
-		givenMockedClaimsParty();
+		mockClaimsParty();
 		var arResult = AccessRequestResult.of(false, null);
 		var httpData = AccessRequestHttpData.of(mockHttpRequest);
 		doReturn(arResult)
@@ -600,8 +605,8 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		doReturn(ProfileSelectionResult.empty()).when(profileSelectionService).doInitialProfileSelection(
 				ProfileSelectionData.builder().exchangeId(RELAY_STATE).oidcClientId(CLIENT_ID).build(),
 				relyingParty, cpResponse, stateData);
-		var result = relyingPartyService.sendSuccessSamlResponseToRp(outputService, responseData, cpResponse, stateData,
-				mockHttpRequest, mockHttpResponse, null, null);
+		var result = relyingPartyService.sendSuccessSamlResponseToRp(outputService, responseData, stateData, null,
+				mockHttpRequest, mockHttpResponse);
 		assertThat(result, is(nullValue()));
 		validateResponse(useArtifactBinding, StatusCode.SUCCESS, mockHttpResponse);
 	}
@@ -609,24 +614,61 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 	@ParameterizedTest
 	@CsvSource(value = { "false", "true" })
 	void sendFailedSamlResponseToRp(boolean useArtifactBinding) throws Exception {
-		var authnResponse = givenResponseWithoutAssertion();
-		var statusCode = StatusCode.AUTHN_FAILED;
-		var status = SamlFactory.createResponseStatus(statusCode);
-		authnResponse.setStatus(status);
-		givenMockedOidcProperties(PERIMETER_URL);
-		var responseData = ResponseData.of(authnResponse, RELAY_STATE, null);
+		var responseData = givenFailedResponseData();
 		givenMockedRelyingParty(useArtifactBinding);
-		var cpResponse = givenCpResponse(CP_ISSUER_ID, CLIENT_EXT_ID, HOME_NAME, USER_NAME_ID, false);
-		cpResponse.setRpDestination(DESTINATION_URL);
+		var cpResponse = givenCpResponse();
 		var stateData = givenState(RP_ISSUER_ID);
-		doReturn(stateData).when(stateCacheService).find(RELAY_STATE, RelyingPartyService.class.getSimpleName());
+		stateData.setCpResponse(cpResponse);
 		var mockHttpRequest = new MockHttpServletRequest();
 		var mockHttpResponse = new MockHttpServletResponse();
 		mockSecurityChecks();
 		var result = relyingPartyService.sendFailedSamlResponseToRp(outputService, responseData, mockHttpRequest,
-				mockHttpResponse, cpResponse);
+				mockHttpResponse, stateData);
 		assertThat(result, is(nullValue()));
-		validateResponse(useArtifactBinding, statusCode, mockHttpResponse);
+		validateResponse(useArtifactBinding, StatusCode.AUTHN_FAILED, mockHttpResponse);
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void sendFailedSamlResponseToRpAborted(String statusCode, String statusMessage, String nestedStatusCode, Flow flow,
+			String expectedRedirectUrl) throws Exception {
+		var responseData = givenFailedResponseData();
+		givenMockedRelyingParty(false);
+		var cpResponse = givenCpResponse();
+		cpResponse.abort(statusCode, statusMessage, nestedStatusCode, flow);
+		var stateData = givenState(RP_ISSUER_ID);
+		stateData.setCpResponse(cpResponse);
+		var mockHttpRequest = new MockHttpServletRequest();
+		var mockHttpResponse = new MockHttpServletResponse();
+		mockSecurityChecks();
+		var result = relyingPartyService.sendFailedSamlResponseToRp(outputService, responseData, mockHttpRequest,
+				mockHttpResponse, stateData);
+		if (expectedRedirectUrl == null) {
+			assertThat(result, is(nullValue()));
+			validateResponse(false, statusCode, mockHttpResponse);
+		}
+		else {
+			assertNotNull(result);
+			assertTrue(result.matches(expectedRedirectUrl), result + " does not match " + expectedRedirectUrl);
+		}
+	}
+
+	static Object[][] sendFailedSamlResponseToRpAborted() {
+		var redirectUrl = "https://localhost/app";
+		return new Object[][] {
+				{ StatusCode.AUTHN_FAILED, null, null, null, null },
+				{ StatusCode.RESPONDER, "Failed", "Invalid",
+						Flow.builder().id("FlowId").reLogin(true).build(),
+						ApiSupport.ERROR_PAGE_URL + "/flowid/[^.]+[.][^.]+/" + Flow.RELOGIN_FLAG },
+				{ StatusCode.RESPONDER, "Failed", "Invalid",
+						Flow.builder().id("TEST").appContinue(true).build(),
+						ApiSupport.ERROR_PAGE_URL + "/test/[^.]+[.][^.]+/" + Flow.CONTINUE_FLAG },
+				{ StatusCode.RESPONDER, "Failed", "Invalid",
+						Flow.builder().id("Sup").supportInfo(true).build(),
+						ApiSupport.ERROR_PAGE_URL + "/sup/[^.]+[.][^.]+/" + Flow.SUPPORT_FLAG },
+				{ StatusCode.RESPONDER, "App blocked", "Blocked",
+						Flow.builder().id("Any").appRedirectUrl(redirectUrl).build(), redirectUrl }
+		};
 	}
 
 	@ParameterizedTest
@@ -675,7 +717,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 			var cpResponseData = ArgumentCaptor.forClass(CpResponseData.class);
 			var queryData = ArgumentCaptor.forClass(IdmRequests.class);
 			var callback = ArgumentCaptor.forClass(IdmStatusPolicyCallback.class);
-			verify(idmService, times(1)).getAttributesFromIdm(relyingPartyConfig.capture(),
+			verify(idmService, times(1)).getAttributes(relyingPartyConfig.capture(),
 					cpResponseData.capture(), queryData.capture(), callback.capture());
 			assertThat(relyingPartyConfig.getValue().getId(), is(RP_ISSUER_ID));
 			assertThat(cpResponseData.getValue().getIssuerId(), is(CP_ISSUER_ID));
@@ -699,9 +741,8 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var stateData = givenState(RP_ISSUER_ID);
 		stateData.getSpStateData().setOidcClientId(CLIENT_ID);
 		doReturn(stateData).when(stateCacheService).find(RELAY_STATE, RelyingPartyService.class.getSimpleName());
-		var cpResponse = givenCpResponse(CP_ISSUER_ID, CLIENT_EXT_ID, HOME_NAME, USER_NAME_ID, false);
-		cpResponse.setRpDestination(DESTINATION_URL);
-		givenMockedClaimsParty();
+		var cpResponse = givenCpResponse();
+		mockClaimsParty();
 		var mockHttpRequest = new MockHttpServletRequest();
 		var mockHttpResponse = new MockHttpServletResponse();
 		var arResult = AccessRequestResult.of(false, null);
@@ -722,8 +763,10 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var relyingParty = givenMockedRelyingParty(false);
 		var stateData = givenStateDataWithCpResponse();
 		var value = "first1";
-		var idmResult = IdmResult.builder().userDetails(Map.of(CoreAttributeName.FIRST_NAME, List.of(value))).build();
-		doReturn(Optional.of(idmResult)).when(idmService).getAttributesFromIdm(any(), any(), any(), any());
+		var idmResult = IdmResult.builder().userDetails(
+				Map.of(Definition.ofName(CoreAttributeName.FIRST_NAME),
+				List.of(value))).build();
+		doReturn(Optional.of(idmResult)).when(idmService).getAttributesAudited(any(), any(), any(), any());
 
 		relyingPartyService.reloadIdmData(relyingParty, stateData);
 
@@ -811,9 +854,8 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 
 	@Test
 	void assertionEncryptionReqTest() {
-		String responseDestination = PERIMETER_URL;
 		String rpid = "rpid";
-		OidcProperties oidcConfig = givenMockedOidcProperties(responseDestination);
+		OidcProperties oidcConfig = givenMockedOidcProperties(PERIMETER_URL);
 
 		assertFalse(relyingPartyService.assertionEncryptionReq(null, false, rpid));
 		assertTrue(relyingPartyService.assertionEncryptionReq(SamlTestBase.dummyCredential(), false, rpid));
@@ -821,6 +863,20 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 
 		oidcConfig.setSamlEncrypt(true);
 		assertTrue(relyingPartyService.assertionEncryptionReq(SamlTestBase.dummyCredential(), true, rpid));
+	}
+
+	private CpResponse givenCpResponse() {
+		var cpResponse = givenCpResponse(CP_ISSUER_ID, CLIENT_EXT_ID, HOME_NAME, USER_NAME_ID, false);
+		cpResponse.setRpDestination(DESTINATION_URL);
+		return cpResponse;
+	}
+
+	private ResponseData<Response> givenFailedResponseData() {
+		var authnResponse = givenResponseWithoutAssertion();
+		var status = SamlFactory.createResponseStatus(StatusCode.AUTHN_FAILED);
+		authnResponse.setStatus(status);
+		givenMockedOidcProperties(PERIMETER_URL);
+		return ResponseData.of(authnResponse, RELAY_STATE, null);
 	}
 
 	private void mockSecurityChecks() {
@@ -887,12 +943,11 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 				.build();
 	}
 
-	private ClaimsParty givenMockedClaimsParty() {
+	private void mockClaimsParty() {
 		var claimsParty = ClaimsParty.builder()
 				.id(CP_ISSUER_ID)
 				.build();
 		doReturn(claimsParty).when(relyingPartySetupService).getClaimsProviderSetupByIssuerId(CP_ISSUER_ID, null);
-		return claimsParty;
 	}
 
 	private Assertion givenAssertion() {
@@ -961,8 +1016,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		assertThat(response.getCookies()[0].getValue(), is(""));
 	}
 
-	private LogoutRequest setupMockData(MockHttpServletRequest request, boolean succeedLogout, boolean statePresent,
-			ArtifactBindingMode mode) {
+	private LogoutRequest setupMockData(MockHttpServletRequest request, boolean statePresent, ArtifactBindingMode mode) {
 		// matching RPs
 		var issuer = "myIssuer";
 		var ssoGroup = "mySsoGroup";

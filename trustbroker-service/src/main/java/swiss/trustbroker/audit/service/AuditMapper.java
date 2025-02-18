@@ -20,7 +20,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
@@ -28,7 +27,6 @@ import java.util.function.LongConsumer;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.opensaml.saml.saml2.core.ArtifactResolve;
 import org.opensaml.saml.saml2.core.ArtifactResponse;
 import org.opensaml.saml.saml2.core.Assertion;
@@ -40,7 +38,6 @@ import org.opensaml.saml.saml2.core.RequestAbstractType;
 import org.opensaml.saml.saml2.core.Response;
 import org.opensaml.saml.saml2.core.StatusResponseType;
 import org.springframework.http.HttpHeaders;
-import swiss.trustbroker.api.sessioncache.dto.AttributeName;
 import swiss.trustbroker.audit.dto.AuditDto;
 import swiss.trustbroker.audit.dto.EventType;
 import swiss.trustbroker.audit.dto.OidcAuditData;
@@ -80,7 +77,7 @@ public abstract class AuditMapper {
 
 	private final AuditDto.AuditDtoBuilder builder;
 
-	private final Map<String, AuditDto.ResponseAttributeValue> responseAttributes;
+	private final Map<String, AuditDto.ResponseAttributeValues> responseAttributes;
 
 	private final TrustBrokerProperties trustBrokerProperties;
 
@@ -267,16 +264,16 @@ public abstract class AuditMapper {
 
 	private void mapFrom(Attribute attribute) {
 		var name = attribute.getName();
-		var attributeName = AttributeRegistry.forName(name);
+		var cid = isCid(name);
 		var values = SamlUtil.getAttributeValues(attribute);
 		if (values.size() == 1) {
-			addResponseAttribute(name, attributeName, values.get(0), AuditDto.AttributeSource.SAML_RESPONSE); // single value
+			addResponseAttribute(name, null, values.get(0), AuditDto.AttributeSource.SAML_RESPONSE, null, cid); // single value
 		}
 		else {
-			addResponseAttribute(name, attributeName, values, AuditDto.AttributeSource.SAML_RESPONSE); // list
+			addResponseAttribute(name, null, values, AuditDto.AttributeSource.SAML_RESPONSE, null, cid); // list
 		}
 		// overwrite conversationId if attribute was set by caller as a claim
-		if (attributeName != null && CoreAttributeName.CONVERSATION_ID.getName().equals(attributeName.getName())) {
+		if (CoreAttributeName.CONVERSATION_ID.equalsByNameOrNamespace(name)) {
 			var conversationId = values.get(0);
 			setIfNotNull(builder::conversationId, conversationId);
 			TraceSupport.switchToConversation(conversationId);
@@ -368,9 +365,8 @@ public abstract class AuditMapper {
 		if (definitions != null) {
 			definitions.forEach((key, value) -> {
 				if (value != null) {
-					var name = key.getName();
-					var attributeName = key.findAttributeName();
-					addResponseAttribute(name, attributeName, value, source);
+					var finalSource = mapSource(key.getSource(), source);
+					addResponseAttribute(key.getName(), key.getNamespaceUri(), value, finalSource, key.getSource(), key.getCid());
 				}
 			});
 		}
@@ -382,36 +378,41 @@ public abstract class AuditMapper {
 		if (claims != null) {
 			claims.forEach((key, value) -> {
 				if (value != null) {
-					var attributeName = AttributeRegistry.forName(key);
-					addResponseAttribute(key, attributeName, value, source);
+					var cid = isCid(key);
+					addResponseAttribute(key, null, value, source, null, cid);
 				}
 			});
 		}
 		return this;
 	}
 
-	private void addResponseAttribute(String name, AttributeName attributeName, Object value, AuditDto.AttributeSource source) {
+	private static AuditDto.AttributeSource mapSource(String querySource, AuditDto.AttributeSource source) {
+		if (querySource != null) {
+			// we loose some details in case of multiple queries for now but the counter will show ambiguities
+			return AuditDto.AttributeSource.IDM_RESPONSE;
+		}
+		return source;
+	}
+
+	private void addResponseAttribute(String name, String namespaceUri, Object value,
+			AuditDto.AttributeSource source, String querySource, Boolean cid) {
 		if (value == null || name == null) {
 			return;
 		}
+
 		// eliminate brackets in output showing 'value' instead of '[value]'
 		value = flattenList(value);
-		if (attributeName != null &&
-				(name.equals(attributeName.getNamespaceUri()) || name.equals(attributeName.getAltName()))) {
-			putResponseAttribute(attributeName.getName(), name, value, true, source);
-		}
-		else {
-			// Truncate name to part after last slash if we have no AttributeName for name
-			String originalName = null;
-			if (attributeName == null) {
-				var namePart = DefinitionUtil.truncateNamespace(name);
-				if (namePart != null) {
-					originalName = name;
-					name = namePart;
-				}
+
+		// handle name being passed in as FQ and swap FQ- and short-name
+		if (namespaceUri == null) {
+			var truncatedName = DefinitionUtil.truncateNamespace(name);
+			if (truncatedName != null) {
+				namespaceUri = name;
+				name = truncatedName;
 			}
-			putResponseAttribute(name, originalName, value, false, source);
 		}
+
+		putResponseAttribute(name, namespaceUri, value, source, querySource, cid);
 	}
 
 	private static Object flattenList(Object value) {
@@ -421,23 +422,19 @@ public abstract class AuditMapper {
 		return value;
 	}
 
-	// we keep the old behaviour of overwriting but added reference counting and logging to debug issues
-	private void putResponseAttribute(String name, String originalName, Object value, boolean fromAttribute,
-			AuditDto.AttributeSource source) {
-		var oldValue = responseAttributes.get(name);
-		long count = 1;
-		if (oldValue != null && (!StringUtils.equals(originalName, oldValue.getPostfix())
-				|| !Objects.equals(value, oldValue.getValue()))) {
-			log.debug("Audit logger ambiguity name={} source={} oldPostfix={} newPostfix={} oldValue={} newValue={}",
-					name, source, oldValue.getPostfix(), originalName, oldValue.getValue(), value);
-			count = oldValue.getCount() + 1;
-			// Keep value of FQ name if present unless we have truncated the name
-			if (!fromAttribute && oldValue.getPostfix() != null) {
-				value = oldValue.getValue();
-				originalName = oldValue.getPostfix();
-			}
+	private static Boolean isCid(String key) {
+		var attributeName = AttributeRegistry.forName(key);
+		return attributeName != null ? attributeName.getCid() : null;
+	}
+
+	// aggregate all values with same short name
+	private void putResponseAttribute(String name, String namespaceUri, Object value,
+			AuditDto.AttributeSource source, String querySource, Boolean cid) {
+		var attributeValues = responseAttributes.computeIfAbsent(name, key -> new AuditDto.ResponseAttributeValues());
+		var attributeValue = AuditDto.ResponseAttributeValue.of(value, namespaceUri, source, querySource, cid);
+		if (!attributeValues.getValues().contains(attributeValue)) {
+			attributeValues.getValues().add(attributeValue);
 		}
-		responseAttributes.put(name, AuditDto.ResponseAttributeValue.of(value, originalName, source, count));
 	}
 
 	private static <T> void setIfNotNull(Consumer<T> methodReference, T value) {

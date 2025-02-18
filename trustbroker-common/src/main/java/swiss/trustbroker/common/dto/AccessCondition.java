@@ -13,15 +13,20 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.api.profileselection.dto;
+package swiss.trustbroker.common.dto;
 
-import lombok.Builder;
-import lombok.Data;
+/**
+ * Resulting conditions for letting the user access. Set by scripts.
+ */
+public enum AccessCondition {
+	/**
+	 * Block user from accessing the application.
+	 */
+	BLOCK,
 
-@Data
-@Builder
-public class ProfileData {
-
-	private final String profileId;
+	/**
+	 * Trigger configured access request.
+	 */
+	TRIGGER_ACCESS_REQUEST
 
 }

@@ -68,7 +68,7 @@ public class SecurityPolicies implements Serializable {
 	private Boolean requireAudienceRestriction;
 
 	/**
-	 * Overrides the global tokenLifetimeSec for CP response AuthnInstant checks.
+	 * Overrides the global <code>tokenLifetimeSec</code> for CP response AuthnInstant checks.
 	 * <br/>
 	 * Defaults to 60 minutes, override if needed.
 	 * This is quite long time to transfer a SAML token from the issuer to its consumer to establish a relation between a user and
@@ -78,8 +78,11 @@ public class SecurityPolicies implements Serializable {
 	@Builder.Default
 	private Integer notOnOrAfterSeconds = 3600;
 
+	/**
+	 * Overrides the global <code>notOnOrAfterSeconds</code> for conditions <code>notOnOrAfter</code> if greater than zero.
+	 */
 	@XmlAttribute(name = "audienceNotOnOrAfterSeconds")
-	private Integer audienceNotOnOrAfterSeconds; // overrides notOnOrAfterSeconds if > zero
+	private Integer audienceNotOnOrAfterSeconds;
 
 	/**
 	 * If CP returns AuthnContext of value less than that, no SSO session is created.

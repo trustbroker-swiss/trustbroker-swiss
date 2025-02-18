@@ -40,6 +40,8 @@ public abstract class ResponseStatus implements Serializable {
 
     protected Flow flowPolicy;
 
+    protected String accessCondition; // set by scripts, consumed by Access Request
+
     // used by scripts
     public void abort(String statusCode, String statusMessage, String statusNestedCode) {
         abort(statusCode, statusMessage, statusNestedCode, null);
@@ -64,12 +66,19 @@ public abstract class ResponseStatus implements Serializable {
         return this.statusCode != null;
     }
 
-    @JsonIgnore // bean method
+	// used by scripts
+	public void accessCondition(String accessCondition) {
+		this.accessCondition = accessCondition;
+	}
+
     public boolean showErrorPage() {
         return flowPolicy != null && flowPolicy.showErrorPage();
     }
 
-    @JsonIgnore // bean method
+	public boolean doAppRedirect() {
+		return flowPolicy != null && flowPolicy.doAppRedirect();
+	}
+
     public String statusMessage() {
         return statusMessage(null);
     }
@@ -81,7 +90,6 @@ public abstract class ResponseStatus implements Serializable {
         return getSamlCode(samlProperties);
     }
 
-    @JsonIgnore // bean method
     public String nestedStatusCode() {
         return nestedStatusCode(null);
     }
@@ -100,12 +108,10 @@ public abstract class ResponseStatus implements Serializable {
         return SamlStatusCode.addNamespace(samlProperties, flowPolicy.getId(), flowPolicy.getNamespacePrefix());
     }
 
-    @JsonIgnore // bean method
     public String uiErrorCode() {
         return flowPolicy != null ? SamlStatusCode.toUiErrorCode(flowPolicy.getId()) : null;
     }
 
-    @JsonIgnore // bean method
     public List<String> uiFlags() {
         return flowPolicy != null ? flowPolicy.uiFlags() : Collections.emptyList();
     }

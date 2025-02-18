@@ -359,8 +359,8 @@ class ApiSupportTest {
 			"/,false",
 			ApiSupport.FRONTEND_CONTEXT + ",false",
 			ApiSupport.API_CONTEXT + ",true",
-			ApiSupport.ADFS_PATH + "/ls,true",
-			ApiSupport.TRUSTBROKER_ADFS_PATH + "/ls,true"
+			ApiSupport.ADFS_ENTRY_URL + ",true",
+			ApiSupport.XTB_LEGACY_ENTRY_URL + ",true"
 	}, nullValues = "null")
 	void testIsSamlPath(String path, boolean expected) {
 		assertThat(ApiSupport.isSamlPath(path), is(expected));

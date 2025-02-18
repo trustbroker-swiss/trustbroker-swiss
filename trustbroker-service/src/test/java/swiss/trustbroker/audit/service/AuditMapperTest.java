@@ -67,6 +67,7 @@ import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.NetworkConfig;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.Definition;
+import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.ResponseParameters;
 import swiss.trustbroker.saml.util.ResponseFactory;
@@ -92,6 +93,8 @@ class AuditMapperTest {
 
 	public static final String TEST_CLAIMS_NAME = "myClaimsName";
 
+	public static final String TEST_CLAIMS_NAME2 = "myClaimsName2";
+
 	public static final String TEST_SESSION_ID = "mySessionId";
 
 	public static final String TEST_FIRST_NAME = "myFirstName";
@@ -116,7 +119,7 @@ class AuditMapperTest {
 				.mapFrom((HttpServletRequest) null)
 				.mapFrom((StateData) null)
 				.mapFrom(new StateData()) // no CpResponse DTO
-				.mapFromDefinitions(null, AuditDto.AttributeSource.IDP_RESPONSE)
+				.mapFromDefinitions(null, AuditDto.AttributeSource.CP_RESPONSE)
 				.mapFromDefinitions(Collections.emptyMap(), AuditDto.AttributeSource.SAML_RESPONSE)
 				.mapFrom((AccessRequestSessionState) null)
 				.build();
@@ -129,14 +132,14 @@ class AuditMapperTest {
 		cpResponse.setIssuer(TEST_ISSUER);
 		cpResponse.setDestination(TEST_DESTINATION);
 		cpResponse.setAttribute(CoreAttributeName.CLAIMS_NAME.getNamespaceUri(), TEST_CLAIMS_NAME);
-		cpResponse.setAttribute(CoreAttributeName.CLAIMS_NAME.getName(), "ignoredClaimsName");
+		cpResponse.setAttribute(CoreAttributeName.CLAIMS_NAME.getName(), TEST_CLAIMS_NAME2);
 		cpResponse.setAttribute(CoreAttributeName.EMAIL.getNamespaceUri(), TEST_EMAIL);
 		cpResponse.setAttribute(CoreAttributeName.FIRST_NAME.getName(), TEST_FIRST_NAME);
 		cpResponse.setAttribute(CoreAttributeName.HOME_REALM.getName(), "dropped");
 		cpResponse.setOriginalAttributes(new HashMap<>(cpResponse.getAttributes())); // simulate saving incoming CP attrs
 		cpResponse.removeAttributes(CoreAttributeName.HOME_REALM.getName()); // simulate CP attr filtering
 		// result not mapped inbound:
-		cpResponse.setResult(CoreAttributeName.NAME_ID.getName(), List.of("ignoredValue"));
+		cpResponse.setResult(Definition.ofName(CoreAttributeName.NAME_ID), List.of("ignoredValue"));
 
 		var auditDto = new InboundAuditMapper(trustBrokerProperties)
 				.mapFrom(cpResponse)
@@ -146,19 +149,29 @@ class AuditMapperTest {
 		assertThat(auditDto.getDestination(), is(TEST_DESTINATION));
 		assertThat(auditDto.getIssuer(), is(TEST_ISSUER));
 		assertThat(auditDto.getResponseAttributes(), is(not(nullValue())));
-		assertThat(auditDto.getResponseAttributes().size(), is(4));
+		assertThat(auditDto.getResponseAttributes().size(), is(5));
+		var truncatedClaimsName = DefinitionUtil.truncateNamespace(CoreAttributeName.CLAIMS_NAME.getNamespaceUri());
+		assertThat(auditDto.getResponseAttributes().get(truncatedClaimsName),
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME, CoreAttributeName.CLAIMS_NAME.getNamespaceUri(),
+								AuditDto.AttributeSource.CP_RESPONSE, null, null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.CLAIMS_NAME.getName()),
-				is(AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME, CoreAttributeName.CLAIMS_NAME.getNamespaceUri(),
-						AuditDto.AttributeSource.IDP_RESPONSE, 2)));
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME2, null,
+						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.FIRST_NAME.getName()),
-				is(AuditDto.ResponseAttributeValue.of(TEST_FIRST_NAME, null,
-						AuditDto.AttributeSource.IDP_RESPONSE, 1)));
-		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.EMAIL.getName()),
-				is(AuditDto.ResponseAttributeValue.of(TEST_EMAIL, CoreAttributeName.EMAIL.getNamespaceUri(),
-						AuditDto.AttributeSource.IDP_RESPONSE, 1)));
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(TEST_FIRST_NAME, null,
+						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
+		var truncatedEmail = DefinitionUtil.truncateNamespace(CoreAttributeName.EMAIL.getNamespaceUri());
+		assertThat(auditDto.getResponseAttributes().get(truncatedEmail),
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(TEST_EMAIL, CoreAttributeName.EMAIL.getNamespaceUri(),
+						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.HOME_REALM.getName()),
-				is(AuditDto.ResponseAttributeValue.of("dropped", CoreAttributeName.HOME_REALM.getNamespaceUri(),
-						AuditDto.AttributeSource.DROPPED_RESPONSE, 1)));
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of("dropped", null,
+						AuditDto.AttributeSource.DROPPED_RESPONSE, null, null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.NAME_ID.getName()),
 				is(nullValue()));
 	}
@@ -168,15 +181,15 @@ class AuditMapperTest {
 		var cpResponse = new CpResponse();
 		cpResponse.setIssuer(TEST_ISSUER);
 		cpResponse.setDestination(TEST_DESTINATION);
-		cpResponse.setResult(CoreAttributeName.CLAIMS_NAME.getNamespaceUri(), List.of(TEST_CLAIMS_NAME));
-		cpResponse.setResult(CoreAttributeName.CLAIMS_NAME.getName(), List.of("ignoredClaimsName"));
+		cpResponse.setResult(Definition.ofNamespaceUri(CoreAttributeName.CLAIMS_NAME), List.of(TEST_CLAIMS_NAME));
+		cpResponse.setResult(Definition.ofName(CoreAttributeName.CLAIMS_NAME), List.of(TEST_CLAIMS_NAME2));
 		var nameId = "myNameId";
-		cpResponse.setResult(CoreAttributeName.NAME_ID.getNamespaceUri(), List.of(nameId));
-		cpResponse.setResult(CoreAttributeName.FIRST_NAME.getName(), List.of(TEST_FIRST_NAME));
+		cpResponse.setResult(Definition.ofNamespaceUri(CoreAttributeName.NAME_ID), List.of(nameId));
+		cpResponse.setResult(Definition.ofName(CoreAttributeName.FIRST_NAME), List.of(TEST_FIRST_NAME));
 		var authLevel = "normalverified";
 		cpResponse.setAuthLevel(authLevel);
 		var emails = List.of("mail1@trustbroker.swiss", "mail2@trustbroker.swiss");
-		cpResponse.setResult(CoreAttributeName.EMAIL.getName(), emails);
+		cpResponse.setResult(Definition.ofName(CoreAttributeName.EMAIL), emails);
 		// attributes not mapped outbound:
 		cpResponse.setAttribute(CoreAttributeName.ISSUED_CLIENT_EXT_ID.getName(), "ignoredValue");
 
@@ -188,17 +201,29 @@ class AuditMapperTest {
 		assertThat(auditDto.getDestination(), is(TEST_DESTINATION));
 		assertThat(auditDto.getIssuer(), is(TEST_ISSUER));
 		assertThat(auditDto.getResponseAttributes(), is(not(nullValue())));
-		assertThat(auditDto.getResponseAttributes().size(), is(4));
+		assertThat(auditDto.getResponseAttributes().size(), is(5));
+		var truncatedClaimsName = DefinitionUtil.truncateNamespace(CoreAttributeName.CLAIMS_NAME.getNamespaceUri());
+		assertThat(auditDto.getResponseAttributes().get(truncatedClaimsName),
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME, CoreAttributeName.CLAIMS_NAME.getNamespaceUri(),
+								AuditDto.AttributeSource.CP_RESPONSE, null, null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.CLAIMS_NAME.getName()),
-				is(AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME, CoreAttributeName.CLAIMS_NAME.getNamespaceUri(),
-						AuditDto.AttributeSource.IDP_RESPONSE, 2)));
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME2, null,
+						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.FIRST_NAME.getName()),
-				is(AuditDto.ResponseAttributeValue.of(TEST_FIRST_NAME, null, AuditDto.AttributeSource.IDP_RESPONSE, 1)));
-		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.NAME_ID.getName()),
-				is(AuditDto.ResponseAttributeValue.of(nameId,
-						CoreAttributeName.NAME_ID.getNamespaceUri(), AuditDto.AttributeSource.IDP_RESPONSE, 1)));
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(TEST_FIRST_NAME, null,
+						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
+		var truncatedNameId = DefinitionUtil.truncateNamespace(CoreAttributeName.NAME_ID.getNamespaceUri());
+		assertThat(auditDto.getResponseAttributes().get(truncatedNameId),
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(nameId,
+						CoreAttributeName.NAME_ID.getNamespaceUri(), AuditDto.AttributeSource.CP_RESPONSE, null, null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.EMAIL.getName()),
-				is(AuditDto.ResponseAttributeValue.of(emails, null, AuditDto.AttributeSource.IDP_RESPONSE, 1)));
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(emails, null,
+						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.ISSUED_CLIENT_EXT_ID.getName()),
 				is(nullValue()));
 		assertThat(auditDto.getAuthLevel(), is(authLevel));
@@ -437,42 +462,67 @@ class AuditMapperTest {
 		var emails = List.of("myEmail1@domain", "myEmail2@domain");
 		Map<Definition, List<String>> attributes = new HashMap<>();
 		attributes.put(Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME), List.of(TEST_FIRST_NAME));
-		attributes.put(Definition.ofName(CoreAttributeName.CLAIMS_NAME), List.of("ignoredClaimsName"));
+		attributes.put(Definition.ofName(CoreAttributeName.CLAIMS_NAME), List.of(TEST_CLAIMS_NAME2));
 		attributes.put(Definition.ofNamespaceUri(CoreAttributeName.CLAIMS_NAME), List.of(TEST_CLAIMS_NAME));
 		attributes.put(Definition.ofName(CoreAttributeName.NAME), List.of(TEST_NAME));
 		attributes.put(Definition.ofNamespaceUri(CoreAttributeName.NAME), null); // null ignored
 		attributes.put(Definition.ofName(CoreAttributeName.SSO_SESSION_ID), List.of(TEST_SESSION_ID));
-		attributes.put(Definition.ofName(CoreAttributeName.EMAIL), emails);
+		attributes.put(Definition.ofNames(CoreAttributeName.EMAIL), emails);
 		attributes.put(Definition.ofName(CoreAttributeName.HOME_NAME), homeNames);
+		var cidName = "cid";
+		var cidValues = List.of("cid1", "cid2");
+		attributes.put(Definition.builder().name(cidName).cid(true).build(), cidValues);
 		var unmappedShort = "some-unmapped-attribute";
 		var unmapped = "http://schemas.xmlsoap.org/ws/2024/03/test/" + unmappedShort;
-		String unmappedValue = "unmapped-attribute-value";
+		var unmappedValue = "unmapped-attribute-value";
 		attributes.put(Definition.builder().name(unmapped).build(), List.of(unmappedValue));
-		attributes.put(Definition.builder().name(unmappedShort).build(), List.of("unmapped-attribute-value-ignored"));
+		var unmappedValueShort = "unmapped-attribute-value-short";
+		attributes.put(Definition.builder().name(unmappedShort).build(), List.of(unmappedValueShort));
 
 		var auditDto = new InboundAuditMapper(trustBrokerProperties)
-				.mapFromDefinitions(attributes, AuditDto.AttributeSource.IDP_RESPONSE)
+				.mapFromDefinitions(attributes, AuditDto.AttributeSource.CP_RESPONSE)
 				.build();
 
 		assertThat(auditDto.getResponseAttributes(), is(not(nullValue())));
-		assertThat(auditDto.getResponseAttributes().size(), is(7));
-		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.FIRST_NAME.getName()),
-				is(AuditDto.ResponseAttributeValue.of(TEST_FIRST_NAME, CoreAttributeName.FIRST_NAME.getNamespaceUri(),
-						AuditDto.AttributeSource.IDP_RESPONSE, 1)));
-		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.CLAIMS_NAME.getNamespaceUri()),
-				is(nullValue()));
-		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.CLAIMS_NAME.getName()), is(
-				AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME,
-						CoreAttributeName.CLAIMS_NAME.getNamespaceUri(), AuditDto.AttributeSource.IDP_RESPONSE, 2)));
-		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.NAME.getName()), is(
-				AuditDto.ResponseAttributeValue.of(TEST_NAME, null, AuditDto.AttributeSource.IDP_RESPONSE, 1)));
-		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.EMAIL.getName()), is(
-				AuditDto.ResponseAttributeValue.of(emails, null, AuditDto.AttributeSource.IDP_RESPONSE, 1)));
-		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.HOME_NAME.getName()), is(
-				AuditDto.ResponseAttributeValue.of(homeNames, null, AuditDto.AttributeSource.IDP_RESPONSE, 1)));
+		assertThat(auditDto.getResponseAttributes().size(), is(9));
+		var truncatedFirstName = DefinitionUtil.truncateNamespace(CoreAttributeName.FIRST_NAME.getNamespaceUri());
+		assertThat(auditDto.getResponseAttributes().get(truncatedFirstName),
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(TEST_FIRST_NAME, CoreAttributeName.FIRST_NAME.getNamespaceUri(),
+						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
+		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.CLAIMS_NAME.getName()),
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME2, null,
+								AuditDto.AttributeSource.CP_RESPONSE, null, null))));
+		var truncatedClaimsName = DefinitionUtil.truncateNamespace(CoreAttributeName.CLAIMS_NAME.getNamespaceUri());
+		assertThat(auditDto.getResponseAttributes().get(truncatedClaimsName),
+				is(AuditDto.ResponseAttributeValues.of(
+					AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME, CoreAttributeName.CLAIMS_NAME.getNamespaceUri(),
+							AuditDto.AttributeSource.CP_RESPONSE, null, null))));
+		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.NAME.getName()),
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(TEST_NAME, null,
+						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
+		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.EMAIL.getName()),
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(emails, CoreAttributeName.EMAIL.getNamespaceUri(),
+						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
+		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.HOME_NAME.getName()),
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(homeNames, null,
+						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
+		assertThat(auditDto.getResponseAttributes().get(cidName),
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(cidValues, null,
+						AuditDto.AttributeSource.CP_RESPONSE, null, true))));
 		assertThat(auditDto.getResponseAttributes().get(unmapped), is(nullValue()));
 		assertThat(auditDto.getResponseAttributes().get(unmappedShort),
-				is(AuditDto.ResponseAttributeValue.of(unmappedValue, unmapped, AuditDto.AttributeSource.IDP_RESPONSE, 2)));
+				is(AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(unmappedValueShort, null,
+								AuditDto.AttributeSource.CP_RESPONSE, null, null),
+						AuditDto.ResponseAttributeValue.of(unmappedValue, unmapped,
+								AuditDto.AttributeSource.CP_RESPONSE, null, null))
+				));
 	}
 
 	@Test
@@ -493,11 +543,10 @@ class AuditMapperTest {
 											   .skinnyAssertionStyle(OpenSamlUtil.SKINNY_ALL)
 											   .build();
 		response.getAssertions()
-				.add(ResponseFactory.createAssertion(
-						Collections.emptyList(),
+				.add(ResponseFactory.createSamlAssertion(
 						CpResponse.builder().build(),
 						ConstAttributes.builder().build(),
-						responseParams));
+						null, responseParams, null));
 		response.setDestination(destination);
 		var auditDto = new InboundAuditMapper(trustBrokerProperties)
 				.mapFrom(response)
@@ -539,31 +588,37 @@ class AuditMapperTest {
 		var middleName = "Middle";
 		var lastName = "Last";
 		Map<Definition, List<String>> userDetails = new Hashtable<>();
-		userDetails.put(Definition.builder().name(CoreAttributeName.FIRST_NAME.getName()).build(), List.of(firstName));
-		userDetails.put(Definition.builder().name(CoreAttributeName.NAME.getName()).build(), List.of(middleName, lastName));
+		userDetails.put(Definition.ofNames(CoreAttributeName.FIRST_NAME), List.of(firstName));
+		userDetails.put(Definition.ofName(CoreAttributeName.NAME), List.of(middleName, lastName));
 		var cpResponse = CpResponse.builder()
 								   .nameIdFormat("unknown-nameid-format")
 								   .userDetails(userDetails)
 								   .build();
-		// have a minimal assertion mapped to auditi output
+		// have a minimal assertion mapped to audit output
 		var responseParams = ResponseParameters.builder()
 											   .issuerId(TEST_ISSUER)
 											   .federationServiceIssuerId(TEST_ISSUER)
 											   .subjectValiditySeconds(20)
 											   .audienceValiditySeconds(10)
 											   .build();
-		var assertion = ResponseFactory.createAssertion(null, cpResponse, null, responseParams);
+
+		var assertion = ResponseFactory.createSamlAssertion( cpResponse, null, cpResponse.getContextClasses(),
+				responseParams, null);
 		var auditDto = new OutboundAuditMapper(trustBrokerProperties)
 				.mapFromRstResponseAssertion(assertion)
 				.build();
 		// verify (audit DTO attributes list is somewhat inaccessible)
 		assertThat(auditDto.getEventType(), equalTo(EventType.RST_RESPONSE));
 		assertThat(auditDto.getResponseAttributes().size(), equalTo(2));
-		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.FIRST_NAME.getName()), is(
-				AuditDto.ResponseAttributeValue.of(firstName, null, AuditDto.AttributeSource.SAML_RESPONSE, 1)));
+		var truncatedFirstName = DefinitionUtil.truncateNamespace(CoreAttributeName.FIRST_NAME.getNamespaceUri());
+		assertThat(auditDto.getResponseAttributes().get(truncatedFirstName), is(
+				AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(firstName, CoreAttributeName.FIRST_NAME.getNamespaceUri(),
+								AuditDto.AttributeSource.SAML_RESPONSE, null, null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.NAME.getName()), is(
-				AuditDto.ResponseAttributeValue.of(List.of(middleName, lastName), null,
-						AuditDto.AttributeSource.SAML_RESPONSE, 1)));
+				AuditDto.ResponseAttributeValues.of(
+						AuditDto.ResponseAttributeValue.of(List.of(middleName, lastName),
+								null, AuditDto.AttributeSource.SAML_RESPONSE, null, null))));
 	}
 
 	@Test

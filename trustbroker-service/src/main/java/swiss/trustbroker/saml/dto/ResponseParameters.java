@@ -45,6 +45,10 @@ public class ResponseParameters {
 
 	private String nameId;
 
+	private String nameIdFormat;
+
+	private String nameIdQualifier;
+
 	private String federationServiceIssuerId;
 
 	private String recipientId;
@@ -68,6 +72,9 @@ public class ResponseParameters {
 	private Instant issuerInstant;
 
 	private Instant authnStatementInstant;
+
+	@Builder.Default
+	private boolean setSessionIndex = true;
 
 	// presentation polices
 

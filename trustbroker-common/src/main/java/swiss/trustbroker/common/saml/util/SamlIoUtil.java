@@ -213,6 +213,11 @@ public class SamlIoUtil {
 		return (StatusResponseType) getXmlObjectFromFileOrClassPath(mappingFile);
 	}
 
+	@SuppressWarnings("unchecked")
+	public static <T> T unmarshallXmlFile(String mappingFile, InputStream stream) {
+		return (T) getXmlObjectFromStream(stream, mappingFile);
+	}
+
 	public static XMLObject getXmlObjectFromFileOrClassPath(String fileName) {
 		var stream = getInputStreamFromFile(fileName);
 		return getXmlObjectFromStream(stream, fileName);
@@ -344,7 +349,7 @@ public class SamlIoUtil {
 		}
 	}
 
-	// serialize to a one liner for log indexing
+	// serialize to a one-liner for log indexing
 	public static String xmlObjectToString(XMLObject xmlObject, boolean prettyPrint) {
 		if (prettyPrint) {
 			return SerializeSupport.prettyPrintXML(xmlObject.getDOM());

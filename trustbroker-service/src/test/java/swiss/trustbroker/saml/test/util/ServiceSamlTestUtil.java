@@ -111,7 +111,7 @@ public class ServiceSamlTestUtil implements SamlHttpTestBase {
 		RelyingPartySetup rulesDefinitions = RelyingPartySetup.builder().relyingParties(relyingParties).build();
 		String definitionPath = getBaseRuleFilePath();
 		RelyingPartySetupUtil.loadRelyingParty(relyingParties, definitionPath,
-				CACHE_DEFINITION_PATH, null, Collections.emptyList());
+				CACHE_DEFINITION_PATH, null, Collections.emptyList(), null);
 		Credential credential = SamlTestBase.dummyCredential(
 				SamlTestBase.TEST_TB_KEYSTORE_JKS,
 				SamlTestBase.TEST_KEYSTORE_PW,

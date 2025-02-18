@@ -165,6 +165,9 @@ public class AssertionConsumerService {
 		//set clientExtId
 		cpResponse.setClientExtId(relyingPartySetupService.getRpClientExtId(rpIssuer, ""));
 
+		// mapping
+		SubjectNameMapper.adjustSubjectNameId(cpResponse, claimsParty);
+
 		// scripts BeforeIdm RP side (see test DeriveClaimProviderNameFromNameIdFormat.groovy for an example to derive HomeName)
 		scriptService.processRpBeforeIdm(cpResponse, response, rpIssuer, referrer);
 
@@ -235,10 +238,11 @@ public class AssertionConsumerService {
 				((nestedStatusCode != null &&
 						nestedStatusCode.equals(requiredNestedStatus)) ||
 						(statusMessage != null && statusMessage.equals(requiredNestedStatus)));
-		log.debug("Deciding responder display: featureEnabled={} requiredStatus={} statusCode={} statusMessage={} " +
-						"nestedStatusCode={} result={}",
+		log.debug("Deciding responder display: featureEnabled={} requiredStatus={} requiredNestedStatus={} statusCode={} "
+						+ "statusMessage={} nestedStatusCode={} result={}",
 				featureEnabled,
 				requiredStatus,
+				requiredNestedStatus,
 				statusCode,
 				statusMessage,
 				nestedStatusCode,
@@ -370,7 +374,7 @@ public class AssertionConsumerService {
 		auditAuthnRequestFromRp(authnRequest, httpRequest, stateData);
 
 		// hook to validate the SAML directly (cannot be done in BeforeHrd because eof device redirects
-		scriptService.processRequestValidation(result, httpRequest, authnRequest);
+		scriptService.processRequestValidation(result, authnRequest);
 
 		return result;
 	}
@@ -598,7 +602,7 @@ public class AssertionConsumerService {
 		final var cpSelectionHint = HrdSupport.getClaimsProviderHint(request, trustBrokerProperties);
 
 		// Allow script to override manipulate cpMappings before we do it internally
-		scriptService.processHrdSelection(rpRequest, request);
+		scriptService.processHrdSelection(rpRequest);
 
 		// throw out all CPs not valid for current network, cookies, ....
 		cpMappings = new ArrayList<>(rpRequest.getClaimsProviders()); // in case script has constructed a new (immutable) list

@@ -153,7 +153,7 @@ class AppConfigServiceTest {
 		assertDoesNotThrow(() ->
 				RelyingPartySetupUtil.loadRelyingParty(
 						relyingPartySetup.getRelyingParties(), LATEST_INVALID_DEFINITION_PATH, LATEST_INVALID_DEFINITION_PATH,
-						properties, Collections.emptyList()));
+						properties, Collections.emptyList(), scriptService));
 		var rp = relyingPartySetup.getRelyingParties().get(0);
 		assertEquals(FeatureEnum.INVALID, rp.getEnabled());
 	}
@@ -164,7 +164,7 @@ class AppConfigServiceTest {
 		assertDoesNotThrow(() ->
 				RelyingPartySetupUtil.loadRelyingParty(
 						relyingPartySetup.getRelyingParties(), LATEST_INVALID_DEFINITION_PATH, LATEST_INVALID_DEFINITION_PATH,
-						properties, Collections.emptyList()));
+						properties, Collections.emptyList(), scriptService));
 		var rp = relyingPartySetup.getRelyingParties().get(0);
 		// after RelyingPartySetupUtils validation, it is still valid
 		assertEquals(FeatureEnum.TRUE, rp.getEnabled());

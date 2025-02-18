@@ -25,22 +25,27 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.opensaml.core.xml.util.XMLObjectSupport;
+import org.opensaml.saml.saml2.core.Assertion;
 import org.opensaml.saml.saml2.core.Attribute;
-import org.opensaml.saml.saml2.core.AttributeStatement;
+import org.opensaml.saml.saml2.core.Issuer;
+import org.opensaml.saml.saml2.core.NameIDType;
 import org.opensaml.soap.wsfed.AppliesTo;
 import org.opensaml.soap.wstrust.KeyType;
 import org.opensaml.soap.wstrust.RequestSecurityToken;
@@ -55,6 +60,7 @@ import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.CredentialReader;
+import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlFactory;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
@@ -62,10 +68,15 @@ import swiss.trustbroker.common.saml.util.SamlUtil;
 import swiss.trustbroker.common.saml.util.SoapUtil;
 import swiss.trustbroker.common.util.WSSConstants;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.federation.xmlconfig.Definition;
+import swiss.trustbroker.federation.xmlconfig.RelyingParty;
+import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.service.RelyingPartyService;
 import swiss.trustbroker.script.service.ScriptService;
+import swiss.trustbroker.test.saml.util.SamlTestBase;
 
 @SpringBootTest
 @ContextConfiguration(classes = WsTrustService.class)
@@ -175,7 +186,8 @@ class WsTrustServiceTest {
 
 	@Test
 	void processSecurityTokenTokenTypeNullTest() {
-		RequestSecurityToken requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER), null, givenInvalidRequestType(RequestType.ISSUE));
+		RequestSecurityToken requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER), null,
+				givenInvalidRequestType(RequestType.ISSUE));
 		assertThrows(RequestDeniedException.class, () -> {
 			wsTrustService.processSecurityToken(requestSecTokenType, "assertionId");
 		});
@@ -200,17 +212,6 @@ class WsTrustServiceTest {
 		});
 	}
 
-	@Test
-	void createAttributeStatementTest() {
-		Map<Definition, List<String>> userDetailsFromIdm = givenIDMResponseWithDuplicates();
-		List<Attribute> cpAttributes = givenCpAttributesWithDuplicates();
-		AttributeStatement attributeStatement = WsTrustService.createAttributeStatement(userDetailsFromIdm,
-				null, cpAttributes, Collections.emptyMap(), null);
-		assertTrue(attributeStatement.getAttributes().size() < userDetailsFromIdm.size() + cpAttributes.size());
-		assertEquals(1, attributeOccurrenceInList(attributeStatement.getAttributes(),
-				CoreAttributeName.CLAIMS_NAME.getName(), "claimName", "CP1"));
-	}
-
 	@ParameterizedTest
 	@MethodSource
 	void unmarshallDomElement(String request) throws Exception {
@@ -233,11 +234,59 @@ class WsTrustServiceTest {
 		}
 	}
 
-	static Object[][] unmarshallDomElement() {
-		return new Object[][] {
-				{ SAMPLE_RST_REQUEST_W3_ADDRESSING },
-				{ SAMPLE_RST_REQUEST_XMLSOAP_ADDRESSING }
-		};
+	@Test
+	void createAssertionTest() {
+		var cpResponse = givenCpResponseWithDuplicates();
+		int initialUserDetailsSize = cpResponse.getUserDetails().size();
+		var cpAttributes = givenCpAttributesWithDuplicates();
+		var requestHeaderAssertion = givenRequestAssertion();
+		String addressFromRequest = "addressFromRequest";
+		when(relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, null))
+				.thenReturn(givenRp());
+		doReturn(SecurityChecks.builder()
+							   .doSignAssertions(true)
+							   .build()).when(trustBrokerProperties)
+										.getSecurity();
+		var assertion = wsTrustService.createAssertion(cpAttributes, cpResponse, "anyId",
+				requestHeaderAssertion, addressFromRequest);
+		var attributeStatements = assertion.getAttributeStatements();
+		assertTrue(attributeStatements.get(0).getAttributes().size() < initialUserDetailsSize + cpAttributes.size());
+		assertEquals(requestHeaderAssertion.getSubject().getNameID().getValue(), assertion.getSubject().getNameID().getValue());
+		assertEquals(1, attributeOccurrenceInList(attributeStatements.get(0).getAttributes(),
+				CoreAttributeName.CLAIMS_NAME.getName(), "claimName", "CP1"));
+	}
+
+	private static RelyingParty givenRp() {
+		return RelyingParty.builder()
+						   .id("rpIssuerId")
+						   .rpSigner(SamlTestBase.dummyCredential())
+						   .securityPolicies(
+									 SecurityPolicies.builder()
+													 .delegateOrigin(false)
+													 .build()
+							 ).build();
+	}
+
+	private Assertion givenRequestAssertion() {
+		var assertion = OpenSamlUtil.buildAssertionObject();
+		assertion.setIssueInstant(Instant.now());
+		assertion.setID(UUID.randomUUID().toString());
+		assertion.setIssuer(OpenSamlUtil.buildSamlObject(Issuer.class));
+		assertion.getIssuer().setValue("TEST_AUDIENCE");
+		var nameId = SamlFactory.createNameId("name1@localhost", NameIDType.EMAIL, null);
+		assertion.setSubject(SamlFactory.createSubject(nameId, "RELAY_STATE", "rpIssuerId", 100));
+		return assertion;
+
+	}
+
+	private List<Attribute> givenCpAttributesWithDuplicates() {
+		List<Attribute> attributes = new ArrayList<>();
+		attributes.add(SamlFactory.createAttribute(CoreAttributeName.CLAIMS_NAME.getName(), "claimName", "CP1"));
+		attributes.add(SamlFactory.createAttribute(CoreAttributeName.CLAIMS_NAME.getName(), "claimName", "CP1"));
+		attributes.add(SamlFactory.createAttribute(CoreAttributeName.NAME_ID.getName(), "nameId",
+				CoreAttributeName.NAME_ID.getNamespaceUri()));
+
+		return attributes;
 	}
 
 	private int attributeOccurrenceInList(List<Attribute> attributes, String name, String value, String originalIssuer) {
@@ -251,26 +300,34 @@ class WsTrustServiceTest {
 		return count;
 	}
 
-	private List<Attribute> givenCpAttributesWithDuplicates() {
-		List<Attribute> attributes = new ArrayList<>();
-		attributes.add(SamlFactory.createAttribute(CoreAttributeName.CLAIMS_NAME.getName(), "claimName", "CP1"));
-		attributes.add(SamlFactory.createAttribute(CoreAttributeName.CLAIMS_NAME.getName(), "claimName", "CP1"));
-		attributes.add(SamlFactory.createAttribute(CoreAttributeName.NAME_ID.getName(), "nameId",
-				CoreAttributeName.NAME_ID.getNamespaceUri()));
-
-		return attributes;
-	}
-
-	private Map<Definition, List<String>> givenIDMResponseWithDuplicates() {
+	private CpResponse givenCpResponseWithDuplicates() {
 		Map<Definition, List<String>> queryResponse = new HashMap<>();
-
 		queryResponse.put(new Definition(CoreAttributeName.HOME_REALM), List.of("trustbroker:test:test"));
-		queryResponse.put(new Definition(CoreAttributeName.HOME_NAME), List.of("idp-mock"));
-		queryResponse.put(new Definition(CoreAttributeName.HOME_NAME), List.of("idp-mock"));
+		queryResponse.put(new Definition(CoreAttributeName.EMAIL), List.of("idp-mock"));
+		queryResponse.put(Definition.builder()
+									.namespaceUri(CoreAttributeName.EMAIL.getNamespaceUri())
+									.build(),
+				List.of("idp-mock"));
 		queryResponse.put(new Definition(CoreAttributeName.ISSUED_CLIENT_EXT_ID), List.of("TEST"));
 
-		return queryResponse;
+		var cpResponse = new CpResponse();
+		cpResponse.setRpIssuer("urn:ANY");
+		cpResponse.setNameId("nameId");
+		cpResponse.setIssuer("issuer");
+		cpResponse.setHomeName("homeName");
+		cpResponse.setClientExtId("clientExtId");
+		cpResponse.setAttribute(CoreAttributeName.HOME_NAME.getNamespaceUri(), "testhomename");
+		cpResponse.setUserDetails(queryResponse);
 
+		return cpResponse;
+
+	}
+
+	static Object[][] unmarshallDomElement() {
+		return new Object[][] {
+				{ SAMPLE_RST_REQUEST_W3_ADDRESSING },
+				{ SAMPLE_RST_REQUEST_XMLSOAP_ADDRESSING }
+		};
 	}
 
 	private KeyType givenKeyType(String keyTypeValue) {

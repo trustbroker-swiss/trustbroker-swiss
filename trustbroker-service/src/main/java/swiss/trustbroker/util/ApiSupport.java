@@ -114,10 +114,6 @@ public class ApiSupport {
 
 	public static final String VERSION_API = API_CONTEXT + "/version";
 
-	static final String METADATA_API = "/metadata";
-
-	public static final String METADATA_URL = API_CONTEXT + METADATA_API;
-
 	static final String PROFILES_API = HRD_API + "/profiles";
 
 	static final String PROFILE_API = HRD_API + "/profile";
@@ -125,6 +121,12 @@ public class ApiSupport {
 	public static final String SAML_API = API_CONTEXT + "/saml";
 
 	public static final String ARP_API = "/saml/arp";
+
+	static final String METADATA_API = "/metadata";
+
+	public static final String METADATA_URL = API_CONTEXT + METADATA_API; // legacy
+
+	public static final String SAML_METADATA_URL = SAML_API + METADATA_API;
 
 	public static final String ARP_URL = API_CONTEXT + ARP_API;
 
@@ -179,9 +181,22 @@ public class ApiSupport {
 
 	public static final String ADFS_PATH = "/adfs";
 
-	public static final String TRUSTBROKER_ADFS_PATH = "/trustbroker/adfs";
+	public static final String ADFS_ENTY_PATH = "/ls";
+
+	public static final String ADFS_ENTRY_URL = ADFS_PATH + ADFS_ENTY_PATH;
+
+	public static final String ADFS_ENTRY_URL_TRAILING_SLASH = ADFS_ENTRY_URL + "/";
+
+	public static final String XTB_LEGACY_ADFS_PATH = "/trustbroker" + ADFS_PATH; // deprecated
+
+	public static final String XTB_LEGACY_ENTRY_URL = XTB_LEGACY_ADFS_PATH + ADFS_ENTY_PATH; // deprecated
 
 	public static final String  ADFS_SERVICES_PATH = ADFS_PATH + "/services/trust/13/issuedtokensymmetricbasic256";
+
+	public static final String XTB_ALTERNATE_METADATA_ENDPOINT = "/FederationMetadata/2007-06/FederationMetadata.xml";
+
+	public static final String XTB_LOWER_CASE_ALTERNATE_METADATA_ENDPOINT =
+			"/federationmetadata/2007-06/federationmetadata.xml"; // must be constant
 
 	public static final String SKINNY_PATH= "/skinny";
 
@@ -196,7 +211,7 @@ public class ApiSupport {
 	}
 
 	public static boolean isSamlPath(String path) {
-		return path !=null && (isApiPath(path) || path.startsWith(ADFS_PATH) || path.startsWith(TRUSTBROKER_ADFS_PATH));
+		return path !=null && (isApiPath(path) || path.startsWith(ADFS_PATH) || path.startsWith(XTB_LEGACY_ADFS_PATH));
 	}
 
 	public static boolean isFrontendPath(String path) {

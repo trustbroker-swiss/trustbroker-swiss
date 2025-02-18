@@ -18,6 +18,9 @@ package swiss.trustbroker.api.sessioncache.dto;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Response from CP.
+ */
 public interface CpResponseData {
 
 	// identity data
@@ -32,24 +35,49 @@ public interface CpResponseData {
 
 	// IDP attributes
 
+	/**
+	 * @return never null, but may be unmodifiable.
+	 */
 	Map<AttributeName, List<String>> getAttributeMap();
 
+	/**
+	 * @param name
+	 * @return may return null to distinguish between empty list of values and undefined.
+	 */
 	List<String> getAttributes(String name);
 
 	String getAttribute(String name);
 
 	// IDM attributes
 
+	/**
+	 * @return never null, but may be unmodifiable.
+	 */
 	Map<AttributeName, List<String>> getUserDetailMap();
 
+	/**
+	 * @param name
+	 * @return may return null to distinguish between empty list of values and undefined.
+	 */
 	List<String> getUserDetails(String name);
 
 	String getUserDetail(String name);
 
+	List<String> getUserDetails(String name, String source);
+
+	String getUserDetail(String name, String source);
+
 	// derived attributes
 
+	/**
+	 * @return never null, but may be unmodifiable.
+	 */
 	Map<AttributeName, List<String>> getPropertyMap();
 
+	/**
+	 * @param name
+	 * @return may return null to distinguish between empty list of values and undefined.
+	 */
 	List<String> getProperties(String name);
 
 	String getProperty(String name);

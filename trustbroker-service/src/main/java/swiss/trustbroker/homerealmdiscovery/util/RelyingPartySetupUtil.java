@@ -40,6 +40,7 @@ import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.AuthorizedApplication;
 import swiss.trustbroker.federation.xmlconfig.Certificates;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
+import swiss.trustbroker.federation.xmlconfig.CounterParty;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.Encryption;
 import swiss.trustbroker.federation.xmlconfig.Flow;
@@ -61,6 +62,10 @@ import swiss.trustbroker.federation.xmlconfig.SignerKeystore;
 import swiss.trustbroker.federation.xmlconfig.SignerTruststore;
 import swiss.trustbroker.federation.xmlconfig.Sso;
 import swiss.trustbroker.federation.xmlconfig.SubjectNameMappings;
+import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.saml.dto.CpResponse;
+import swiss.trustbroker.saml.dto.ResponseParameters;
+import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.util.PropertyUtil;
 
 @Slf4j
@@ -72,13 +77,13 @@ public class RelyingPartySetupUtil {
 	}
 
 	public static void loadRelyingParty(Collection<RelyingParty> relyingParties, String definitionPath, String pullConfigPath,
-			TrustBrokerProperties trustBrokerProperties, List<IdmService> idmServices) {
+			TrustBrokerProperties trustBrokerProperties, List<IdmService> idmServices, ScriptService scriptService) {
 		if (relyingParties == null) {
 			throw new TechnicalException("RelyingParties are missing or could not be loaded");
 		}
 		for (RelyingParty relyingParty : relyingParties) {
 			try {
-				loadRelyingParty(definitionPath, pullConfigPath, relyingParty, trustBrokerProperties, idmServices);
+				loadRelyingParty(definitionPath, pullConfigPath, relyingParty, trustBrokerProperties, idmServices, scriptService);
 			}
 			catch (TechnicalException ex) {
 				log.error("Could not load base claim: {}", ex.getInternalMessage());
@@ -88,7 +93,7 @@ public class RelyingPartySetupUtil {
 	}
 
 	private static void loadRelyingParty(String definitionPath, String pullConfigPath, RelyingParty relyingParty,
-			TrustBrokerProperties trustBrokerProperties, List<IdmService> idmServices) {
+			TrustBrokerProperties trustBrokerProperties, List<IdmService> idmServices, ScriptService scriptService) {
 		var baseRule = relyingParty.getBase();
 
 		if (!StringUtils.isBlank(baseRule)) {
@@ -97,9 +102,24 @@ public class RelyingPartySetupUtil {
 			var baseClaim = ClaimsProviderUtil.loadRelyingParty(basePath);
 			mergeRelyingParty(relyingParty, baseClaim, idmServices);
 			applyGlobalCertificates(relyingParty, trustBrokerProperties);
+			validateScripts(relyingParty, scriptService);
 		}
 
 		postInit(relyingParty);
+	}
+
+	public static void validateScripts(CounterParty counterParty, ScriptService scriptService) {
+		if (scriptService == null || counterParty.getScripts() == null) {
+			return;
+		}
+		for (var script : counterParty.getScripts().getScripts()) {
+			// validate against the scripts prepared for rollover:
+			if (!scriptService.isScriptValid(script.getName(), counterParty.getSubPath(), false)) {
+				log.error("Script={} is not valid for {} id={}",
+						script.getName(), counterParty.getShortType(), counterParty.getId());
+				counterParty.invalidate(String.format("Script type=%s name=%s is not valid", script.getType(), script.getName()));
+			}
+		}
 	}
 
 	private static String resolvePath(String definitionPath, String pullConfigPath, String baseRule, String subPath,
@@ -342,7 +362,7 @@ public class RelyingPartySetupUtil {
 		Map<String, Flow> flowMap = new HashMap<>();
 		baseFlowPolicies.getFlows().stream().forEachOrdered(flow -> flowMap.put(flow.getId(), flow));
 		relyingParty.getFlowPolicies().getFlows().stream().forEachOrdered(flow -> flowMap.put(flow.getId(), flow));
-		var flowList = new ArrayList<Flow>(flowMap.values());
+		var flowList = new ArrayList<>(flowMap.values());
 		relyingParty.getFlowPolicies()
 					.setFlows(flowList);
 	}
@@ -739,6 +759,17 @@ public class RelyingPartySetupUtil {
 			}
 		}
 		return null;
+	}
+
+	public static List<Definition> getIdpAttrDefinitions(CpResponse cpResponse, RelyingPartySetupService relyingPartySetupService,
+			ResponseParameters params) {
+		var idpAttributesDefinition = relyingPartySetupService.getRpAttributesDefinitions(
+				params.getRpIssuerId(), params.getRpReferer());
+		if (idpAttributesDefinition.isEmpty()) {
+			idpAttributesDefinition = relyingPartySetupService.getCpAttributeDefinitions(
+					cpResponse.getIssuer(), params.getRpIssuerId());
+		}
+		return idpAttributesDefinition;
 	}
 
 }

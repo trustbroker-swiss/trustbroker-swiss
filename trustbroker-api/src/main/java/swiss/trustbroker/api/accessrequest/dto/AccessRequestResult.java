@@ -28,7 +28,7 @@ import lombok.Data;
 public class AccessRequestResult {
 
 	/**
-	 * Session was changed and needs to be stored.
+	 * Session needs to be retained beyond login for later interaction.
 	 */
 	private final boolean retainSession;
 

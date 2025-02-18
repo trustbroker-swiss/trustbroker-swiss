@@ -108,13 +108,13 @@ export class LanguageService {
 				const languageCookie: CookieConfiguration = configuration.languageCookie;
 				if (languageCookie?.name == null) {
 					// NOSONAR
-					// console.debug('[LanguageService] Keeping default language cookie', this.languageCookie.name);
+					// console.debug('[LanguageService] Keeping default language cookie', this.languageCookie.name, 'values', languageCookie.values, 'defaultValue', languageCookie.defaultValue);
 					return;
 				}
 				this.languageCookie = languageCookie;
 				this.defaultCookieParameters = false;
 				// NOSONAR
-				// console.debug('[LanguageService] Server sent language cookie parameters ', this.languageCookie.name);
+				// console.debug('[LanguageService] Server sent language cookie parameters ', this.languageCookie.name, 'values', languageCookie.values, 'defaultValue', languageCookie.defaultValue);
 				this.setLanguage();
 			},
 			error: (errorResponse: HttpErrorResponse) => {
@@ -146,17 +146,27 @@ export class LanguageService {
 		const languageFromCookie: string = this.cookieService.get(this.languageCookie.name);
 
 		if (languageFromCookie && this.isValidLanguage(languageFromCookie)) {
-			// NOSONAR
-			// console.debug('[LanguageService] Current language setting found in cookie: ', languageFromCookie);
 			languageToSelect = languageFromCookie;
+			// NOSONAR
+			// console.debug('[LanguageService] Current language setting found in cookie: ', languageToSelect);
 		} else {
 			// NOSONAR
 			// console.debug('[LanguageService] Current language setting not found in cookie, setting default.');
-			languageToSelect = this.translateService.defaultLang;
-			// NOSONAR
-			// console.debug('[LanguageService] Browser preferences -> Preferred languages: ', languageToSelect);
-			// console.debug('[LanguageService] Selected language from browser preferences: ', languageToSelect);
-
+			const languageFromBrowser = this.translateService.getBrowserLang();
+			if (languageFromBrowser && this.isValidLanguage(languageFromBrowser)) {
+				languageToSelect = languageFromBrowser;
+				// NOSONAR
+				// console.debug('[LanguageService] Selected language from browser preferences: ', languageToSelect);
+			} else if (this.languageCookie.defaultValue) {
+				languageToSelect = this.languageCookie.defaultValue;
+				// NOSONAR
+				// console.debug('[LanguageService] Selected config languageCookie.defaultValue: ', languageToSelect);
+			} else {
+				// set by initTranslationService
+				languageToSelect = this.translateService.defaultLang;
+				// NOSONAR
+				// console.debug('[LanguageService] Selected default language: ', languageToSelect);
+			}
 			this.updateLanguageCookie(languageToSelect);
 		}
 

@@ -60,14 +60,18 @@ public final class CustomRefreshTokenGenerator implements OAuth2TokenGenerator<O
 		if (context == null || !OAuth2TokenType.REFRESH_TOKEN.equals(context.getTokenType())) {
 			return null;
 		}
+
 		// track via session that was established during the federation
 		var sessionId = JwtTokenCustomizer.getSidClaim(context.getPrincipal());
+
 		// send back nonce to clients providing it
 		var nonce = JwtTokenCustomizer.getNonce(context.getAuthorization());
+
+		// validity range depending on client settings
 		var issuedAt = Instant.now();
-		var expiresAt = issuedAt.plus(context.getRegisteredClient()
-												 .getTokenSettings()
-												 .getRefreshTokenTimeToLive());
+		var expiresAt = computeRefreshTokenExpiration(context, issuedAt);
+
+		// build
 		var jwsHeader = buildHeader();
 		var claims = buildClaims(context, issuedAt, expiresAt, sessionId, nonce);
 		var jwt = this.jwtEncoder.encode(JwtEncoderParameters.from(jwsHeader, claims));
@@ -91,14 +95,17 @@ public final class CustomRefreshTokenGenerator implements OAuth2TokenGenerator<O
 		var claimsBuilder = JwtClaimsSet.builder();
 		String issuer = null;
 		if (context.getAuthorizationServerContext() != null) {
-			issuer = context.getAuthorizationServerContext().getIssuer();
+			issuer = context.getAuthorizationServerContext()
+							.getIssuer();
 		}
 		if (StringUtils.hasLength(issuer)) {
 			claimsBuilder.issuer(issuer);
 		}
 		var registeredClient = context.getRegisteredClient();
-		claimsBuilder.subject(context.getPrincipal().getName())
-					 .id(UUID.randomUUID().toString())
+		claimsBuilder.subject(context.getPrincipal()
+									 .getName())
+					 .id(UUID.randomUUID()
+							 .toString())
 					 .claim(OidcUtil.OIDC_TOKEN_TYPE, "Refresh")
 					 .audience(Collections.singletonList(registeredClient.getClientId()))
 					 .claim(OidcUtil.OIDC_AUTHORIZED_PARTY, registeredClient.getClientId())
@@ -115,6 +122,33 @@ public final class CustomRefreshTokenGenerator implements OAuth2TokenGenerator<O
 			claimsBuilder.claim(OidcUtil.OIDC_SESSION_ID, sessionId);
 			claimsBuilder.claim(OidcUtil.OIDC_SESSION_STATE, sessionId);
 		}
-		return  claimsBuilder.build();
+		return claimsBuilder.build();
 	}
+
+	private Instant computeRefreshTokenExpiration(OAuth2TokenContext context, Instant issuedAt) {
+		var expiresAt = issuedAt;
+		var source = "now";
+		var client = context.getRegisteredClient();
+		var authorization = context.getAuthorization();
+		if (authorization != null) {
+			var currentRefreshToken = authorization.getRefreshToken();
+			if (currentRefreshToken != null && currentRefreshToken.getToken() != null) {
+				source = "current";
+				expiresAt = currentRefreshToken.getToken()
+											   .getExpiresAt();
+			}
+			else {
+				source = "settings";
+				expiresAt = issuedAt.plus(client.getTokenSettings()
+												.getRefreshTokenTimeToLive());
+			}
+		}
+		log.debug("Expiration of refresh_token for clientId={} issuedAt={} expiresAt={} from source={}",
+				client.getClientId(), issuedAt, expiresAt, source);
+		if (issuedAt.isAfter(expiresAt)) {
+			expiresAt = issuedAt;
+		}
+		return expiresAt;
+	}
+
 }

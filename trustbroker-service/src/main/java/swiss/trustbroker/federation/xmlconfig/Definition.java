@@ -19,7 +19,6 @@ import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -48,7 +47,7 @@ import swiss.trustbroker.common.saml.util.AttributeRegistry;
 @XmlRootElement(name = "Definition")
 @XmlAccessorType(XmlAccessType.FIELD)
 @Data
-@EqualsAndHashCode(of = { "name", "namespaceUri" }) // oidcName is derived only and does not need to be in key
+@EqualsAndHashCode(of = { "name", "namespaceUri", "source" }) // oidcName is derived only and does not need to be in key
 @Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
@@ -89,6 +88,16 @@ public class Definition implements Serializable, AttributeName {
 	private String oidcNames;
 
 	/**
+	 * Indicates whether this field is considered CID (client identifying data).
+	 * <br/>
+	 * Default: null - global default is used
+	 *
+	 * @since 1.8.0
+	 */
+	@XmlAttribute(name = "cid")
+	private Boolean cid;
+
+	/**
 	 * Multi value handling.
 	 * <br/>
 	 * Default: ORIGINAL
@@ -126,6 +135,12 @@ public class Definition implements Serializable, AttributeName {
 	@XmlAttribute(name = "scope")
 	private String scope;
 
+	/**
+	 * Source of the definition
+	 */
+	@XmlTransient
+	private String source;
+
 	public Definition(String name) {
 		this.name = name;
 	}
@@ -140,6 +155,8 @@ public class Definition implements Serializable, AttributeName {
 		this.namespaceUri = attributeName.getNamespaceUri();
 		this.altName = attributeName.getAltName();
 		this.oidcNames = oidcNameListToString(attributeName.getOidcNameList());
+		this.cid = attributeName.getCid();
+		this.source = attributeName.getSource();
 	}
 
 	public Definition(String name, String namespaceUri, String singleValue) {
@@ -203,35 +220,25 @@ public class Definition implements Serializable, AttributeName {
 		return attributeName;
 	}
 
-	// true if fields are the same, or null on both
-	public boolean equalsByNameAndNamespace(Definition definition) {
-		return definition != null &&
-				Objects.equals(name, definition.name) &&
-				Objects.equals(namespaceUri, definition.namespaceUri);
-	}
-
 	// true for all matching combinations of name and namespaceUri, false for nulls
 	// (temporary Definition objects may have only a name containing a name or namespaceUri)
-	public boolean equalsByNameOrNamespace(Definition definition) {
-		if (definition == null) {
+	@Override
+	public boolean equalsByNameOrNamespace(AttributeName attributeName, String source) {
+		if (attributeName == null) {
 			return false;
 		}
+		var ret = false;
 		if (name != null && namespaceUri != null) {
-			return name.equals(definition.name) || name.equals(definition.namespaceUri) ||
-					namespaceUri.equals(definition.namespaceUri) || namespaceUri.equals(definition.name);
+			ret = name.equals(attributeName.getName()) || name.equals(attributeName.getNamespaceUri()) ||
+					namespaceUri.equals(attributeName.getNamespaceUri()) || namespaceUri.equals(attributeName.getName());
 		}
 		else if (namespaceUri != null) {
-			return namespaceUri.equals(definition.name) || namespaceUri.equals(definition.namespaceUri);
+			ret = namespaceUri.equals(attributeName.getName()) || namespaceUri.equals(attributeName.getNamespaceUri());
 		}
 		else if (name != null) {
-			return name.equals(definition.name) || name.equals(definition.namespaceUri);
+			ret = name.equals(attributeName.getName()) || name.equals(attributeName.getNamespaceUri());
 		}
-		return false;
+		return ret && (source == null || source.equals(getSource()));
 	}
 
-	// false for null name
-	@Override
-	public boolean equalsByNameOrNamespace(String name) {
-		return name != null && (Objects.equals(this.name, name) || Objects.equals(namespaceUri, name));
-	}
 }

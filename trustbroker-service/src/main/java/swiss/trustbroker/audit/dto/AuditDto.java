@@ -16,11 +16,15 @@
 package swiss.trustbroker.audit.dto;
 
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.Getter;
 import org.opensaml.core.xml.XMLObject;
 
 /**
@@ -30,20 +34,31 @@ import org.opensaml.core.xml.XMLObject;
 @Builder
 public class AuditDto {
 
+	@AllArgsConstructor(access = AccessLevel.PACKAGE)
+	@Getter
 	public enum AttributeSource {
 		SAML_RESPONSE("r"), // SAML response
-		IDP_RESPONSE("c"), // CP response filtered
+		CP_RESPONSE("c"), // CP response filtered
+		IDM_RESPONSE("i"), // IDM query results
+		SCRIPT("s"), // Script manipulations
 		DROPPED_RESPONSE("x"), // CP response dropped
-		OIDC_RESPONSE(""); // no tagging
+		OIDC_RESPONSE(null); // no tagging
 
 		private final String shortName;
+	}
 
-		private AttributeSource(String shortName) {
-			this.shortName = shortName;
-		}
+	// wrapped list do allow straight-forward distinction from List<> values
+	@Data
+	public static class ResponseAttributeValues {
 
-		public String getShortName() {
-			return shortName;
+		private final List<ResponseAttributeValue> values = new ArrayList<>();
+
+		public static ResponseAttributeValues of(ResponseAttributeValue... attributeValues) {
+			var result = new ResponseAttributeValues();
+			for (var attributeValue : attributeValues) {
+				result.values.add(attributeValue);
+			}
+			return result;
 		}
 	}
 
@@ -54,12 +69,29 @@ public class AuditDto {
 
 		private Object value;
 
-		private String postfix;
+		private String namespaceUri;
 
 		private AttributeSource source;
 
-		private long count;
+		private String querySource;
+
+		private Boolean cid;
+
+		public boolean hasSourceTag() {
+			// there should be no querySource without source
+			return (source != null && source.getShortName() != null) || (querySource != null);
+		}
 	}
+
+	// name for eventType
+	public static final String EVENT_NAME = "event";
+
+	// name for samlMessage
+	public static final String DETAIL_NAME = "detail";
+
+	// name to configure responseAttributes (default for all, add '.name' for individual attributes)
+	// note: just responseAttributes controls the whole list and overrides the above defaults and Definition.cid if true
+	public static final String RESPONSE_ATTRIBUTES_NAME = "responseAttributesDefault";
 
 	// RAW data and message identification
 
@@ -163,7 +195,7 @@ public class AuditDto {
 	// SAML Response attributes (contains many IdP related user attributes, see AttributeName.java)
 	// Put this one at the end as Splunk stops indexing after 8k
 
-	private Map<String, ResponseAttributeValue> responseAttributes; // FQ name in DEBUG level
+	private Map<String, ResponseAttributeValues> responseAttributes; // FQ name in DEBUG level
 
 	@CustomLogging
 	private XMLObject samlMessage; // TRACE level

@@ -51,7 +51,7 @@ public class RequestContextFilter implements Filter {
 			}
 			chain.doFilter(request, response);
 		}
-		// store thrown exception for logging purpose			
+		// store thrown exception for logging purpose
 		catch (IOException | ServletException | RuntimeException e) {
 			ex = e;
 			throw e;
@@ -106,10 +106,8 @@ public class RequestContextFilter implements Filter {
 				log.debug("Principal-Name='{}'; as string='{}'", userName, principal);
 			}
 		}
-		else {
-			if (log.isDebugEnabled()) {
-				log.debug("request.getUserPrincipal is null !");
-			}
+		else if (log.isTraceEnabled()) {
+			log.trace("request.getUserPrincipal is null !");
 		}
 		if (userName == null) {
 			userName = req.getHeader(USERNAME_FALLBACK_DEFAULT);

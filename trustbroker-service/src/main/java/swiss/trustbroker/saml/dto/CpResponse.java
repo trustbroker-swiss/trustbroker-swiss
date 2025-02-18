@@ -37,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.api.sessioncache.dto.AttributeName;
 import swiss.trustbroker.api.sessioncache.dto.CpResponseData;
+import swiss.trustbroker.audit.dto.AuditDto;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.util.CollectionUtil;
 import swiss.trustbroker.common.util.JsonUtil;
@@ -239,28 +240,45 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 		setAttributes(name, newValues);
 	}
 
-
 	public void removeAttributes(String name) {
-		removeAttributeFromMap(name, attributes);
+		removeAttributeFromMap(name, null, attributes);
 	}
 
 	// script hook use: get all values using name or FQ name
 	@Override
 	public List<String> getUserDetails(String name) {
-		return findAttributesInMap(name, userDetails);
+		return getUserDetails(name, null);
 	}
 
 	// script hook use: get first value using name or FQ name
 	@Override
 	public String getUserDetail(String name) {
-		var ret = DefinitionUtil.findByNameOrNamespace(name, userDetails);
-		return ret.isEmpty() || ret.get().getValue() == null || ret.get().getValue().isEmpty() ?
-				null : ret.get().getValue().get(0);
+		return getUserDetail(name, null);
+	}
+
+	@Override
+	public List<String> getUserDetails(String name, String source) {
+		var ret = DefinitionUtil.findAllByNameOrNamespace(name, source, userDetails);
+		var definitionValue = ret.entrySet()
+				.stream()
+				.findFirst();
+		return definitionValue.map(Map.Entry::getValue)
+							  .orElse(null); // empty list would be nicer, but we have scripts using this
+	}
+
+	@Override
+	public String getUserDetail(String name, String source) {
+		var details = getUserDetails(name, source);
+		return DefinitionUtil.getSingleValue(details, name);
 	}
 
 	// script hook use: remove entry by name or FQ name
 	public List<String> removeUserDetails(String name) {
-		return removeAttributeFromMap(name, userDetails);
+		return removeUserDetails(name, null);
+	}
+
+	public List<String> removeUserDetails(String name, String source) {
+		return removeAttributeFromMap(name, source, userDetails);
 	}
 
 	// script hook use: add entry with a single value
@@ -269,16 +287,21 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 			log.warn("CpResponse.setUserDetail(name={}, fqName={}, values={}) rejected", name, fqName, value);
 			return;
 		}
-		DefinitionUtil.putDefinitionValue(userDetails, name, fqName, value);
+		removeUserDetails(name != null ? name : fqName, null); // switch source to script
+		DefinitionUtil.putDefinitionValue(userDetails, name, fqName, AuditDto.AttributeSource.SCRIPT, value);
 	}
 
 	// script hook: add value or create entry
 	public void addUserDetail(String name, String fqName, String value) {
+		addUserDetail(name, fqName, value, null);
+	}
+
+	public void addUserDetail(String name, String fqName, String value, String source) {
 		if ((name == null && fqName == null) || value == null) {
 			log.warn("CpResponse.addUserDetail(name={}, fqName={}, values={}) rejected", name, fqName, value);
 			return;
 		}
-		var ret = DefinitionUtil.findByNameOrNamespace(name, userDetails);
+		var ret = DefinitionUtil.findByNameOrNamespace(name, source, userDetails);
 		if (ret.isPresent()) {
 			var values = new ArrayList<>(ret.get().getValue());
 			values.add(value);
@@ -290,7 +313,7 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	}
 
 	public boolean addUserDetailIfMissing(String name, String fqName, String value) {
-		var ret = DefinitionUtil.findByNameOrNamespace(name, userDetails);
+		var ret = DefinitionUtil.findByNameOrNamespace(name, null, userDetails);
 		if (ret.isEmpty()) {
 			setUserDetail(name, fqName, value);
 			return true;
@@ -304,15 +327,20 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 			log.warn("CpResponse.setUserDetails(name={}, fqName={}, values={}) rejected", name, fqName, values);
 			return;
 		}
-		userDetails.put(Definition.builder().name(name).namespaceUri(fqName).build(), values);
+		removeUserDetails(name != null ? name : fqName, null); // switch source to script
+		userDetails.put(Definition.builder()
+								  .name(name)
+								  .namespaceUri(fqName)
+								  .source(AuditDto.AttributeSource.SCRIPT.name())
+								  .build(), values);
 	}
 
-	public void setResult(String name, List<String> values) {
+	public void setResult(Definition definition, List<String> values) {
 		if (values == null) {
 			values = new ArrayList<>(); // mutable
 		}
-		var oldValues = results.put(new Definition(name), values);
-		log.debug("Claim result change name={} value={} oldValue={}", name, values, oldValues);
+		var oldValues = results.put(definition, values);
+		log.debug("Set result definition='{}' oldValues='{}'", definition, oldValues);
 	}
 
 	public void skipQuery(String typeOrId) {
@@ -342,14 +370,14 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	// script hook use: get first value using name or FQ name
 	@Override
 	public String getProperty(String name) {
-		var ret = DefinitionUtil.findByNameOrNamespace(name, properties);
+		var ret = DefinitionUtil.findByNameOrNamespace(name, null, properties);
 		return ret.isEmpty() || ret.get().getValue() == null || ret.get().getValue().isEmpty() ?
 				null : ret.get().getValue().get(0);
 	}
 
 	// script hook use: remove entry by name or FQ name
 	public List<String> removeProperty(String name) {
-		return removeAttributeFromMap(name, properties);
+		return removeAttributeFromMap(name, null, properties);
 	}
 
 	// script hook use: add entry with a list value
@@ -374,7 +402,7 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	}
 
 	public boolean addPropertyIfMissing(String name, String fqName, String value) {
-		var ret = DefinitionUtil.findByNameOrNamespace(name, properties);
+		var ret = DefinitionUtil.findByNameOrNamespace(name, null, properties);
 		if (ret.isEmpty()) {
 			setProperty(name, fqName, value);
 			return true;
@@ -397,15 +425,12 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 			log.warn("CpResponse.addProperty(name={}, values={}) rejected", name, values);
 			return;
 		}
-		var ret = DefinitionUtil.findByNameOrNamespace(name, properties);
+		var ret = DefinitionUtil.findByNameOrNamespace(name, null, properties);
 		if (ret.isPresent()) {
-			var result = CollectionUtil.addToListIfNotExist(ret.get().getValue(), values);
-			ret.get().setValue(result);
+			values = CollectionUtil.addToListIfNotExist(ret.get().getValue(), values);
 		}
-		else {
-			log.debug("Adding properties with name={} and values={}", name, values);
-			setProperties(name, fqName, values);
-		}
+		log.debug("Adding properties with name={} and values={}", name, values);
+		setProperties(name, fqName, values);
 	}
 
 	public Object getClaims(String name) {
@@ -513,13 +538,15 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	// private internal methods not to be used by scripts directly
 
 	private static List<String> findAttributesInMap(String name, Map<Definition, List<String>> map) {
-		var ret = DefinitionUtil.findByNameOrNamespace(name, map);
+		var ret = DefinitionUtil.findByNameOrNamespace(name, null, map); // source only attributes for now
 		return ret.map(Map.Entry::getValue).orElse(null);
 	}
 
-	private static List<String> removeAttributeFromMap(String name, Map<Definition, List<String>> map) {
-		var ret = DefinitionUtil.findByNameOrNamespace(name, map);
-		return ret.isPresent() ? map.remove(ret.get().getKey()) : Collections.emptyList();
+	private static List<String> removeAttributeFromMap(String name, String source, Map<Definition, List<String>> map) {
+		var nvPairs = DefinitionUtil.findAllByNameOrNamespace(name, source, map);
+		var ret = new ArrayList<String>();
+		nvPairs.forEach((k, v) -> ret.addAll(map.remove(k)));
+		return ret;
 	}
 
 	@JsonIgnore
@@ -543,7 +570,17 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	@JsonIgnore
 	@Override
 	public Map<AttributeName, List<String>> getUserDetailMap() {
-		return Collections.unmodifiableMap(userDetails);
+		Map<AttributeName, List<String>> result = new HashMap<>();
+		for (Map.Entry<Definition, List<String>> entry : userDetails.entrySet()) {
+			var key = entry.getKey();
+			result.put(Definition.builder()
+								 .name(key.getName())
+								 .namespaceUri(key.getNamespaceUri())
+								 .source(key.getSource())
+								 .build(),
+					entry.getValue());
+		}
+		return Collections.unmodifiableMap(result);
 	}
 
 	@JsonIgnore

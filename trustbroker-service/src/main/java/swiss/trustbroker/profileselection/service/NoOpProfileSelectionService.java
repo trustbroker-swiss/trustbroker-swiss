@@ -18,7 +18,6 @@ package swiss.trustbroker.profileselection.service;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Service;
-import swiss.trustbroker.api.profileselection.dto.ProfileData;
 import swiss.trustbroker.api.profileselection.dto.ProfileResponse;
 import swiss.trustbroker.api.profileselection.dto.ProfileSelectionData;
 import swiss.trustbroker.api.profileselection.dto.ProfileSelectionResult;
@@ -59,7 +58,7 @@ public class NoOpProfileSelectionService implements ProfileSelectionService {
 	}
 
 	@Override
-	public ProfileResponse buildProfileResponse(ProfileData profileData, CpResponseData cpResponseData) {
+	public ProfileResponse buildProfileResponse(ProfileSelectionData profileSelectionData, CpResponseData cpResponseData) {
 		return ProfileResponse.builder()
 							  .build();
 	}

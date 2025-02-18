@@ -28,6 +28,7 @@ import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderDefinitions;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
+import swiss.trustbroker.federation.xmlconfig.CounterParty;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.RelyingPartySetup;
 import swiss.trustbroker.federation.xmlconfig.SsoGroupSetup;
@@ -47,7 +48,7 @@ public class ClaimsProviderUtil {
 		var ret = new ClaimsProviderSetup();
 		allCps.result().forEach(cps -> ret.getClaimsParties().addAll(cps.getClaimsParties()));
 		ret.getClaimsParties().forEach(ClaimsProviderUtil::postInit);
-		reportDuplicateClaimsParties(ret.getClaimsParties());
+		reportDuplicateCounterParties(ret.getClaimsParties());
 		log.info("Loaded {}Count={} definitions from setupCpFileCount={} {} files (skipping invalidCount={}) in dtMs={}",
 				ClaimsParty.class.getSimpleName(), ret.getClaimsParties().size(), allCps.result().size(),
 				mapping.getName(), allCps.skipped().size(), System.currentTimeMillis() - start);
@@ -85,7 +86,7 @@ public class ClaimsProviderUtil {
 		var ret = new RelyingPartySetup();
 		allRps.result().forEach(rps -> ret.getRelyingParties().addAll(rps.getRelyingParties()));
 		var countWithoutAliases = ret.getRelyingParties().size();
-		var rpIds = reportDuplicateRelyingParties(ret.getRelyingParties());
+		var rpIds = reportDuplicateCounterParties(ret.getRelyingParties());
 		replicateRelyingPartiesByHrdAlias(ret.getRelyingParties(), rpIds); // register aliases
 		var countWithAliases = ret.getRelyingParties().size();
 		var oidcClientCount = new AtomicInteger();
@@ -114,24 +115,13 @@ public class ClaimsProviderUtil {
 		claimsProviderSetup.getRelyingParties().add(rp);
 	}
 
-	private static Set<String> reportDuplicateRelyingParties(List<RelyingParty> relyingParties) {
+	private static Set<String> reportDuplicateCounterParties(List<? extends CounterParty> counterParties) {
 		var idSet = new HashSet<String>();
-		for (var relyingParty : relyingParties) {
-			if (idSet.contains(relyingParty.getId())) {
-				log.error("Duplicate relyingPartyId={}", relyingParty.getId());
+		for (var counterParty : counterParties) {
+			if (idSet.contains(counterParty.getId())) {
+				log.error("Duplicate {} issuerId={}", counterParty.getShortType(), counterParty.getId());
 			}
-			idSet.add(relyingParty.getId());
-		}
-		return idSet;
-	}
-
-	private static Set<String> reportDuplicateClaimsParties(List<ClaimsParty> claimsParties) {
-		var idSet = new HashSet<String>();
-		for (var claimsParty : claimsParties) {
-			if (idSet.contains(claimsParty.getId())) {
-				log.error("Duplicate claimsPartyId={}", claimsParty.getId());
-			}
-			idSet.add(claimsParty.getId());
+			idSet.add(counterParty.getId());
 		}
 		return idSet;
 	}

@@ -16,6 +16,7 @@
 package swiss.trustbroker.config.dto;
 
 import java.util.List;
+import java.util.Map;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -59,5 +60,10 @@ public class Support {
 	 * List of IP regexp rules matched against the IP address received from perimeter or socket e.g. '192\.168\..*'
 	 */
 	private List<String> allowedClientIps;
+
+	/**
+	 * Logger names handle on a higher level than the default logging.logger level.
+	 */
+	private Map<String, String> level;
 
 }

@@ -75,7 +75,10 @@ export class ErrorBoxComponent implements OnInit {
 
 	showSupportContactText: boolean;
 
-	constructor(private readonly apiService: ApiService, private readonly languageService: LanguageService) {}
+	constructor(
+		private readonly apiService: ApiService,
+		private readonly languageService: LanguageService
+	) {}
 
 	continueFlow(): void {
 		this.apiService.continueResponseToRp(this.sessionId);

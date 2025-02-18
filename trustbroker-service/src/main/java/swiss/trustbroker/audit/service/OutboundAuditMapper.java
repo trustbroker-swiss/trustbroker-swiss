@@ -27,7 +27,7 @@ public class OutboundAuditMapper extends AuditMapper {
 
 	@Override
 	protected AuditMapper mapAttributes(CpResponse cpResponse) {
-		return mapFromDefinitions(cpResponse.getResults(), AuditDto.AttributeSource.IDP_RESPONSE);
+		return mapFromDefinitions(cpResponse.getResults(), AuditDto.AttributeSource.CP_RESPONSE);
 	}
 
 	@Override

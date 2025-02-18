@@ -113,6 +113,9 @@ public class ApplicationInitializer {
 		Assert.notNull(claimsProviderSetup,"No SetupCP files found");
 		Assert.notNull(ssoGroupSetup, "No SSO group setup found");
 
+		// load up-to-date scripts for validation
+		scriptService.prepareRefresh();
+
 		// load standard configurations
 		loadAllRelyingParties(relyingPartySetup);
 
@@ -131,6 +134,7 @@ public class ApplicationInitializer {
 		relyingPartyDefinitions.setClaimsProviderSetup(claimsProviderSetup);
 		relyingPartyDefinitions.setSsoGroupSetup(ssoGroupSetup);
 		appConfigService.checkAndLoadCpCertificates(claimsProviderSetup);
+		appConfigService.validateScripts(claimsProviderSetup);
 		relyingPartyDefinitions.loadOidcConfiguration(trustBrokerProperties.getOidc());
 		relyingPartyDefinitions.loadAccessRequestConfigurations();
 
@@ -138,7 +142,7 @@ public class ApplicationInitializer {
 		appConfigService.checkAndUpdateOidcRegistry(relyingPartySetup);
 
 		// load scripts, this MUST be last as the refresh will swap the script registry, and we are not transactional here
-		scriptService.refresh();
+		scriptService.activateRefresh();
 		gitService.refresh();
 
 		appConfigService.updateMetrics();
@@ -177,7 +181,7 @@ public class ApplicationInitializer {
 		RelyingPartySetupUtil.loadRelyingParty(
 				relyingParties, trustBrokerProperties.getConfigurationPath() +
 						GitService.CONFIGURATION_PATH_SUB_DIR_LATEST + RelyingPartySetupUtil.DEFINITION_PATH, newConfigPath,
-				trustBrokerProperties, idmServices);
+				trustBrokerProperties, idmServices, scriptService);
 	}
 
 }

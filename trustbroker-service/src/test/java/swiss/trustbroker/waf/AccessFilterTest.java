@@ -27,7 +27,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.NetworkConfig;
-import swiss.trustbroker.util.WebSupport;
+import swiss.trustbroker.util.ApiSupport;
 
 class AccessFilterTest {
 
@@ -60,11 +60,13 @@ class AccessFilterTest {
 			"/trustbroker/adfs/ls,200",
 			"/adfs/ls,200",
 			"/adfs/services/trust,200",
-			WebSupport.XTB_ALTERNATE_METADATA_ENDPOINT + ",200", // XTB and ADFS
+			"/api/v1/metadata,200",
+			"/api/v1/saml/metadata,200",
+			"/FederationMetadata/2007-06/FederationMetadata.xml,200", // XTB and ADFS
 			"/federationmetadata/2007-06/federationmetadata.xml,200", // XTB and ADFS
-			"/FederationMetadata/2007-06/federationmetadata.xml,200", // ADFS only
-			"/Federationmetadata/2007-06/federationmetadata.xml,200", // ADFS only
-			"/FederaTionmetadaTa/2007-06/federationmetadata.xml,404", // XTB bad case when ADFS dies
+			"/FederationMetadata/2007-06/federationmetadata.xml,200", // ADFS only - filter allows it, but not mapped
+			"/Federationmetadata/2007-06/federationmetadata.xml,404", // ADFS only - fallback removed
+			"/FederaTionmetadaTa/2007-06/federationmetadata.xml,404", // ADFS only - fallback removed
 			"/AdfsGui/,200",
 			"/HRD/,200",
 			// Search engines
@@ -109,6 +111,39 @@ class AccessFilterTest {
 	void testAccess(String path, int status) throws Exception {
 		var request = new MockHttpServletRequest();
 		request.setRequestURI(path);
+		var response = new MockHttpServletResponse();
+		var chain = new MockFilterChain();
+		accessFilter.doFilter(request, response, chain);
+		assertThat("Access on path " +path, response.getStatus(), is(status));
+	}
+
+	@ParameterizedTest
+	@CsvSource(value = {
+			// test all cases with one URL
+			ApiSupport.CONFIG_STATUS_API + ",INTERNET,true,404",
+			ApiSupport.CONFIG_STATUS_API + ",INTRANET,true,200",
+			ApiSupport.CONFIG_STATUS_API + ",INTRANET,false,200",
+			ApiSupport.CONFIG_STATUS_API + ",INTERNET,false,200",
+			// test just enabled network config for others
+			ApiSupport.CONFIG_SCHEMAS_API + "/RelyingParty.xsd,INTERNET,true,404",
+			ApiSupport.CONFIG_SCHEMAS_API + "/RelyingParty.xsd,INTRANET,true,200",
+			ApiSupport.RECONFIG_URL + ",INTERNET,true,404",
+			ApiSupport.RECONFIG_URL + ",INTRANET,true,200",
+			"/actuator/health,INTERNET,true,404",
+			"/actuator/health,INTRANET,true,200",
+			"/actuator/info,INTERNET,true,404",
+			"/actuator/info,INTRANET,true,200"
+	})
+	void testInternalAccess(String path, String headerValue, boolean networkConfig, int status) throws Exception {
+		var headerName = "X-Network";
+		if (networkConfig) {
+			trustBrokerProperties.getNetwork().setNetworkHeader(headerName);
+			trustBrokerProperties.getNetwork().setInternetNetworkName("INTERNET");
+			trustBrokerProperties.getNetwork().setIntranetNetworkName("INTRANET");
+		}
+		var request = new MockHttpServletRequest();
+		request.setRequestURI(path);
+		request.addHeader(headerName, headerValue);
 		var response = new MockHttpServletResponse();
 		var chain = new MockFilterChain();
 		accessFilter.doFilter(request, response, chain);

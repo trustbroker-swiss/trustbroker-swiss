@@ -34,9 +34,11 @@ import lombok.NoArgsConstructor;
  *     <li>PropertiesSelection</li>
  * </ol>
  * If the issuer is defined, the picking is done per CP. If the issuer is null, the configuration applies to all CPs.
+ * <br/>
  * If the attribute...
  * <ul>
- *     <li>is found: CPResponse.nameID is set before the OnResponse hook and an INFO log states the mapping/</li>
+ *     <li>is found: CPResponse.nameID is set before the OnResponse hook (RP side) / BeforeIdm hook (CP side)
+ *     and an INFO log states the mapping/</li>
  *     <li>is not found: An INFO log states what has been preserved.</li>
  * </ul>
  */
@@ -50,6 +52,8 @@ public class SubjectName implements Serializable {
 
 	/**
 	 * Matched against the CP issuer.
+	 * <br/>
+	 * Only makes sense in an RP configuration, thus for a CP you only configure a single <code>SubjectName</code> without issuer.
 	 */
 	@XmlAttribute(name = "issuer")
 	private String issuer;

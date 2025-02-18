@@ -114,6 +114,11 @@ trustbroker:
     ssoSessionIdPolicy: always # ssoSessionId claim always produced to identify XTB and improve OIDC correlation
     handleResponderErrors: false
     skinnyAssertionNamespaces: a,no-type
+    # Allow access to some halfway public APIs usually not exposed on internet )header injected by network perimeter)
+    #network:
+    #  networkHeader: 'X-ClientNetwork'
+    #  internetNetworkName: INTERNET
+    #  intranetNetworkName: INTRANET
     # XTB global signer overridable per RP, rollover signer is used to publish a future signer before using it
     signer:
       signerCert: ${TRUSTBROKER_HOME}/configuration/latest/keystore/token-signer/keystore.pem
@@ -345,6 +350,15 @@ trustbroker:
     monitoringHints:
       - name: 'X-Simulated-Forwarded-For'
         regex: '10\.10\.10\.[2-254]*'
+    # Separate client identifying data (CID) free auditing on group OpsAuditLogger:
+    audit:
+      ops:
+        enabled: false
+        #cidFields:
+        # detail: true
+        # responseAttributesDefault: true
+        # subjectNameId: true
+        # principal: true
 
 # console logging only in docker and K8Sm, also OK for systemd enabled service
 logging:
@@ -354,6 +368,7 @@ logging:
     root: INFO
     # Audit facility only logs RP side in INFO level, to see CP side use DEBUG and to see claim details use TRACE
     swiss.trustbroker.audit.service.AuditLogger: TRACE
+    #swiss.trustbroker.audit.service.OpsAuditLogger: TRACE
     # Access logging (DEBUG on op logger shows incoming requests as well, DEBUG on full logger shows conversational HTTP headers)
     #swiss.trustbroker.op: DEBUG
     #swiss.trustbroker.op.http: DEBUG

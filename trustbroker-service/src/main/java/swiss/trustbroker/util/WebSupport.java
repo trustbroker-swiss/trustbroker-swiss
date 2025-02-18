@@ -23,8 +23,8 @@ import java.util.regex.Pattern;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import net.shibboleth.shared.net.URLBuilder;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.servlet.view.UrlBasedViewResolver;
@@ -47,16 +47,6 @@ public class WebSupport {
 	public static final String HTTP_HEADER_DEVICE_ID = "X-DevId"; // our device fingerprinting
 
 	public static final String HTTP_HEADER_XTB_PROFILE_ID = "XTB-ProfileId";
-
-	public static final String XTB_ALTERNATE_METADATA_ENDPOINT = "/FederationMetadata/2007-06/FederationMetadata.xml";
-
-	public static final String LOWER_CASE_METADATA_ENDPOINT = "/federationmetadata/2007-06/federationmetadata.xml";
-
-	public static final String ADFS_ENTRY_URL = "/adfs/ls";
-
-	public static final String ADFS_ENTRY_URL_TRAILING_SLASH = ADFS_ENTRY_URL + "/";
-
-	public static final String XTB_LEGACY_ENTRY_URL = "trustbroker/adfs/ls"; // deprecated
 
 	public static final String USERNAME = "username";
 
@@ -113,8 +103,12 @@ public class WebSupport {
 
 	// Internal access: header is null (K8S, LB probe, development)
 	// LB sends value otherwise
+	// If there's no configuration for the header, treat as Internet access
 	public static boolean isClientOnInternet(HttpServletRequest request, NetworkConfig networkConfig) {
-		return networkConfig != null && networkConfig.isInternet(getClientNetwork(request, networkConfig));
+		return networkConfig == null
+				|| StringUtils.isEmpty(networkConfig.getNetworkHeader())
+				|| StringUtils.isEmpty(networkConfig.getInternetNetworkName())
+				|| networkConfig.isInternet(getClientNetwork(request, networkConfig));
 	}
 
 	// append to exceptions to correlate clients with have problems with
@@ -199,17 +193,6 @@ public class WebSupport {
 			return null;
 		}
 		return UrlBasedViewResolver.REDIRECT_URL_PREFIX + url;
-	}
-
-	public static boolean isFederationMetaRequest(HttpServletRequest request) {
-		// some peers are case-insensitive and clients might have had miss-configuration
-		return HttpMethod.GET.matches(request.getMethod()) &&
-				WebSupport.XTB_ALTERNATE_METADATA_ENDPOINT.equalsIgnoreCase(request.getRequestURI());
-	}
-
-	public static boolean isSupportedFederationMeta(String path) {
-		return WebSupport.XTB_ALTERNATE_METADATA_ENDPOINT.equals(path) ||
-				WebSupport.XTB_ALTERNATE_METADATA_ENDPOINT.toLowerCase().equals(path);
 	}
 
 	public static Map<String, String> getHttpContext(HttpServletRequest request, NetworkConfig networkConfig) {

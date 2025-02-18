@@ -17,8 +17,6 @@ package swiss.trustbroker.federation.service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
-import java.util.function.Predicate;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,8 +26,8 @@ import swiss.trustbroker.federation.dto.ConfigElementStatus;
 import swiss.trustbroker.federation.dto.ConfigStatus;
 import swiss.trustbroker.federation.dto.ConfigStatusData;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
+import swiss.trustbroker.federation.xmlconfig.CounterParty;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
-import swiss.trustbroker.federation.xmlconfig.ValidationStatus;
 
 /**
  * Service for checking the configuration status.
@@ -43,25 +41,15 @@ public class XmlConfigStatusService {
 
 	public ConfigStatusData getConfigStatus() {
 		var relyingParties = relyingPartyDefinitions.getRelyingPartySetup().getUnfilteredRelyingParties();
-		var relyingPartyStatuses = getStatuses(relyingParties,
-				RelyingParty::getId, isRpInvalid(), RelyingParty::getValidationStatus);
+		var relyingPartyStatuses = getStatuses(relyingParties);
 		var claimsParties = relyingPartyDefinitions.getClaimsProviderSetup().getUnfilteredClaimsParties();
-		var claimsProviderStatuses = getStatuses(claimsParties,
-				ClaimsParty::getId, isCpInvalid(), ClaimsParty::getValidationStatus);
+		var claimsProviderStatuses = getStatuses(claimsParties);
 		var status = getOverallStatus(relyingParties, claimsParties, relyingPartyStatuses, claimsProviderStatuses);
 		return ConfigStatusData.builder()
 							   .status(status)
 							   .relyingParties(relyingPartyStatuses)
 							   .claimsProviders(claimsProviderStatuses)
 							   .build();
-	}
-
-	private static Predicate<ClaimsParty> isCpInvalid() {
-		return cp -> !cp.isValid() || cp.initializedValidationStatus().hasErrors();
-	}
-
-	private static Predicate<RelyingParty> isRpInvalid() {
-		return rp -> !rp.isValid() || rp.initializedValidationStatus().hasErrors();
 	}
 
 	private static ConfigStatus getOverallStatus(List<RelyingParty> relyingParties, List<ClaimsParty> claimsParties,
@@ -75,15 +63,13 @@ public class XmlConfigStatusService {
 		return ConfigStatus.WARN;
 	}
 
-	private static <T> List<ConfigElementStatus> getStatuses(List<T> elements,
-			Function<T, String> idAccessor, Predicate<T> invalidCheck,
-			Function<T, ValidationStatus> statusAccessor) {
+	private static List<ConfigElementStatus> getStatuses(List<? extends CounterParty> counterParties) {
 		var result = new ArrayList<ConfigElementStatus>();
-		for (var element : elements) {
-			if (invalidCheck.test(element)) {
+		for (var counterParty : counterParties) {
+			if (!counterParty.isValid()  || counterParty.initializedValidationStatus().hasErrors()) {
 				result.add(ConfigElementStatus.builder()
-											  .id(idAccessor.apply(element))
-											  .errors(statusAccessor.apply(element).getErrors())
+											  .id(counterParty.getId())
+											  .errors(counterParty.getValidationStatus().getErrors())
 											  .build());
 			}
 		}

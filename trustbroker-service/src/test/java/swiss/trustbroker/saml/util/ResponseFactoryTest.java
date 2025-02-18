@@ -37,6 +37,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,6 +93,7 @@ import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.ResponseParameters;
 import swiss.trustbroker.sessioncache.dto.StateData;
@@ -448,12 +450,12 @@ class ResponseFactoryTest extends SamlTestBase {
 	private Assertion realSignableObject(Signature signature, String digestMethod) {
 		// grown data API, sorry
 		var cpResponse = CpResponse.builder().build();
-		var attrDefs = new ArrayList<Definition>();
-		attrDefs.add(Definition.builder()
+		Map<Definition, List<String>> attrDefs = new HashMap<>();
+		attrDefs.put(Definition.builder()
 				.name(CoreAttributeName.CLAIMS_NAME.getName())
 				.namespaceUri(CoreAttributeName.CLAIMS_NAME.getNamespaceUri())
 				.value("myClaimsName")
-				.build());
+				.build(), List.of("myClaimsName"));
 		var responseParams = ResponseParameters.builder()
 											   .issuerId("issuer1")
 											   .federationServiceIssuerId("issuer2")
@@ -462,7 +464,10 @@ class ResponseFactoryTest extends SamlTestBase {
 											   .audienceValiditySeconds(AUDIENCE_VALIDITY_SECONDS)
 											   .skinnyAssertionStyle(OpenSamlUtil.SKINNY_ALL)
 											   .build();
-		var signableXmlObject = ResponseFactory.createAssertion(attrDefs, cpResponse, new ConstAttributes(), responseParams);
+
+		cpResponse.setAttributes(attrDefs);
+		var signableXmlObject = ResponseFactory.createSamlAssertion(cpResponse, new ConstAttributes(),
+				cpResponse.getContextClasses(), responseParams, null);
 
 		if (signature == null) {
 			return signableXmlObject;
@@ -480,6 +485,23 @@ class ResponseFactoryTest extends SamlTestBase {
 		SamlUtil.signSamlObject(signableXmlObject, signature);
 
 		return signableXmlObject;
+	}
+
+	private static Map<Definition, List<String>> givenUserDetails() {
+		Map<Definition, List<String>> userDetails = new LinkedHashMap<>();
+		var email = Definition.builder()
+							  .name(CoreAttributeName.EMAIL.getName())
+							  .namespaceUri(CoreAttributeName.EMAIL.getNamespaceUri())
+							  .build();
+		var userExtId = Definition.builder()
+								  .name(CoreAttributeName.CLAIMS_NAME.getName())
+								  .namespaceUri(CoreAttributeName.CLAIMS_NAME.getNamespaceUri())
+								  .build();
+		userDetails.put(email, List.of("user@trustbroker.swiss"));
+		Map<Definition, List<String>> properties = new LinkedHashMap<>();
+		userDetails.put(userExtId, List.of("idm98765"));
+
+		return userDetails;
 	}
 
 	private KeyInfo createMockKeyInfo(Credential credential) {
@@ -664,9 +686,10 @@ class ResponseFactoryTest extends SamlTestBase {
 												   .recipientId(customRecipientId)
 												   .issuerId(customIssuerId)
 												   .setOriginalIssuerIfEmpty(true)
-												   .dropDuplicatedAttributeFromOriginalIssuer(dropDuplicates)
 												   .homeNameIssuerMapping(homeNameOriginalIssuerMapping)
 												   .build();
+
+		cpResponse.setAttributes(DefinitionUtil.deduplicatedCpAttributes(cpResponse, dropDuplicates, null));
 		var assertion = responseFactory.createAssertion(stateData, cpResponse, responseParameters);
 
 		// verify

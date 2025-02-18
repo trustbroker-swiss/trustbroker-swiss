@@ -101,22 +101,25 @@ class ScriptServiceTest {
 
 		// data
 		var cpResponse = CpResponse.builder()
-									.attributes(Map.of(
-						Definition.builder().namespaceUri("http://fq.stuff.1/name1").build(), List.of("value1"),
-						Definition.builder().namespaceUri("http://fq.stuff.11/name1").build(), List.of("value1")
-				))
-									.userDetails(Map.of(
-						Definition.builder().namespaceUri("http://fq.stuff.2/name2").build(), List.of("value2"),
-						Definition.builder().namespaceUri("http://fq.stuff.22/name2").build(), List.of("value2")
-				))
-									.properties(Map.of(
-						Definition.builder().namespaceUri("http://fq.stuff.3/name3").build(), List.of("value3"),
-						Definition.builder().namespaceUri("http://fq.stuff.33/name3").build(), List.of("value3")
-				))
-									.rpContext(Map.of(
-						HttpHeaders.REFERER, "https://identity-test.trustbroker.swiss"
-				))
-									.build();
+								   .attributes(Map.of(
+										   Definition.builder()
+													 .namespaceUri("http://fq.stuff.1/name1")
+													 .build(), List.of("value1")
+								   ))
+								   .userDetails(Map.of(
+										   Definition.builder()
+													 .namespaceUri("http://fq.stuff.2/name2")
+													 .build(), List.of("value2")
+								   ))
+								   .properties(Map.of(
+										   Definition.builder()
+													 .namespaceUri("http://fq.stuff.3/name3")
+													 .build(), List.of("value3")
+								   ))
+								   .rpContext(Map.of(
+										   HttpHeaders.REFERER, "https://identity-test.trustbroker.swiss"
+								   ))
+								   .build();
 		// process
 		scriptService.init(scriptName);
 		scriptService.processOnResponse(scriptName, cpResponse, null, null);
@@ -145,7 +148,8 @@ class ScriptServiceTest {
 		doReturn(configPath).when(trustBrokerProperties).getConfigurationPath();
 		doReturn(RelyingPartySetupUtil.DEFINITION_PATH).when(trustBrokerProperties).getScriptPath();
 		doReturn(SCRIPTS_PATH).when(trustBrokerProperties).getGlobalScriptPath();
-		scriptService.refresh();
+		scriptService.prepareRefresh();
+		scriptService.activateRefresh();
 
 		// resolve
 		var type = "OnCpRequest";

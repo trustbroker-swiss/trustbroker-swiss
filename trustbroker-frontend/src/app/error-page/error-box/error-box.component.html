@@ -49,7 +49,9 @@
 				</p>
 			</div>
 		</div>
-		<p class="medium-emphasis" *ngIf="reference"><span [innerHTML]="referenceKey | translate | safeMarkup"></span><span>{{ reference }}</span></p>
+		<p class="medium-emphasis" *ngIf="reference">
+			<span [innerHTML]="referenceKey | translate | safeMarkup"></span><span>{{ reference }}</span>
+		</p>
 		<button *ngIf="continueButton" mat-flat-button color="accent" (click)="continueFlow()" tabindex="1" type="submit" class="{{ theme.name }} button-text mt-2">
 			<span>{{ "trustbroker.error.main.button.continue" | translate }}</span>
 		</button>

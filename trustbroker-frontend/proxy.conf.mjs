@@ -11,6 +11,8 @@ export default [
 			'/userinfo',
 			'/realms',
 			'/saml2',
+			'/FederationMetadata',
+			'/federationmetadata',
 			'/.well-known'
 		],
 		target: backendUrl,

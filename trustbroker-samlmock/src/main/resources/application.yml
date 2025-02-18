@@ -25,8 +25,9 @@ trustbroker:
     # data
     mockDataDirectory: ${TRUSTBROKER_HOME}/configCache/trustbroker-samlmock/${SPRING_PROFILES_ACTIVE}
     keystoreDirectory: ${TRUSTBROKER_HOME}/configuration/latest/keystore/
+    cacheMockFiles: false # re-load files on access
 
-    # RP (as we sign and do not have access to some RP's private key, use 'trust ourselves')
+    # RP (as we sign and do not have access to some RPs private key, use 'trust ourselves')
     assertionConsumerServiceUrl: http://localhost:7070/authn/consumer
     idpServiceUrl: http://localhost:7070/auth/saml2/idp/samples
     artifactResolutionServiceUrl: http://localhost:7070/authn/arp
@@ -62,3 +63,4 @@ logging:
   level:
     root: INFO
     org.springframework.boot.autoconfigure.logging: INFO
+    swiss.trustbroker.samlmock: INFO

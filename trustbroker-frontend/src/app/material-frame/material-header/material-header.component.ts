@@ -44,7 +44,10 @@ export class MaterialHeaderComponent implements OnInit {
 	helpPanelVisible: boolean;
 	readonly languages: string[];
 
-	constructor(public readonly languageService: LanguageService, private readonly apiService: ApiService) {
+	constructor(
+		public readonly languageService: LanguageService,
+		private readonly apiService: ApiService
+	) {
 		this.languages = this.languageService.availableLanguages;
 		this.languageDropdownVisible = false;
 		this.helpPanelVisible = false;
