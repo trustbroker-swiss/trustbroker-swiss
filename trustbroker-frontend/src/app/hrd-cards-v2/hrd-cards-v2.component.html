@@ -1,0 +1,47 @@
+<!--
+ Copyright (C) 2024 trustbroker.swiss team BIT
+
+ This program is free software.
+ You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
+ as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+ See the GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License along with this program.
+ If not, see <https://www.gnu.org/licenses/>.
+-->
+
+@if (theme$ | async; as theme) {
+	<div class="main">
+		@for (banner of idpObjects().banners; track banner) {
+			<app-hrd-cards-banner [config]="banner" [theme]="theme" />
+		}
+
+		<div class="cards">
+			@for (idpObjects of idpObjects().tiles | bucketizeIdpObjects; track idpObjects; let bucketIndex = $index) {
+				<section class="card-section" [ngClass]="{ 'expandable-to-half-size': bucketIndex < 2 }">
+					@for (idpObject of idpObjects; track idpObject.urn) {
+						<button class="idp-card {{ theme.name }} small" (click)="onCardClick(idpObject)" [disabled]="idpObject.disabled">
+							<img src="{{ baseUrl }}hrd/assets/images/{{ theme.name }}/{{ idpObject.image }}" alt="" />
+							<div
+								[id]="idpObject.title"
+								[innerHTML]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title } | safeMarkup"
+							></div>
+							@if (idpObject.disabled) {
+								<div class="disabled-overlay">
+									@if (bucketIndex < 2) {
+										<p>{{ idpObject.title }} {{ "trustbroker.hrd.cards.IdpCurrentlyUnavailable.info" | translate }}</p>
+									} @else {
+										<p>{{ "trustbroker.hrd.cards.LoginUnavailable.info" | translate }}</p>
+									}
+								</div>
+							}
+						</button>
+					}
+				</section>
+			}
+		</div>
+	</div>
+}

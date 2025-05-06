@@ -31,12 +31,12 @@ import swiss.trustbroker.api.relyingparty.dto.RelyingPartyConfig;
  */
 public interface AnnouncementService {
 
-	boolean showAnnouncements(AnnouncementsRpData announcementsRpData);
+	boolean showAnnouncements(AnnouncementsRpData announcementsRpData, String providerName);
 
 	boolean isRpAppAccessible(Announcement announcement);
 
 	List<Announcement> getAnnouncementsForApplication(RelyingPartyConfig relyingPartyConfig,
-			AnnouncementsRpData announcementsRpData);
+			AnnouncementsRpData announcementsRpData, String appName);
 
 	public List<Announcement> getGlobalAnnouncements();
 

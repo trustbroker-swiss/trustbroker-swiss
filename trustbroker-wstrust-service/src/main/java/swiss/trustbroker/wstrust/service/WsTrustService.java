@@ -43,7 +43,7 @@ import org.opensaml.soap.wstrust.TokenType;
 import org.opensaml.soap.wstrust.WSTrustConstants;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Element;
-import swiss.trustbroker.api.idm.service.IdmService;
+import swiss.trustbroker.api.idm.service.IdmQueryService;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.audit.service.OutboundAuditMapper;
 import swiss.trustbroker.common.exception.RequestDeniedException;
@@ -61,11 +61,12 @@ import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.homerealmdiscovery.util.DefaultIdmStatusPolicyCallback;
 import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
+import swiss.trustbroker.mapping.service.ClaimsMapperService;
+import swiss.trustbroker.mapping.util.AttributeFilterUtil;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.ResponseParameters;
 import swiss.trustbroker.saml.service.RelyingPartyService;
 import swiss.trustbroker.saml.util.AssertionValidator;
-import swiss.trustbroker.saml.util.AttributeFilterUtil;
 import swiss.trustbroker.saml.util.ResponseFactory;
 import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.wstrust.util.WsTrustUtil;
@@ -77,7 +78,7 @@ public class WsTrustService {
 
 	private final TrustBrokerProperties trustBrokerProperties;
 
-	private final List<IdmService> idmServices;
+	private final List<IdmQueryService> idmQueryServices;
 
 	private final RelyingPartySetupService relyingPartySetupService;
 
@@ -86,6 +87,8 @@ public class WsTrustService {
 	private final RelyingPartyService relyingPartyService;
 
 	private final AuditService auditService;
+
+	private final ClaimsMapperService claimsMapperService;
 
 	private RequestSecurityTokenResponseCollection createResponse(List<Attribute> cpAttributes, CpResponse cpResponse,
 			Assertion requestHeaderAssertion, String addressFromRequest) {
@@ -162,8 +165,10 @@ public class WsTrustService {
 		var constAttr = relyingPartySetupService.getConstantAttributes(addressFromRequest, null);
 		List<String> contextClasses = getAuthnContextClasses(requestHeaderAssertion);
 
-		var userDetails = AttributeFilterUtil.filteredUserDetails(cpResponse.getUserDetails(), cpResponse.getIdmLookup());
-		cpResponse.setUserDetails(DefinitionUtil.deduplicatedRpAttributes(userDetails, cpResponse.getProperties(),
+		var userDetails = AttributeFilterUtil.filteredUserDetails(cpResponse.getUserDetails(), cpResponse.getIdmLookup(),
+				rp.getClaimsSelection());
+
+		cpResponse.setUserDetails(claimsMapperService.deduplicatedRpAttributes(userDetails, cpResponse.getProperties(),
 				constAttr));
 		cpAttributes = SamlFactory.filterDuplicatedAttributes(cpAttributes);
 
@@ -228,7 +233,7 @@ public class WsTrustService {
 
 		// Validate the assertion on XTB level only per default. The wss4j layer doing the same is deprecated and can be dropped.
 		if (trustBrokerProperties.getSecurity().isValidateSecurityTokenRequestAssertion()) {
-			AssertionValidator.validateRstAssertion(headerAssertion, trustBrokerProperties, null);
+			AssertionValidator.validateRstAssertion(headerAssertion, trustBrokerProperties, null, null);
 		}
 		else {
 			log.warn("trustbroker.config.security.validateSecurityTokenRequestAssertion=false, XTB validation disabled!!!");
@@ -365,7 +370,7 @@ public class WsTrustService {
 		else {
 			for (Definition definition : rpConfigAttributesDefinition) {
 				var name = definition.getNamespaceUri();
-				var values = DefinitionUtil.findListByNameOrNamespace(name, cpAttributes);
+				var values = DefinitionUtil.findListByNameOrNamespace(name, null, cpAttributes);
 				if (!values.isEmpty()) {
 					attributes.add(SamlFactory.createAttribute(definition.getNamespaceUri(), values,
 							getOriginalIssuerFromInput(requestAttributeStatements, definition)));
@@ -407,7 +412,7 @@ public class WsTrustService {
 		var relyingPartyConfig = RelyingParty.builder().id(addressFromRequest).build();
 		var callback = new DefaultIdmStatusPolicyCallback(cpResponse);
 
-		for (var idmService : idmServices) {
+		for (var idmService : idmQueryServices) {
 			var queryResponse = idmService.getAttributes(relyingPartyConfig, cpResponse, cpResponse.getIdmLookup(), callback);
 			if (queryResponse.isPresent()) {
 				DefinitionUtil.mapCpAttributeList(queryResponse.get().getUserDetails(), cpResponse.getUserDetails());
@@ -421,17 +426,16 @@ public class WsTrustService {
 			throw new TechnicalException("Assertion issuer is null for Assertion with ID=" + headerAssertion.getID());
 		}
 		var idpIssuer = issuer.getValue();
-		Map<Definition, List<String>> idpAttributes = new HashMap<>();
+		Map<Definition, List<String>> cpAttributes = new HashMap<>();
 
 		// minimal processing context (WSTrust does not need state)
 		var cpResponse = new CpResponse();
 		if (headerAssertion.getSubject() != null && headerAssertion.getSubject().getNameID() != null) {
-			cpResponse.setAttribute(CoreAttributeName.NAME_ID.getNamespaceUri(),
-					headerAssertion.getSubject().getNameID().getValue());
+			cpResponse.setAttribute(CoreAttributeName.NAME_ID.getNamespaceUri(), headerAssertion.getSubject().getNameID().getValue());
 			cpResponse.setNameId(headerAssertion.getSubject().getNameID().getValue());
 		}
 		cpResponse.setIssuer(idpIssuer);
-		cpResponse.setAttributes(idpAttributes);
+		cpResponse.setAttributes(cpAttributes);
 
 		// AttributeStatements
 		if (headerAssertion.getAttributeStatements() != null && !headerAssertion.getAttributeStatements().isEmpty()) {

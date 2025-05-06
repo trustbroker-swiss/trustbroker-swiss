@@ -48,7 +48,7 @@ class Base64UtilTest {
 
 	@Test
 	void encodeException() {
-		assertThrows(TechnicalException.class, () -> Base64Util.encode(null, false));
+		assertThrows(TechnicalException.class, () -> Base64Util.encode((byte[]) null, false));
 	}
 
 	@ParameterizedTest
@@ -65,6 +65,12 @@ class Base64UtilTest {
 				{ LONG_INPUT.getBytes(StandardCharsets.UTF_8), true, LONG_INPUT_ENCODED_CHUNKED },
 				{ LONG_INPUT.getBytes(StandardCharsets.UTF_8), false, LONG_INPUT_ENCODED }
 		};
+	}
+
+	@Test
+	void encodeString() {
+		assertThat(Base64Util.encode(LONG_INPUT, true), is(LONG_INPUT_ENCODED_CHUNKED));
+		assertThat(Base64Util.encode(LONG_INPUT, false), is(LONG_INPUT_ENCODED));
 	}
 
 	@Test

@@ -51,4 +51,18 @@ public class IdmResult {
 
 	private int originalPropertiesCount;
 
+	/**
+	 * This is not consumed directly by the XTB core code, but may be passed to other interfaces.
+	 * <br/>
+	 * The map key indicates the source of the data. It can be used by the implementations to match related interface
+	 * implementations in order to share internal data structures such as lookup results.
+	 * <br/>
+	 * Currently this data is passed, to the <code>IdmProvisioningService</code> implementations.
+	 *
+	 * @since 1.9.0
+	 * @see IdmProvisioningRequest#getAdditionalData()
+	 */
+	@Builder.Default
+	private Map<Object, Object> additionalData = new HashMap<>();
+
 }

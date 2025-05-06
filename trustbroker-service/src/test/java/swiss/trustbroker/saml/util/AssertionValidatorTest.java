@@ -34,6 +34,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +49,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.opensaml.saml.common.SignableSAMLObject;
 import org.opensaml.saml.saml2.core.Assertion;
+import org.opensaml.saml.saml2.core.AttributeStatement;
 import org.opensaml.saml.saml2.core.Audience;
 import org.opensaml.saml.saml2.core.AudienceRestriction;
 import org.opensaml.saml.saml2.core.AuthnRequest;
@@ -64,6 +69,7 @@ import org.opensaml.xmlsec.SecurityConfigurationSupport;
 import org.opensaml.xmlsec.signature.KeyInfo;
 import org.opensaml.xmlsec.signature.Signature;
 import org.opensaml.xmlsec.signature.support.SignatureConstants;
+import org.slf4j.LoggerFactory;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.dto.SamlBinding;
@@ -80,12 +86,18 @@ import swiss.trustbroker.config.dto.ArtifactResolution;
 import swiss.trustbroker.config.dto.SamlProperties;
 import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
+import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
+import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
+import swiss.trustbroker.mapping.dto.QoaConfig;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
+import swiss.trustbroker.test.util.MemoryAppender;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.STRICT_STUBS)
 class AssertionValidatorTest {
+
+	private static final String TEST_AUDIENCE = "http://localhost:8080";
 
 	private static final String TEST_ISSUER = "http://localhost:8080";
 
@@ -97,8 +109,22 @@ class AssertionValidatorTest {
 
 	TrustBrokerProperties properties;
 
+	private MemoryAppender memoryAppender;
+
+	private void enableDebug(Class clazz, MemoryAppender memoryAppender) {
+		Logger logger = (Logger) LoggerFactory.getLogger(clazz);
+		logger.setLevel(Level.DEBUG);
+		logger.addAppender(memoryAppender);
+	}
+
 	@BeforeEach
 	void setup() {
+		// catch log output of interest
+		memoryAppender = new MemoryAppender();
+		memoryAppender.setContext((LoggerContext) LoggerFactory.getILoggerFactory());
+		enableDebug(AssertionValidator.class, memoryAppender);
+		memoryAppender.start();
+
 		SamlInitializer.initSamlSubSystem();
 		properties = new TrustBrokerProperties();
 		properties.setIssuer(TEST_ISSUER);
@@ -142,7 +168,8 @@ class AssertionValidatorTest {
 				.expectedIssuer("idpIssuer")
 				.build();
 		assertThrows(RequestDeniedException.class, () -> {
-			AssertionValidator.validateResponseAssertions(assertions, response, null, properties, null, expectedValues);
+			AssertionValidator.validateResponseAssertions(assertions, response, null, properties, null, null,
+					expectedValues);
 		});
 	}
 
@@ -157,7 +184,8 @@ class AssertionValidatorTest {
 				.expectedIssuer("idpIssuer")
 				.build();
 		assertThrows(RequestDeniedException.class, () -> {
-			AssertionValidator.validateResponseAssertions(assertions, response, null, properties, null, expectedValues);
+			AssertionValidator.validateResponseAssertions(assertions, response, null, properties, null, null,
+					expectedValues);
 		});
 	}
 
@@ -171,7 +199,8 @@ class AssertionValidatorTest {
 				.expectedIssuer("idpIssuer")
 				.build();
 		assertThrows(RequestDeniedException.class, () -> {
-			AssertionValidator.validateResponseAssertions(assertions, response, null, properties, null, expectedValues);
+			AssertionValidator.validateResponseAssertions(assertions, response, null, properties, null, null,
+					expectedValues);
 		});
 	}
 
@@ -186,7 +215,8 @@ class AssertionValidatorTest {
 				.expectedIssuer("idpIssuer")
 				.build();
 		assertThrows(RequestDeniedException.class, () -> {
-			AssertionValidator.validateResponseAssertions(assertions, response, null, properties, null, expectedValues);
+			AssertionValidator.validateResponseAssertions(assertions, response, null, properties, null, null,
+					expectedValues);
 		});
 	}
 
@@ -616,7 +646,7 @@ class AssertionValidatorTest {
 				.expectedAssertionId(expectedAssertionId)
 				.build();
 		assertThrows(RequestDeniedException.class, () -> AssertionValidator.validateAssertion(assertion, now,
-					credentials, properties, null, expectedValues));
+					credentials, properties, null, null,  expectedValues));
 	}
 
 	@Test
@@ -632,7 +662,8 @@ class AssertionValidatorTest {
 				.expectedRequestId(expectedRequestId)
 				.expectedIssuer(expectedIssuer)
 				.build();
-		assertDoesNotThrow(() -> AssertionValidator.validateAssertion(assertion, now, credentials, properties, null, expectedValues));
+		assertDoesNotThrow(() ->
+				AssertionValidator.validateAssertion(assertion, now, credentials, properties, null, null, expectedValues));
 	}
 
 	@Test
@@ -894,13 +925,224 @@ class AssertionValidatorTest {
 		var statement = givenAuthnStatement(now.minusSeconds(authnSecsBeforeNow));
 		assertion.getAuthnStatements().add(statement);
 		var secPol = SecurityPolicies.builder().notOnOrAfterSeconds(notOnOrAfterSeconds).build();
+		var claimsParty = new ClaimsParty();
+		claimsParty.setSecurityPolicies(secPol);
+		var rpQoaConf = new QoaConfig(null, "any");
 		if (ok) {
-			assertDoesNotThrow(() -> AssertionValidator.validateAssertionAuthnStatements(assertion, now, secPol, properties));
+			assertDoesNotThrow(() -> AssertionValidator.validateAssertionAuthnStatements(assertion, now, claimsParty,
+					rpQoaConf, properties, null, QoaComparison.EXACT));
 		}
 		else {
 			assertThrows(RequestDeniedException.class,
-					() -> AssertionValidator.validateAssertionAuthnStatements(assertion, now, secPol, properties));
+					() -> AssertionValidator.validateAssertionAuthnStatements(assertion, now, claimsParty,
+							rpQoaConf, properties, null, QoaComparison.EXACT));
 		}
+	}
+
+	@Test
+	void validateRstAssertionNoAssertionTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		assertThrows(RequestDeniedException.class, () -> {
+			AssertionValidator.validateRstAssertion(null, properties, null, secPol);
+		});
+	}
+
+	@Test
+	void validateRstAssertionNoAssertionIdTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("NameID", TEST_AUDIENCE, SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		assertion.setID("");
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		});
+		assertException("ID missing", ex);
+	}
+
+	@Test
+	void validateRstAssertionNullAssertionIdTest() {
+		Assertion assertion = givenRstAssertion("NameID", TEST_AUDIENCE, SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		assertion.setID(null);
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		});
+		assertException("ID missing", ex);
+	}
+
+	@Test
+	void validateRstAssertionNullSubjectTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("NameID", TEST_AUDIENCE, SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		assertion.setSubject(null);
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		});
+		assertException("Subject missing", ex);
+	}
+
+	@Test
+	void validateRstAssertionNullNameIdTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion(null, TEST_AUDIENCE, SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		});
+		assertException("NameId missing", ex);
+	}
+
+	@Test
+	void validateRstAssertionNoNameIdTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("", TEST_AUDIENCE, SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		});
+		assertException("NameId missing", ex);
+	}
+
+	@Test
+	void validateRstAssertionEmptySubjectConfirmationsTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("NameID", TEST_AUDIENCE, SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		assertion.getSubject().getSubjectConfirmations().clear();
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		});
+		assertException("SubjectConfirmations missing", ex);
+	}
+
+	@Test
+	void validateRstAssertionWrongMethodInSubjectConfirmationTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("NameID", TEST_AUDIENCE, "Invalid-Method");
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		});
+		assertException("SubjectConfirmation.Method missing", ex);
+	}
+
+	@Test
+	void validateRstAssertionNullIssuerTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("NameID", TEST_AUDIENCE, SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		assertion.setIssuer(null); // empty
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		});
+		assertException("Assertion.Issuer missing", ex);
+	}
+
+	@Test
+	void validateRstAssertionEmptyIssuerTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("NameID", TEST_AUDIENCE, SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		assertion.getIssuer().setValue(""); // empty
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		});
+		assertException("Assertion.Issuer missing", ex);
+	}
+
+	@Test // https://www.oasis-open.org/committees/download.php/35711/sstc-saml-core-errata-2.0-wd-06-diff.pdf Page 24, Line 976
+	void validateRstAssertionInvalidAudienceRestrictionTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("NameID", "Invalid-Audience", SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		});
+		assertException("Audience missing or invalid", ex);
+	}
+
+	@Test // https://www.oasis-open.org/committees/download.php/35711/sstc-saml-core-errata-2.0-wd-06-diff.pdf Page 24, Line 976
+	void validateRstAssertionValidAudienceRestrictionTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("NameID", TEST_AUDIENCE, SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+	}
+
+	@Test
+	void validateRstAssertionInvalidAudiencesTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("NameID", "invalidAudience", SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		});
+		assertException("Audience missing or invalid", ex);
+	}
+
+	@Test
+	void validateRstAssertionNullAttributeStatementsTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("NameID", TEST_AUDIENCE, SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		assertion.getAttributeStatements().clear();
+		AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		assertLog("AttributeStatements missing", Level.INFO);
+	}
+
+	@Test
+	void validateRstAssertionEmptyAttributeStatementsTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("NameID", TEST_AUDIENCE, SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		assertion.getAttributeStatements().clear();
+		AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		assertLog("AttributeStatements missing", Level.INFO);
+	}
+
+	@Test
+	void validateRstAssertionValidTest() {
+		var secPol = SecurityPolicies
+				.builder()
+				.requireAudienceRestriction(false)
+				.build();
+		Assertion assertion = givenRstAssertion("NameID", TEST_AUDIENCE, SubjectConfirmation.METHOD_HOLDER_OF_KEY);
+		assertDoesNotThrow(() -> {
+			AssertionValidator.validateRstAssertion(assertion, properties, null, secPol);
+		});
 	}
 
 	static Boolean[][] requireRestrictions() {
@@ -1127,6 +1369,125 @@ class AssertionValidatorTest {
 		status.setStatusCode(statusCode);
 		resp.setStatus(status);
 		return resp;
+	}
+
+	private Assertion givenRstAssertion(String nameId, String audience, String subjectConfirmation) {
+		Assertion assertion = OpenSamlUtil.buildAssertionObject();
+		assertion.setIssueInstant(Instant.now());
+		// ID
+		assertion.setID(UUID.randomUUID().toString());
+		// issuer
+		assertion.setIssuer(OpenSamlUtil.buildSamlObject(Issuer.class));
+		assertion.getIssuer().setValue(TEST_AUDIENCE);
+		// subject
+		assertion.setSubject(givenRstSubjectNameIdAndConfirmations(givenRstSubject(), givenRstNameId(nameId),
+				givenRstSubjectConfirmations(), givenRstSubjectConfirmation(subjectConfirmation)));
+		// audience
+		assertion.setConditions(givenRstAudienceOfConditions(givenRstConditions(),
+				givenRstAudienceRestrictions(), givenRstAudiences(audience)));
+		// attributes
+		assertion.getAttributeStatements().addAll(giveRstAttributeStatements());
+		return assertion;
+	}
+
+	private void assertException(String expectedString, Exception ex) {
+		assertTrue(((RequestDeniedException)ex).getInternalMessage().contains(expectedString),
+				"'" + expectedString + "' not found in: " + ex.getMessage());
+	}
+
+	private Subject givenRstSubjectNameIdAndConfirmations(Subject subject, NameID nameID,
+			List<SubjectConfirmation> subjectConfirmations, SubjectConfirmation subjectConfirmation) {
+		if (subject == null) {
+			return subject;
+		}
+		subject.setNameID(nameID);
+		if (subjectConfirmations == null) {
+			return subject;
+		}
+		subjectConfirmations.add(subjectConfirmation);
+		subject.getSubjectConfirmations().addAll(subjectConfirmations);
+		return subject;
+	}
+
+	private Subject givenRstSubject() {
+		return OpenSamlUtil.buildSamlObject(Subject.class);
+	}
+
+	private Conditions givenRstAudienceOfConditions(Conditions conditions, List<AudienceRestriction> audienceRestrictions,
+			List<Audience> audiences) {
+		if (audienceRestrictions == null) {
+			return conditions;
+		}
+
+		conditions.getAudienceRestrictions().addAll(audienceRestrictions);
+		if (audiences != null) {
+			conditions.getAudienceRestrictions().add(givenRstAudienceRestWithAudience(audiences));
+		}
+
+		return conditions;
+	}
+
+	private List<SubjectConfirmation> givenRstSubjectConfirmations() {
+		List<SubjectConfirmation> subjectConfirmations = new ArrayList<>();
+		return subjectConfirmations;
+	}
+
+	private NameID givenRstNameId(String nameIdValue) {
+		NameID nameID = OpenSamlUtil.buildSamlObject(NameID.class);
+		nameID.setValue(nameIdValue);
+		return nameID;
+	}
+
+	private AudienceRestriction givenRstAudienceRestWithAudience(List<Audience> audiences) {
+		AudienceRestriction audienceRestriction = OpenSamlUtil.buildSamlObject(AudienceRestriction.class);
+		audienceRestriction.getAudiences()
+						   .addAll(audiences);
+		return audienceRestriction;
+
+	}
+
+	private Conditions givenRstConditions() {
+		Conditions conditions = OpenSamlUtil.buildSamlObject(Conditions.class);
+		return conditions;
+	}
+
+	private SubjectConfirmation givenRstSubjectConfirmation(String method) {
+		SubjectConfirmation subjectConfirmation = OpenSamlUtil.buildSamlObject(SubjectConfirmation.class);
+		subjectConfirmation.setMethod(method);
+		return subjectConfirmation;
+	}
+
+	private List<AttributeStatement> giveRstAttributeStatements() {
+		List<AttributeStatement> attributeStatements = new ArrayList<>();
+		AttributeStatement attributeStatement = OpenSamlUtil.buildSamlObject(AttributeStatement.class);
+		attributeStatements.add(attributeStatement);
+		return attributeStatements;
+	}
+
+	private List<Audience> givenRstAudiences(String audienceUrl) {
+		List<Audience> audiences = new ArrayList<>();
+		Audience audience = OpenSamlUtil.buildSamlObject(Audience.class);
+		audience.setURI(audienceUrl);
+		audiences.add(audience);
+		return audiences;
+	}
+
+	private List<AudienceRestriction> givenRstAudienceRestrictions() {
+		List<AudienceRestriction> audienceRestrictions = new ArrayList<>();
+		return audienceRestrictions;
+	}
+
+	private void assertLog(String expectedString, Level level) {
+		assertTrue(memoryAppender.contains(expectedString, level),
+				"'" + expectedString + "' not found in: " + getLastLogLine());
+	}
+
+	private String getLastLogLine() {
+		List<ILoggingEvent> list = memoryAppender.getLoggedEvents();
+		if (list.size() >0) {
+			return list.get(list.size() - 1).getFormattedMessage();
+		}
+		return "empty log";
 	}
 
 }

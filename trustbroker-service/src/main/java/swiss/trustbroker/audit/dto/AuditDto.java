@@ -98,6 +98,8 @@ public class AuditDto {
 	@CustomLogging
 	private EventType eventType; // maps to 'event'
 
+	private String side; // rp or cp
+
 	private String status; // response only
 
 	private String statusMessage; // response only

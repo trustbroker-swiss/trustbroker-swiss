@@ -49,19 +49,16 @@ import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.UrlAcceptor;
 import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
-import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.AuthorizationGrantType;
 import swiss.trustbroker.federation.xmlconfig.ClientAuthenticationMethod;
 import swiss.trustbroker.federation.xmlconfig.Definition;
-import swiss.trustbroker.federation.xmlconfig.IdmQuery;
 import swiss.trustbroker.federation.xmlconfig.Multivalued;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
-import swiss.trustbroker.federation.xmlconfig.OidcMapper;
 import swiss.trustbroker.federation.xmlconfig.OidcSecurityPolicies;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.Scope;
+import swiss.trustbroker.mapping.service.ClaimsMapperService;
 import swiss.trustbroker.oidc.session.OidcSessionSupport;
-import swiss.trustbroker.script.service.ScriptService;
 
 @Slf4j
 public class OidcConfigurationUtil {
@@ -71,7 +68,7 @@ public class OidcConfigurationUtil {
 
 	// Method not synchronized because we do RegisterClient caching on startup and refresh only
 	// Per default we set up a mixed FE/BE case.
-	static RegisteredClient createRegisteredClient(OidcClient client, long defaultTokenTimeSec) {
+	static RegisteredClient createRegisteredClient(OidcClient client, long defaultTokenTimeSec, long defaultCodeTimeSec) {
 		// NOTE: Compiled in defaults, use templating instead by putting this into ProfileRP >> RelyingParty >> Oidc >> Client
 		var polices = client.getOidcSecurityPolicies() != null
 				? client.getOidcSecurityPolicies()
@@ -94,7 +91,7 @@ public class OidcConfigurationUtil {
 
 		// spring security OIDC registry entry
 		var clientSettings = getClientSettings(polices);
-		var tokenSettings = getTokenSettings(polices, defaultTokenTimeSec);
+		var tokenSettings = getTokenSettings(polices, defaultTokenTimeSec, defaultCodeTimeSec);
 
 		// construct it
 		var registeredClient = RegisteredClient.withId(clientId)
@@ -183,25 +180,26 @@ public class OidcConfigurationUtil {
 		return builder.build();
 	}
 
-	static TokenSettings getTokenSettings(OidcSecurityPolicies oidcSecurityPolicies, long defaultTokenTimeSec) {
+	static TokenSettings getTokenSettings(OidcSecurityPolicies oidcSecurityPolicies,
+			long defaultTokenTimeSecs, long defaultCodeTimeSecs) {
 		var builder = TokenSettings.builder();
-		var tokenTtlMinutes = defaultTokenTimeSec / 60;
-		var refreshTokenTtlMinutes = tokenTtlMinutes;
-		var codeTtlMinutes = tokenTtlMinutes;
+		var tokenTtlSecs = defaultTokenTimeSecs;
+		var refreshTokenTtlSecs = tokenTtlSecs;
+		var codeTtlSecs = defaultCodeTimeSecs;
 		var reuseRefreshToken = true; // resilience over security?
 		var idTokenSignature = SignatureAlgorithm.RS256;
 		if (oidcSecurityPolicies != null) {
 			if (oidcSecurityPolicies.getAccessTokenTimeToLiveMin() != null) {
-				tokenTtlMinutes = oidcSecurityPolicies.getAccessTokenTimeToLiveMin();
+				tokenTtlSecs = oidcSecurityPolicies.getAccessTokenTimeToLiveMin() * 60L;
 			}
 			if (oidcSecurityPolicies.getRefreshTokenTimeToLiveMin() != null) {
-				refreshTokenTtlMinutes = oidcSecurityPolicies.getRefreshTokenTimeToLiveMin();
+				refreshTokenTtlSecs = oidcSecurityPolicies.getRefreshTokenTimeToLiveMin() * 60L;
 			}
 			if (oidcSecurityPolicies.getReuseRefreshTokens() != null) {
 				reuseRefreshToken = oidcSecurityPolicies.getReuseRefreshTokens();
 			}
 			if (oidcSecurityPolicies.getAuthorizationCodeTimeToLiveMin() != null) {
-				codeTtlMinutes = oidcSecurityPolicies.getAuthorizationCodeTimeToLiveMin();
+				codeTtlSecs = oidcSecurityPolicies.getAuthorizationCodeTimeToLiveMin() * 60L;
 			}
 			if (oidcSecurityPolicies.getIdTokenSignature() != null) {
 				idTokenSignature = SignatureAlgorithm.from(oidcSecurityPolicies.getIdTokenSignature());
@@ -209,17 +207,17 @@ public class OidcConfigurationUtil {
 		}
 
 		// code
-		builder.authorizationCodeTimeToLive(Duration.ofMinutes(codeTtlMinutes));
+		builder.authorizationCodeTimeToLive(Duration.ofSeconds(codeTtlSecs));
 
 		// token/access_token (JWT token, with OPAQUE tokens we could prevent OIDC miss-use forcing applications to use id_token)
-		builder.accessTokenTimeToLive(Duration.ofMinutes(tokenTtlMinutes));
+		builder.accessTokenTimeToLive(Duration.ofSeconds(tokenTtlSecs));
 		builder.accessTokenFormat(OAuth2TokenFormat.SELF_CONTAINED);
 
 		// id_token (lifecycle and content aligned with access_token)
 		builder.idTokenSignatureAlgorithm(idTokenSignature); // many adapters only support RS256
 
 		// refresh_token
-		builder.refreshTokenTimeToLive(Duration.ofMinutes(refreshTokenTtlMinutes));
+		builder.refreshTokenTimeToLive(Duration.ofSeconds(refreshTokenTtlSecs));
 		builder.reuseRefreshTokens(reuseRefreshToken);
 
 		return builder.build();
@@ -273,60 +271,31 @@ public class OidcConfigurationUtil {
 			return definitions; // no RP? filter removes everything
 		}
 
-		// attributes selection
-		filterDefinitions(relyingParty.getAttributesSelection(), definitions, authorizedScopes, relyingParty.getId());
-		var attrCount = definitions.size();
+		// RP definitions
+		var rpSelection = relyingParty.getAllDefinitions();
+		filterDefinitions(rpSelection, definitions, authorizedScopes, relyingParty.getId());
 
-		// userdetails selection
-		var idmLookup = relyingParty.getIdmLookup();
-		if (idmLookup != null) {
-			for (IdmQuery idmQuery : idmLookup.getQueries()) {
-				filterDefinitions(idmQuery.getUserDetailsSelection(), definitions, authorizedScopes, relyingParty.getId());
-			}
-		}
-		var userDetailsCount = definitions.size() - attrCount;
-
-		// properties selection (computed)
-		filterDefinitions(relyingParty.getPropertiesSelection(), definitions, authorizedScopes, relyingParty.getId());
-		var propsCount = definitions.size() - userDetailsCount;
-
-		// support const definitions with mappers as wee
-		if (relyingParty.getConstAttributes() != null) {
-			var constDefs = relyingParty.getConstAttributes().getAttributeDefinitions();
-			if (constDefs != null) {
-				filterDefinitionList(constDefs, definitions, authorizedScopes, relyingParty.getId());
-			}
-		}
-		var constCount = definitions.size() - propsCount;
-
-		// OIDC client
-		var clientClaimsCount = 0;
+		// OIDC client definitions
 		if (oidcClient != null && oidcClient.getClaimsSelection() != null) {
-			filterDefinitions(oidcClient.getClaimsSelection(), definitions, authorizedScopes, oidcClient.getId());
-			clientClaimsCount = definitions.size() - constCount;
+			var oidcSelection = oidcClient.getClaimsSelection().getDefinitions();
+			filterDefinitions(oidcSelection, definitions, authorizedScopes, oidcClient.getId());
 		}
-
-		// some statistics to debug configs
-		log.debug("OIDC claimsCount={} for relyingParty={} "
-						+ "attrCount={} userDetailsCount={} propsCount={} constDefsCount={} clientClaimsCount={}",
-				definitions.size(), relyingParty.getId(),
-				attrCount, userDetailsCount, propsCount, constCount, clientClaimsCount);
 		return definitions;
 	}
 
-	private static void filterDefinitions(AttributesSelection attributesSelection, List<Definition> definitions,
+	private static void filterDefinitions(List<Definition> selection, List<Definition> definitions,
 			Set<String> authorizedScopes, String relyingPartyId) {
-		if (attributesSelection != null && authorizedScopes != null) {
-			filterDefinitionList(attributesSelection.getDefinitions(), definitions, authorizedScopes, relyingPartyId);
+		if (selection != null && authorizedScopes != null) {
+			filterDefinitionList(selection, definitions, authorizedScopes, relyingPartyId);
 		}
 		if (authorizedScopes == null) {
 			log.warn("Missing Scope from request. Tokens will have no claims");
 		}
 	}
 
-	private static void filterDefinitionList(List<Definition> attributeDefinitions, List<Definition> definitions,
+	private static void filterDefinitionList(List<Definition> selection, List<Definition> definitions,
 			Set<String> authorizedScopes, String relyingPartyId) {
-		attributeDefinitions.stream()
+		selection.stream()
 				.filter(definition -> {
 					var scope = definition.getScope();
 					if (definition.getOidcNames() != null && scope == null) {
@@ -334,6 +303,7 @@ public class OidcConfigurationUtil {
 						log.debug("No scope for definition={} for rp={} => using compatibility openid semantics with scope={}",
 								definition.getName(), relyingPartyId, scope);
 					}
+					// scope is single valued, if we support 'scopes' in config, use intersection match here
 					return definition.getOidcNames() != null && authorizedScopes.contains(scope);
 				})
 				.forEachOrdered(definitions::add);
@@ -342,7 +312,7 @@ public class OidcConfigurationUtil {
 	public static Map<String, Object> computeOidcClaims(
 			Map<String, List<Object>> attributesFromContext,
 			List<Definition> definitions,
-			ScriptService scriptService,
+			ClaimsMapperService claimsMapperService,
 			boolean addStandardClaims,
 			OidcClient oidcClient) {
 		// we allow this one to be manipulated in CpResponse.claims based on CpResponse.attributes
@@ -358,13 +328,9 @@ public class OidcConfigurationUtil {
 			if (values == null) {
 				continue;
 			}
-			// apply OIDC mappers on all OIDC marked values including constants
-			var mapper = definition.getOidcMapper();
-			if (mapper != null) {
-				values = mapper.map(values);
-				if (mapper.equals(OidcMapper.SCRIPT)) {
-					values = scriptService.processValueConversion(definition.getName(), values);
-				}
+			// apply mappers on all OIDC marked values including constants
+			if (claimsMapperService != null) { // null mainly for tests
+				values = claimsMapperService.applyMappers(definition, values, "OIDC claims");
 			}
 			var clientId = oidcClient != null ? oidcClient.getId() : "NONE";
 			addClaimsToMap(map, definition, values, clientId, false);

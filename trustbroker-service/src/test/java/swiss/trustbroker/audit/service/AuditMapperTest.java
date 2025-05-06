@@ -21,6 +21,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.doReturn;
 
 import java.sql.Timestamp;
@@ -36,6 +37,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.opensaml.saml.saml2.core.AuthnRequest;
@@ -68,6 +71,7 @@ import swiss.trustbroker.config.dto.NetworkConfig;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
+import swiss.trustbroker.saml.dto.ClaimSource;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.ResponseParameters;
 import swiss.trustbroker.saml.util.ResponseFactory;
@@ -154,24 +158,24 @@ class AuditMapperTest {
 		assertThat(auditDto.getResponseAttributes().get(truncatedClaimsName),
 				is(AuditDto.ResponseAttributeValues.of(
 						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME, CoreAttributeName.CLAIMS_NAME.getNamespaceUri(),
-								AuditDto.AttributeSource.CP_RESPONSE, null, null))));
+								AuditDto.AttributeSource.CP_RESPONSE, ClaimSource.CP.name(), null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.CLAIMS_NAME.getName()),
 				is(AuditDto.ResponseAttributeValues.of(
 						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME2, null,
-						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
+						AuditDto.AttributeSource.CP_RESPONSE, ClaimSource.CP.name(), null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.FIRST_NAME.getName()),
 				is(AuditDto.ResponseAttributeValues.of(
 						AuditDto.ResponseAttributeValue.of(TEST_FIRST_NAME, null,
-						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
+						AuditDto.AttributeSource.CP_RESPONSE, ClaimSource.CP.name(), null))));
 		var truncatedEmail = DefinitionUtil.truncateNamespace(CoreAttributeName.EMAIL.getNamespaceUri());
 		assertThat(auditDto.getResponseAttributes().get(truncatedEmail),
 				is(AuditDto.ResponseAttributeValues.of(
 						AuditDto.ResponseAttributeValue.of(TEST_EMAIL, CoreAttributeName.EMAIL.getNamespaceUri(),
-						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
+						AuditDto.AttributeSource.CP_RESPONSE, ClaimSource.CP.name(), null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.HOME_REALM.getName()),
 				is(AuditDto.ResponseAttributeValues.of(
 						AuditDto.ResponseAttributeValue.of("dropped", null,
-						AuditDto.AttributeSource.DROPPED_RESPONSE, null, null))));
+						AuditDto.AttributeSource.DROPPED_RESPONSE, ClaimSource.CP.name(), null))));
 		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.NAME_ID.getName()),
 				is(nullValue()));
 	}
@@ -287,6 +291,7 @@ class AuditMapperTest {
 		request.addHeader(WebSupport.HTTP_HEADER_DEVICE_ID, deviceId);
 		request.addHeader(HttpHeaders.HOST, "myEntryHost");
 		request.addHeader(HttpHeaders.REFERER, "myReferer");
+		TraceSupport.setHttpTraceIdHeaderName(TraceSupport.HTTP_REQUEST_ID); // ensure the value is set in this thread
 		request.addHeader(TraceSupport.getHttpTraceIdHeaderName(), requestId);
 		request.addHeader(TraceSupport.W3C_TRACEPARENT, traceParent);
 		request.setRequestURI(url);
@@ -638,6 +643,22 @@ class AuditMapperTest {
 		assertThat(auditDto.getOidcClientId(), equalTo(clientId));
 		assertThat(auditDto.getSsoSessionId(), equalTo(ssoSessionId));
 		assertThat(auditDto.getDestination(), equalTo(redirectUrl));
+	}
+
+	@ParameterizedTest
+	@CsvSource(value = {
+			"null,CP_RESPONSE,CP_RESPONSE",
+			"null,DROPPED_RESPONSE,DROPPED_RESPONSE",
+			"CP,null,CP_RESPONSE",
+			"CP,DROPPED_RESPONSE,DROPPED_RESPONSE",
+			"IDM,CP_RESPONSE,IDM_RESPONSE"
+	}, nullValues = "null")
+	void mapSourceTest(String querySource, String source, String expected) {
+
+		AuditDto.AttributeSource existingSource = source == null ? null : AuditDto.AttributeSource.valueOf(source);
+		AuditDto.AttributeSource expectedSource= expected == null ? null : AuditDto.AttributeSource.valueOf(expected);
+
+		assertEquals(expectedSource, AuditMapper.mapSource(querySource, existingSource));
 	}
 
 }

@@ -39,17 +39,20 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static swiss.trustbroker.util.SessionTimeConfiguration.EXPIRATION_INSTANT_SSO;
 import static swiss.trustbroker.util.SessionTimeConfiguration.START_INSTANT;
 
 import java.io.IOException;
 import java.sql.Timestamp;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -73,17 +76,15 @@ import org.opensaml.xmlsec.signature.Signature;
 import org.opensaml.xmlsec.signature.support.SignatureConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import swiss.trustbroker.api.announcements.service.AnnouncementService;
 import swiss.trustbroker.api.homerealmdiscovery.service.HrdService;
-import swiss.trustbroker.api.qoa.dto.QualityOfAuthentication;
-import swiss.trustbroker.api.qoa.service.QualityOfAuthenticationService;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
@@ -96,13 +97,16 @@ import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.QualityOfAuthenticationConfig;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.config.dto.SsoSessionIdPolicy;
+import swiss.trustbroker.federation.xmlconfig.AcClass;
 import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.FingerprintCheck;
+import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.federation.xmlconfig.SloMode;
@@ -111,6 +115,9 @@ import swiss.trustbroker.federation.xmlconfig.SloResponse;
 import swiss.trustbroker.federation.xmlconfig.Sso;
 import swiss.trustbroker.federation.xmlconfig.SsoGroup;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.mapping.dto.CustomQoa;
+import swiss.trustbroker.mapping.dto.QoaConfig;
+import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.SsoParticipant;
 import swiss.trustbroker.saml.dto.SsoParticipants;
@@ -127,15 +134,14 @@ import swiss.trustbroker.test.saml.util.SamlTestBase;
 import swiss.trustbroker.util.SessionTimeConfiguration;
 
 @SpringBootTest
-@ContextConfiguration(classes = { SessionTimeConfiguration.class, SsoService.class, AssertionConsumerService.class,
-	SsoServiceTest.MockQoaService.class })
+@ContextConfiguration(classes = { SessionTimeConfiguration.class, SsoService.class, AssertionConsumerService.class})
 class SsoServiceTest {
 
 	private static final String ACS = "acs";
 
 	private static final String OIDC_PREFIX = "oidc_";
 
-	private enum MockQoa implements QualityOfAuthentication {
+	private enum MockQoa {
 
 		MOBILE_ONE_FACTOR_UNREGISTERED(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, 10),
 		PASSWORD_PROTECTED_TRANSPORT(SamlContextClass.PASSWORD_PROTECTED_TRANSPORT, 20),
@@ -153,77 +159,40 @@ class SsoServiceTest {
 
 		private final String name;
 
-		private final int level;
+		private final int order;
 
-		MockQoa(String name, int level) {
+		MockQoa(String name, int order) {
 			this.name = name;
-			this.level = level;
+			this.order = order;
 		}
 
-		@Override
 		public String getName() {
 			return name;
 		}
 
-		@Override
-		public int getLevel() {
-			return level;
+		public int getOrder() {
+			return order;
 		}
 
-		@Override
-		public boolean isStrongestPossible() {
-			return level == STRONGEST_POSSIBLE.level;
-		}
-
-		@Override
-		public boolean isRegular() {
-			return level > UNSPECIFIED.level;
-		}
-
-		@Override
-		public boolean isUnspecified() {
-			return level == UNSPECIFIED.level;
-		}
-
-
-		static MockQoa forName(String qualityOfAuthentication) {
-			if (qualityOfAuthentication == null) {
+		static MockQoa forLevel(int order) {
+			if (order <= UNSPECIFIED.order) {
 				return UNSPECIFIED;
 			}
 			var result = Arrays.stream(MockQoa.values())
-							.filter(qoa -> qoa.getName().equals(qualityOfAuthentication))
-							.findFirst();
-			return result.orElse(UNSPECIFIED);
-		}
-
-		static MockQoa forLevel(int level) {
-			if (level <= UNSPECIFIED.level) {
-				return UNSPECIFIED;
-			}
-			var result = Arrays.stream(MockQoa.values())
-					.filter(qoa -> qoa.getLevel() == level)
+					.filter(qoa -> qoa.getOrder() == order)
 					.findFirst();
 			return result.orElse(UNSPECIFIED);
 		}
-	}
 
-	static class MockQoaService implements QualityOfAuthenticationService {
-
-		@Override
-		public QualityOfAuthentication extractQoaLevel(String qualityOfAuthentication) {
-			return MockQoa.forName(qualityOfAuthentication);
+		static MockQoa forName(String name) {
+			if (name == null) {
+				return UNSPECIFIED;
+			}
+			var result = Arrays.stream(MockQoa.values())
+					.filter(qoa -> qoa.getName() == name)
+					.findFirst();
+			return result.orElse(UNSPECIFIED);
 		}
-
-		@Override
-		public QualityOfAuthentication getDefaultLevel() {
-			return MockQoa.MOBILE_ONE_FACTOR_UNREGISTERED;
-		}
-
-		@Override
-		public QualityOfAuthentication getUnspecifiedLevel() {
-			return MockQoa.UNSPECIFIED;
-		}
-
 	}
 
 	private static final String DEVICE_ID = "deviceId";
@@ -291,39 +260,39 @@ class SsoServiceTest {
 
 	private static final SsoService.SsoCookieNameParams SSO_GROUP_PARAMS = SsoService.SsoCookieNameParams.of(SSO_GROUP);
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartyDefinitions relyingPartyDefinitions;
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartySetupService relyingPartySetupService;
 
-	@MockBean
+	@MockitoBean
 	private StateCacheService stateCacheService;
 
-	@MockBean
+	@MockitoBean
 	private TrustBrokerProperties trustBrokerProperties;
 
-	@MockBean
+	@MockitoBean
 	private Element mockSignature;
 
 	// for AssertionConsumerService:
-	@MockBean
+	@MockitoBean
 	private ScriptService scriptService;
 
 	// for AssertionConsumerService:
-	@MockBean
+	@MockitoBean
 	private AuditService auditService;
 
 	// for AssertionConsumerService:
-	@MockBean
+	@MockitoBean
 	private AnnouncementService announcementService;
 
 	// for AssertionConsumerService:
-	@MockBean
+	@MockitoBean
 	private HrdService hrdService;
 
-	@Autowired
-	private QualityOfAuthenticationService qoaService;
+	@MockitoBean
+	private QoaMappingService qoaService;
 
 	@Autowired
 	private AssertionConsumerService assertionConsumerService;
@@ -685,7 +654,18 @@ class SsoServiceTest {
 				.id(id)
 				.sso(Sso.builder().enabled(ssoEnabled).groupName(ssoEnabled ? SSO_GROUP : null).build())
 				.securityPolicies(SecurityPolicies.builder().build())
+				.qoa(mockRpQoa())
 				.build();
+	}
+
+	private Qoa mockRpQoa() {
+		return Qoa.builder()
+				  .classes(List.of(
+						  AcClass.builder()
+								 .order(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getLevel())
+								 .contextClass(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName())
+								 .build()))
+				  .build();
 	}
 
 	private RelyingParty buildRelyingParty(boolean ssoEnabled) {
@@ -771,17 +751,22 @@ class SsoServiceTest {
 
 	@Test
 	void noQuaContextClass() {
-		var stateData = buildStateWithCpResponseContextClasses(List.of("nothing", "of", "relevance"));
-		var result = ssoService.getQoaLevelFromContextClassesOrAuthLevel(stateData);
-		assertThat(result, is(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED));
+		var stateData = buildStateWithCpResponseContextClasses(List.of("foo", "bar", "somethingElse"));
+		when(trustBrokerProperties.getQoa()).thenReturn(givenGlobalQoa());
+		var qoaConfig = mockQoaConfig();
+		mockQoaService(null, null, qoaConfig, null);
+		var result = ssoService.getQoaLevelFromContextClassesOrAuthLevel(stateData, new QoaConfig(qoaConfig, "testId"));
+		assertThat(result.getName(), is(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED));
 	}
 
 	@Test
 	void singleQuaContextClass() {
 		var qoa20 = getQoa(20);
 		var stateData = buildStateWithCpResponseContextClasses(List.of("foo", qoa20, "bar"));
-		var result = ssoService.getQoaLevelFromContextClassesOrAuthLevel(stateData);
-		assertThat(result, is(qoa20));
+		var qoaConfig = mockQoaConfig();
+		mockQoaService(null, null, qoaConfig, null);
+		var result = ssoService.getQoaLevelFromContextClassesOrAuthLevel(stateData,  new QoaConfig(qoaConfig, "testId"));
+		assertThat(result.getName(), is(qoa20));
 	}
 
 	@Test
@@ -790,14 +775,26 @@ class SsoServiceTest {
 		var qoa20 = getQoa(20);
 		var qoa30 = getQoa(30);
 		var qoa40 = getQoa(40);
+		var qoaConfig = mockQoaConfig();
+		mockQoaService(null, null, qoaConfig, null);
 		var stateData = buildStateWithCpResponseContextClasses(
 				List.of("foo", qoa30, qoa40, qoa9, qoa20, "bar"));
-		var result = ssoService.getQoaLevelFromContextClassesOrAuthLevel(stateData);
-		assertThat(result, is(qoa40));
+		var result = ssoService.getQoaLevelFromContextClassesOrAuthLevel(stateData,  new QoaConfig(qoaConfig, "testId"));
+		assertThat(result.getName(), is(qoa40));
 	}
 
 	private static String getQoa(Integer value) {
 		return value != null ? MockQoa.forLevel(value).getName() : null;
+	}
+
+	private static CustomQoa getQoaCustom(Integer value) {
+		if (value != null) {
+			MockQoa mockQoa = MockQoa.forLevel(value);
+			return new CustomQoa(mockQoa.getName(), value);
+		}
+		else {
+			return CustomQoa.UNDEFINED_QOA;
+		}
 	}
 
 	@Test
@@ -1267,8 +1264,111 @@ class SsoServiceTest {
 		ssoStateData.getSpStateData().setContextClasses(List.of(SamlContextClass.KERBEROS));
 		ssoStateData.getSsoState().setSsoQoa(SamlContextClass.SOFTWARE_TIME_SYNC_TOKEN);
 		var stateDataByAuthnReq = buildStateDataByAuthnReq();
+		mockQoaService(relyingParty, claimsParty, null, null);
 		assertThat(ssoService.ssoStateValidForDeviceInfo(claimsParty, relyingParty, ssoStateData, stateDataByAuthnReq, DEVICE_ID,
 				CP_ISSUER_ID), is(false));
+	}
+
+	private void mockQoaService(RelyingParty relyingParty, ClaimsParty claimsParty, Qoa qoaConfig, List<String> expectedQuoas) {
+		when(trustBrokerProperties.getQoa()).thenReturn(givenGlobalQoa());
+		doReturn(true).when(qoaService).isStrongestPossible(MockQoa.STRONGEST_POSSIBLE.getName());
+		doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1)).when(qoaService).getUnspecifiedLevel();
+		doReturn(new CustomQoa(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(), SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getLevel()))
+				.when(qoaService).getDefaultLevel();
+
+		if (relyingParty != null) {
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1))
+					.when(qoaService).extractQoaLevel(null, relyingParty.getQoaConfig());
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), SamlTestBase.Qoa.UNSPECIFIED.getLevel()))
+					.when(qoaService).extractQoaLevel("urn:oasis:names:tc:SAML:2.0:ac:classes:INVALID", relyingParty.getQoaConfig());
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), SamlTestBase.Qoa.UNSPECIFIED.getLevel()))
+					.when(qoaService).extractQoaLevel("somethingElse", relyingParty.getQoaConfig());
+			doReturn(new CustomQoa(SamlTestBase.Qoa.AUTH_GUEST.getName(), SamlTestBase.Qoa.AUTH_GUEST.getLevel()))
+					.when(qoaService).extractQoaLevel(SamlTestBase.Qoa.AUTH_GUEST.getName(), relyingParty.getQoaConfig());
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1))
+					.when(qoaService).extractQoaLevel(null, relyingParty.getQoaConfig());
+			doReturn(new CustomQoa(MockQoa.AUTH_LEVEL_NORMAL.getName(), MockQoa.AUTH_LEVEL_NORMAL.getOrder()))
+					.when(qoaService).extractQoaLevelFromAuthLevel(MockQoa.AUTH_LEVEL_NORMAL.getName(), relyingParty.getQoaConfig());
+			doReturn(new CustomQoa(MockQoa.AUTH_LEVEL_STRONG.getName(), MockQoa.AUTH_LEVEL_STRONG.getOrder()))
+					.when(qoaService).extractQoaLevelFromAuthLevel(MockQoa.AUTH_LEVEL_STRONG.getName(), relyingParty.getQoaConfig());
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1))
+					.when(qoaService).extractQoaLevelFromAuthLevel(null, relyingParty.getQoaConfig());
+			if (expectedQuoas != null) {
+				doReturn(mockQoaList(expectedQuoas))
+						.when(qoaService).extractQoaLevels(expectedQuoas, relyingParty.getQoaConfig());
+			}
+		}
+		var qoa = new QoaConfig(qoaConfig, "testId");
+		if (qoa.hasConfig()) {
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1))
+					.when(qoaService).extractQoaLevel(null, qoa);
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1))
+					.when(qoaService).extractQoaLevel("foo", qoa);
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1))
+					.when(qoaService).extractQoaLevel("bar", qoa);
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), SamlTestBase.Qoa.UNSPECIFIED.getLevel()))
+					.when(qoaService).extractQoaLevel("somethingElse", qoa);
+			doReturn(new CustomQoa(MockQoa.AUTH_LEVEL_NORMAL.getName(), MockQoa.AUTH_LEVEL_NORMAL.getOrder()))
+					.when(qoaService).extractQoaLevelFromAuthLevel(MockQoa.AUTH_LEVEL_NORMAL.getName(), qoa);
+			doReturn(new CustomQoa(MockQoa.AUTH_LEVEL_STRONG.getName(), MockQoa.AUTH_LEVEL_STRONG.getOrder()))
+					.when(qoaService).extractQoaLevelFromAuthLevel(MockQoa.AUTH_LEVEL_STRONG.getName(), qoa);
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1))
+					.when(qoaService).extractQoaLevelFromAuthLevel(null, qoa);
+		}
+		if (claimsParty != null) {
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1))
+					.when(qoaService).extractQoaLevel(null, claimsParty.getQoaConfig());
+			doReturn(new CustomQoa(MockQoa.AUTH_LEVEL_NORMAL.getName(), MockQoa.AUTH_LEVEL_NORMAL.getOrder()))
+					.when(qoaService).extractQoaLevelFromAuthLevel(MockQoa.AUTH_LEVEL_NORMAL.getName(), claimsParty.getQoaConfig());
+			doReturn(new CustomQoa(MockQoa.AUTH_LEVEL_STRONG.getName(), MockQoa.AUTH_LEVEL_STRONG.getOrder()))
+					.when(qoaService).extractQoaLevelFromAuthLevel(MockQoa.AUTH_LEVEL_STRONG.getName(), claimsParty.getQoaConfig());
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1))
+					.when(qoaService).extractQoaLevelFromAuthLevel(null, claimsParty.getQoaConfig());
+			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), SamlTestBase.Qoa.UNSPECIFIED.getLevel()))
+					.when(qoaService).extractQoaLevel("somethingElse", claimsParty.getQoaConfig());
+		}
+
+		MockQoa[] values = MockQoa.values();
+		for (MockQoa mockQoa : values) {
+			if (relyingParty != null) {
+				doReturn(new CustomQoa(mockQoa.name, mockQoa.order))
+						.when(qoaService)
+						.extractQoaLevel(mockQoa.name, relyingParty.getQoaConfig());
+			}
+			if (claimsParty != null) {
+				doReturn(new CustomQoa(mockQoa.name, mockQoa.order))
+						.when(qoaService).extractQoaLevel(mockQoa.name, claimsParty.getQoaConfig());
+			}
+			if (qoa.hasConfig()) {
+				doReturn(new CustomQoa(mockQoa.name, mockQoa.order))
+						.when(qoaService).extractQoaLevel(mockQoa.name, qoa);
+			}
+		}
+	}
+
+	private List<CustomQoa> mockQoaList(List<String> expectedQoas) {
+		List<CustomQoa> result = new ArrayList<>();
+		for (String qoa : expectedQoas) {
+			MockQoa mockQoa = MockQoa.forName(qoa);
+			result.add(new CustomQoa(qoa, mockQoa.getOrder()));
+		}
+
+		return result;
+	}
+
+	private QualityOfAuthenticationConfig givenGlobalQoa() {
+		Map<String, Integer> qoaMap = new HashMap<>();
+		qoaMap.put(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(),
+				SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getLevel());
+		qoaMap.put(SamlTestBase.Qoa.SOFTWARE_PKI.getName(),
+				SamlTestBase.Qoa.SOFTWARE_PKI.getLevel());
+		qoaMap.put(SamlTestBase.Qoa.KERBEROS.getName(),
+				SamlTestBase.Qoa.KERBEROS.getLevel());
+		QualityOfAuthenticationConfig qoa = new QualityOfAuthenticationConfig();
+		qoa.setMapping(qoaMap);
+		qoa.setStrongestPossible("urn:qoa:strongest_possible");
+		qoa.setDefaultQoa(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName());
+		return qoa;
 	}
 
 	@Test
@@ -1389,11 +1489,15 @@ class SsoServiceTest {
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
 		var authnRequest = buildAuthnRequest(CP_ISSUER_ID, ssoStateData.getSpStateData().getId(), true);
 		var stateDataByAuthnReq = buildStateForAuthnRequest(authnRequest);
+		Qoa qoa = mockQoaConfig();
+		RelyingParty relyingParty = buildRelyingParty(false);
+		relyingParty.setQoa(qoa);
+		mockQoaService(relyingParty, null,null, null);
 		// MaxCachingTimeSecs is 0 in state
 		doReturn(90).when(trustBrokerProperties).getSsoSessionLifetimeSec();
 		// SSO established in the past, within caching time
 		ssoStateData.getLifecycle().setSsoEstablishedTime(Timestamp.from(START_INSTANT.minusSeconds(60)));
-		var result = ssoService.skipCpAuthentication(null, null, stateDataByAuthnReq, ssoStateData);
+		var result = ssoService.skipCpAuthentication(null, relyingParty, stateDataByAuthnReq, ssoStateData);
 		assertThat(result, is(SsoService.SsoSessionOperation.JOIN));
 	}
 
@@ -1417,7 +1521,10 @@ class SsoServiceTest {
 		ssoStateData.getLifecycle().setSsoEstablishedTime(
 				Timestamp.from(START_INSTANT.minusSeconds(secondsBeforeNow)));
 		ssoStateData.getSsoState().setMaxCachingTimeSecs(120);
-		var result = ssoService.skipCpAuthentication(null, null, stateDataByAuthnReq, ssoStateData);
+		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
+		var relyingParty = buildRelyingParty(false);
+		mockQoaService(relyingParty, claimsParty, null, null);
+		var result = ssoService.skipCpAuthentication(null, relyingParty, stateDataByAuthnReq, ssoStateData);
 		assertThat(result, is(SsoService.SsoSessionOperation.valueOf(expected)));
 	}
 
@@ -1440,11 +1547,13 @@ class SsoServiceTest {
 		ssoStateData.getLifecycle().setSsoEstablishedTime(Timestamp.from(START_INSTANT));
 		ssoStateData.getSsoState().setMaxCachingTimeSecs(120);
 		var authnRequest = buildAuthnRequest(issuerId, ssoStateData.getSpStateData().getId(), true);
+		when(trustBrokerProperties.getQoa()).thenReturn(givenGlobalQoa());
 
 		setRequestQoa(requestQoa, authnRequest);
 		var stateDataByAuthnReq = buildStateForAuthnRequest(authnRequest);
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(true);
+		mockQoaService(relyingParty, claimsParty, null, null);
 		var result = ssoService.skipCpAuthentication(claimsParty, relyingParty, stateDataByAuthnReq, ssoStateData);
 		assertThat(result, is(SsoService.SsoSessionOperation.valueOf(expected)));
 	}
@@ -1470,7 +1579,7 @@ class SsoServiceTest {
 			authnRequest.getRequestedAuthnContext().getAuthnContextClassRefs().add(qoaHigh);
 			// just some other context class
 			var anyContext = new AuthnContextClassRefBuilder().buildObject();
-			anyContext.setURI("any");
+			anyContext.setURI("urn:oasis:names:tc:SAML:2.0:ac:classes:unspecified");
 			authnRequest.getRequestedAuthnContext().getAuthnContextClassRefs().add(anyContext);
 			// re-apply mock after changes
 			mockedSignatureDom(authnRequest);
@@ -1492,6 +1601,7 @@ class SsoServiceTest {
 		var authnRequest = buildAuthnRequest("myIssuer", ssoStateData.getSpStateData().getId(), true);
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(true);
+		when(trustBrokerProperties.getQoa()).thenReturn(givenGlobalQoa());
 
 		// enforce expected result of skipCpAuthentication
 		if (expected == SsoService.SsoSessionOperation.IGNORE) {
@@ -1509,6 +1619,8 @@ class SsoServiceTest {
 		var stateDataByAuthnReq = buildStateForAuthnRequest(authnRequest);
 		var authLastConv = "lastConvAuth";
 		stateDataByAuthnReq.setLastConversationId(authLastConv);
+		mockQoaService(relyingParty, claimsParty, null, List.of("urn:oasis:names:tc:SAML:2.0:ac:classes:SmartcardPKI",
+				"urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport"));
 		var result = ssoService.skipCpAuthentication(claimsParty, relyingParty, stateDataByAuthnReq, ssoStateData);
 		assertThat(result, is(expected));
 		verify(stateCacheService, times(0)).invalidate(stateDataByAuthnReq, "Test");
@@ -1556,11 +1668,12 @@ class SsoServiceTest {
 		var assuredQoa = getQoa(sessionQoa);
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(true);
-		mockDefaultProperties();
-
+		mockDefaultProperties(relyingParty, claimsParty);
+		List<String> requestQoas = expectedQoa != null ? List.of(expectedQoa) : Collections.emptyList();
+		mockQoaService(relyingParty, claimsParty, null, requestQoas);
 		var resultSufficient = ssoService.isQoaLevelSufficient(
 				claimsParty, relyingParty,
-				expectedQoa != null ? List.of(expectedQoa) : Collections.emptyList(),
+				requestQoas,
 				Optional.ofNullable(assuredQoa),
 				"TEST-Session");
 		assertThat(resultSufficient, is(expectedResult));
@@ -1572,8 +1685,15 @@ class SsoServiceTest {
 		var relyingParty = buildRelyingParty(true);
 		var expectedQoa = getQoa(requestQoa);
 		var minQoa = 30; // global default, we test the ROP override here
+		CustomQoa qoaCustom = getQoaCustom(requestQoa);
+		CustomQoa qoaKnownCustom = getQoaCustom(null);
 		doReturn(minQoa).when(trustBrokerProperties).getSsoMinQoaLevel();
-		var result = ssoService.isQoaEnoughForSso(relyingParty, List.of(expectedQoa), Optional.empty());
+		doReturn(givenGlobalQoa().getMapping()).when(trustBrokerProperties).getQoaMap();
+		doReturn(new CustomQoa("any", requestQoa)).when(qoaService).extractQoaLevel(expectedQoa, relyingParty.getQoaConfig());
+		doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1)).when(qoaService).extractQoaLevel(null,
+				relyingParty.getQoaConfig());
+		doReturn(false).when(qoaService).isStrongestPossible(any());
+		var result = ssoService.isQoaEnoughForSso(relyingParty, List.of(qoaCustom), qoaKnownCustom,Optional.empty());
 		assertThat(result, is (requestQoa >= minQoa));
 	}
 
@@ -1582,24 +1702,27 @@ class SsoServiceTest {
 	void isSessionQoaEnoughForSsoOnStepUp(String sessionQoa, int sessionQoaLevel, boolean expectedResult) {
 		var relyingParty = buildRelyingParty(true);
 		var requestQoa = getQoa(10); // irrelevant
+		CustomQoa qoaCustom = getQoaCustom(10);
+		CustomQoa qoaKnownCustom = getQoaCustom(sessionQoaLevel);
 		var minQoa = 30; // global default, we test the ROP override here
 		doReturn(minQoa).when(trustBrokerProperties).getSsoMinQoaLevel();
-		var result = ssoService.isQoaEnoughForSso(relyingParty, List.of(requestQoa), Optional.of(sessionQoa));
+		mockQoaService(relyingParty, null, null, null);
+		var result = ssoService.isQoaEnoughForSso(relyingParty,  List.of(qoaCustom), qoaKnownCustom, Optional.of(sessionQoa));
 		assertThat(result, is (sessionQoaLevel >= minQoa));
 		assertThat(result, is (expectedResult));
 	}
 
 	static Object[][] isSessionQoaEnoughForSsoOnStepUp() {
 		return new Object[][] {
-				{ MockQoa.MOBILE_ONE_FACTOR_UNREGISTERED.name, MockQoa.MOBILE_ONE_FACTOR_UNREGISTERED.level, false },
-				{ MockQoa.PASSWORD_PROTECTED_TRANSPORT.name, MockQoa.PASSWORD_PROTECTED_TRANSPORT.level, false },
-				{ MockQoa.SOFTWARE_TIME_SYNC_TOKEN.name, MockQoa.SOFTWARE_TIME_SYNC_TOKEN.level, true },
-				{ MockQoa.NOMAD_TELEPHONY.name, MockQoa.NOMAD_TELEPHONY.level, true },
-				{ MockQoa.KERBEROS.name, MockQoa.KERBEROS.level, true },
-				{ MockQoa.SOFTWARE_PKI.name, MockQoa.SOFTWARE_PKI.level, true },
-				{ MockQoa.MOBILE_TWO_FACTOR_CONTACT.name, MockQoa.MOBILE_TWO_FACTOR_CONTACT.level, true },
-				{ MockQoa.TIME_SYNC_TOKEN.name, MockQoa.TIME_SYNC_TOKEN.level, true },
-				{ MockQoa.SMART_CARD_PKI.name, MockQoa.SMART_CARD_PKI.level, true },
+				{ MockQoa.MOBILE_ONE_FACTOR_UNREGISTERED.name, MockQoa.MOBILE_ONE_FACTOR_UNREGISTERED.order, false },
+				{ MockQoa.PASSWORD_PROTECTED_TRANSPORT.name, MockQoa.PASSWORD_PROTECTED_TRANSPORT.order, false },
+				{ MockQoa.SOFTWARE_TIME_SYNC_TOKEN.name, MockQoa.SOFTWARE_TIME_SYNC_TOKEN.order, true },
+				{ MockQoa.NOMAD_TELEPHONY.name, MockQoa.NOMAD_TELEPHONY.order, true },
+				{ MockQoa.KERBEROS.name, MockQoa.KERBEROS.order, true },
+				{ MockQoa.SOFTWARE_PKI.name, MockQoa.SOFTWARE_PKI.order, true },
+				{ MockQoa.MOBILE_TWO_FACTOR_CONTACT.name, MockQoa.MOBILE_TWO_FACTOR_CONTACT.order, true },
+				{ MockQoa.TIME_SYNC_TOKEN.name, MockQoa.TIME_SYNC_TOKEN.order, true },
+				{ MockQoa.SMART_CARD_PKI.name, MockQoa.SMART_CARD_PKI.order, true },
 				{ "urn:oasis:names:tc:SAML:2.0:ac:classes:INVALID", -1, false }
 		};
 	}
@@ -1608,14 +1731,17 @@ class SsoServiceTest {
 	void isQoaEnoughForSsoConfiguredPerRelyingParty() {
 		var relyingParty = buildRelyingParty(true);
 		var minQoa = 20;
+		CustomQoa qoaKnownCustom = getQoaCustom(null);
 		doReturn(minQoa).when(trustBrokerProperties).getSsoMinQoaLevel();
+		when(trustBrokerProperties.getQoa()).thenReturn(givenGlobalQoa());
 		relyingParty.getSecurityPolicies().setSsoMinQoaLevel(20);
+		mockQoaConfig();
 
-		var result = ssoService.isQoaEnoughForSso(relyingParty, List.of(getQoa(30)), Optional.empty()); // 2-fa
+		var result = ssoService.isQoaEnoughForSso(relyingParty, List.of(getQoaCustom(30)), qoaKnownCustom,Optional.empty()); // 2-fa
 		assertThat(result, is (true));
-		result = ssoService.isQoaEnoughForSso(relyingParty, List.of(getQoa(20)), Optional.empty()); // password
+		result = ssoService.isQoaEnoughForSso(relyingParty, List.of(getQoaCustom(20)), qoaKnownCustom,Optional.empty()); // password
 		assertThat(result, is (true));
-		result = ssoService.isQoaEnoughForSso(relyingParty, List.of(getQoa(10)), Optional.empty()); // guest
+		result = ssoService.isQoaEnoughForSso(relyingParty, List.of(getQoaCustom(10)), qoaKnownCustom, Optional.empty()); // guest
 		assertThat(result, is (false));
 	}
 
@@ -1627,6 +1753,7 @@ class SsoServiceTest {
 				SamlContextClass.MOBILE_TWO_FACTOR_CONTACT, SamlContextClass.SMART_CARD_PKI);
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(true);
+		mockQoaService(relyingParty, claimsParty, null, expectedQuoas);
 		var resultSufficient = ssoService.isQoaLevelSufficient(claimsParty, relyingParty, expectedQuoas,
 				Optional.of(getQoa(20)) , // mapped to PASSWORD_PROTECTED_TRANSPORT
 				"SSO-2");
@@ -1640,7 +1767,8 @@ class SsoServiceTest {
 				SamlContextClass.MOBILE_TWO_FACTOR_CONTACT, SamlContextClass.SMART_CARD_PKI);
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(true);
-		mockDefaultProperties();
+		mockDefaultProperties(relyingParty, claimsParty);
+		mockQoaService(relyingParty, claimsParty, null, expectedQuoas);
 		var resultSufficient = ssoService.isQoaLevelSufficient(claimsParty, relyingParty, expectedQuoas,
 				Optional.of(getQoa(30)), // mapped to SOFTWARE_TIME_SYNC_TOKEN - contained in expectedQuoas
 				"SSO-3");
@@ -1653,7 +1781,8 @@ class SsoServiceTest {
 				SamlContextClass.TIME_SYNC_TOKEN, SamlContextClass.SMART_CARD_PKI);
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(true);
-		mockDefaultProperties();
+		mockQoaService(relyingParty, claimsParty, null, expectedQuoas);
+		mockDefaultProperties(relyingParty, claimsParty);
 		var resultSufficient = ssoService.isQoaLevelSufficient(claimsParty, relyingParty, expectedQuoas,
 				Optional.of(getQoa(50)), // mapped to SOFTWARE_PKI - not contained in expectedQoas
 				"SSO-4");
@@ -1666,7 +1795,8 @@ class SsoServiceTest {
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		claimsParty.setAuthLevel(MockQoa.AUTH_LEVEL_NORMAL.getName());
 		var relyingParty = buildRelyingParty(true);
-		mockDefaultProperties();
+		mockDefaultProperties(relyingParty, claimsParty);
+		mockQoaService(relyingParty, claimsParty, null, expectedQuoas);
 		var resultSufficient = ssoService.isQoaLevelSufficient(claimsParty, relyingParty, expectedQuoas,
 				Optional.of(getQoa(20)), "SSO-5");
 		assertThat(resultSufficient, is(false));
@@ -1682,7 +1812,8 @@ class SsoServiceTest {
 		claimsParty.setAuthLevel(MockQoa.AUTH_LEVEL_NORMAL.getName());
 		claimsParty.setStrongestPossibleAuthLevel(MockQoa.AUTH_LEVEL_STRONG.getName());
 		var relyingParty = buildRelyingParty(true);
-		mockDefaultProperties();
+		mockDefaultProperties(relyingParty, claimsParty);
+		mockQoaService(relyingParty, claimsParty, null, expectedQuoas);
 		var resultSufficient = ssoService.isQoaLevelSufficient(claimsParty, relyingParty, expectedQuoas,
 				Optional.of(getQoa(40)), "SSO-6");
 		assertThat(resultSufficient, is(false));
@@ -1696,7 +1827,8 @@ class SsoServiceTest {
 		var expectedQuoas = List.of(MockQoa.STRONGEST_POSSIBLE.getName());
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(true);
-		mockDefaultProperties();
+		mockDefaultProperties(relyingParty, claimsParty);
+		mockQoaService(relyingParty, claimsParty, null, expectedQuoas);
 		var resultSufficient = ssoService.isQoaLevelSufficient(claimsParty, relyingParty, expectedQuoas,
 				Optional.of(getQoa(10)), "SSO-6");
 		//  always false as StrongestPossible is not known
@@ -1706,35 +1838,37 @@ class SsoServiceTest {
 	@Test
 	void updateQoaInSession() {
 		var rp = buildRelyingParty(true);
+		var cp = buildClaimsParty(CP_ISSUER_ID);
 		var qoa40 = getQoa(40);
 		var qoa30 = getQoa(30);
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
 		// start without a value
 		ssoStateData.getSsoState().setSsoQoa(null);
+		mockQoaService(rp, cp, null, null);
 
 		// update to 40
 		var cpResponse = buildCpResponseWithContextClasses(List.of(getQoa(20), qoa40, qoa30));
 		ssoStateData.setCpResponse(cpResponse);
-		assertThat(ssoService.updateQoaInSession(rp, ssoStateData), is(true));
+		assertThat(ssoService.updateQoaInSession(rp, cp, ssoStateData), is(true));
 		assertThat(ssoStateData.getSsoState().getSsoQoa(), is(qoa40));
 
 		// lower to 30
 		cpResponse = buildCpResponseWithContextClasses(List.of(getQoa(10), qoa30));
 		ssoStateData.setCpResponse(cpResponse);
-		assertThat(ssoService.updateQoaInSession(rp, ssoStateData), is(true));
+		assertThat(ssoService.updateQoaInSession(rp, cp, ssoStateData), is(true));
 		assertThat(ssoStateData.getSsoState().getSsoQoa(), is(qoa30));
 
 		// no change
 		cpResponse = buildCpResponseWithContextClasses(List.of(qoa40, qoa30, getQoa(20)));
 		ssoStateData.setCpResponse(cpResponse);
-		assertThat(ssoService.updateQoaInSession(rp, ssoStateData), is(true));
+		assertThat(ssoService.updateQoaInSession(rp, cp, ssoStateData), is(true));
 		assertThat(ssoStateData.getSsoState().getSsoQoa(), is(qoa40));
 
 		// update to 60
 		var qoa60 = getQoa(60);
 		cpResponse = buildCpResponseWithContextClasses(List.of(getQoa(50), qoa60));
 		ssoStateData.setCpResponse(cpResponse);
-		assertThat(ssoService.updateQoaInSession(rp, ssoStateData), is(true));
+		assertThat(ssoService.updateQoaInSession(rp, cp, ssoStateData), is(true));
 		assertThat(ssoStateData.getSsoState().getSsoQoa(), is(qoa60));
 	}
 
@@ -1807,6 +1941,7 @@ class SsoServiceTest {
 	@Test
 	void establishSso() {
 		var rp = buildRelyingParty(true);
+		var cp = buildClaimsParty(CP_ISSUER_ID);
 		var stateData = buildStateWithSpState(SESSION_ID);
 		var qoa = getQoa(40);
 		var cpResponse = buildCpResponseWithContextClasses(List.of(qoa));
@@ -1817,8 +1952,9 @@ class SsoServiceTest {
 		var ssoGroup = buildSsoGroup();
 		mockSsoEstablished(stateData);
 		doReturn(SsoSessionIdPolicy.ALWAYS.toString()).when(trustBrokerProperties).getSsoSessionIdPolicy();
+		mockQoaService(rp, cp, null, null);
 
-		ssoService.establishSso(rp, stateData, ssoGroup);
+		ssoService.establishSso(rp, cp, stateData, ssoGroup);
 
 		assertThat(stateData.isSsoEstablished(), is(true));
 		var ssoState = stateData.getSsoState();
@@ -1841,6 +1977,7 @@ class SsoServiceTest {
 	@CsvSource(value = { "true", "false" })
 	void establishImplicitSso(boolean preEstablished) {
 		var rp = buildRelyingParty(false);
+		var cp = buildClaimsParty(CP_ISSUER_ID);
 		var stateData = buildStateWithSpState(SESSION_ID);
 		if (preEstablished) {
 			stateData.initializedSsoState();
@@ -1849,8 +1986,10 @@ class SsoServiceTest {
 		setNameId(stateData.getCpResponse(), SUBJECT_NAME_ID, SUBJECT_NAME_ID);
 		assertThat(stateData.isSsoEstablished(), is(preEstablished));
 		mockSsoEstablished(stateData);
+		when(trustBrokerProperties.getQoa()).thenReturn(givenGlobalQoa());
+		mockQoaService(rp, null, null, null);
 
-		ssoService.establishImplicitSso(rp, stateData);
+		ssoService.establishImplicitSso(rp, cp, stateData);
 
 		assertThat(stateData.isSsoEstablished(), is(true));
 		assertThat(stateData.initializedSsoState().isImplicitSsoGroup(), is(!preEstablished));
@@ -1876,12 +2015,14 @@ class SsoServiceTest {
 	@Test
 	void establishSsoQoaTooLow() {
 		var rp = buildRelyingParty(true);
+		var cp = buildClaimsParty(CP_ISSUER_ID);
 		var stateData = buildStateWithSpState(SESSION_ID);
 		stateData.setCpResponse(buildCpResponseWithContextClasses(List.of(getQoa(10))));
-		mockDefaultProperties();
+		mockDefaultProperties(rp, null);
+		mockQoaService(rp, cp, null, null);
 		setNameId(stateData.getCpResponse(), SUBJECT_NAME_ID, SUBJECT_NAME_ID);
 
-		ssoService.establishSso(rp, stateData, null);
+		ssoService.establishSso(rp, cp, stateData, null);
 
 		assertThat(stateData.isSsoEstablished(), is(false));
 	}
@@ -1889,10 +2030,12 @@ class SsoServiceTest {
 	@Test
 	void establishSsoQoaMissing() {
 		var rp = buildRelyingParty(true);
+		var cp = buildClaimsParty(CP_ISSUER_ID);
 		var stateData = buildStateWithSpState(SESSION_ID);
 		setNameId(stateData.getCpResponse(), SUBJECT_NAME_ID, SUBJECT_NAME_ID);
-
-		ssoService.establishSso(rp, stateData, buildSsoGroup());
+		when(trustBrokerProperties.getQoa()).thenReturn(givenGlobalQoa());
+		mockQoaService(rp, null, null, null);
+		ssoService.establishSso(rp, cp, stateData, buildSsoGroup());
 
 		assertThat(stateData.isSsoEstablished(), is(false));
 	}
@@ -1900,8 +2043,10 @@ class SsoServiceTest {
 	@Test
 	void establishSsoQoaTooLowOnJoin() {
 		var rp = buildRelyingParty(true);
+		var cp = buildClaimsParty(CP_ISSUER_ID);
 		var ssoGroup = buildSsoGroup();
-		mockDefaultProperties();
+		mockDefaultProperties(rp, null);
+		mockQoaService(rp, cp, null, null);
 
 		// SSO session with sufficient QOA
 		var stateData = buildStateWithSpState(SESSION_ID);
@@ -1917,7 +2062,7 @@ class SsoServiceTest {
 		setNameId(cpResponse, subjectNameId, subjectNameId);
 		stateData.setCpResponse(cpResponse);
 
-		ssoService.establishSso(rp, stateData, ssoGroup);
+		ssoService.establishSso(rp, cp, stateData, ssoGroup);
 
 		assertThat(stateData.isSsoEstablished(), is(true));
 		assertThat(stateData.initializedSsoState().getSsoParticipants(),
@@ -1928,8 +2073,9 @@ class SsoServiceTest {
 	@Test
 	void establishSsoIdentityChange() {
 		var rp = buildRelyingParty(true);
+		var cp = buildClaimsParty(CP_ISSUER_ID);
 		var ssoGroup = buildSsoGroup();
-		mockDefaultProperties();
+		mockDefaultProperties(rp, null);
 
 		// SSO session with sufficient QOA
 		var stateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
@@ -1943,7 +2089,7 @@ class SsoServiceTest {
 		setNameId(cpResponse, "Subject.new", "Subject.new");
 		stateData.setCpResponse(cpResponse);
 
-		assertThrows(TechnicalException.class, () -> ssoService.establishSso(rp, stateData, ssoGroup));
+		assertThrows(TechnicalException.class, () -> ssoService.establishSso(rp, cp, stateData, ssoGroup));
 	}
 
 	@Test
@@ -1965,12 +2111,15 @@ class SsoServiceTest {
 	@CsvSource(value = { "false", "true" })
 	void copyToSsoStateAndInvalidateAuthnRequestState(boolean implicit) {
 		doReturn(new SecurityChecks()).when(trustBrokerProperties).getSecurity();
+		when(trustBrokerProperties.getQoa()).thenReturn(givenGlobalQoa());
 		// ensure the copy includes all the needed fields by comparing with the result of AssertionConsumerService.saveState
 
 		// state generated when saving new AuthnRequest
 		var acsUrl1 = "https://acs1";
 		var acWhitelist = AcWhitelist.builder().acUrls(List.of(acsUrl1)).build();
 		var relyingParty = RelyingParty.builder().id(RELYING_PARTY_ID).acWhitelist(acWhitelist).build();
+		var cp = buildClaimsParty(CP_ISSUER_ID);
+		mockQoaService(relyingParty, cp, null, null);
 
 		var authnRequest = SamlFactory.createRequest(AuthnRequest.class, RELYING_PARTY_ID);
 		authnRequest.setAssertionConsumerServiceURL(acsUrl1);
@@ -1988,7 +2137,7 @@ class SsoServiceTest {
 		authState.setCpResponse(CpResponse.builder().build());
 		setNameId(authState.getCpResponse(), SUBJECT_NAME_ID, SUBJECT_NAME_ID);
 		if (implicit) {
-			ssoService.establishImplicitSso(relyingParty, authState);
+			ssoService.establishImplicitSso(relyingParty, cp, authState);
 		}
 
 		// SSO state with values that differ from the AuthnRequest
@@ -2582,8 +2731,46 @@ class SsoServiceTest {
 		cpResponse.setAttribute(CoreAttributeName.NAME_ID.getNamespaceUri(), nameId);
 	}
 
-	private void mockDefaultProperties() {
+	private void mockDefaultProperties(RelyingParty relyingParty, ClaimsParty claimsParty) {
 		doReturn(20).when(trustBrokerProperties).getSsoMinQoaLevel();
+		QualityOfAuthenticationConfig qualityOfAuthenticationConfig = new QualityOfAuthenticationConfig();
+		doReturn(qualityOfAuthenticationConfig).when(trustBrokerProperties).getQoa();
+		when(trustBrokerProperties.getQoa()).thenReturn(givenGlobalQoa());
+	}
+
+	private Qoa mockQoaConfig() {
+		return Qoa.builder()
+				  .classes(mockRpAcClasses())
+				  .build();
+	}
+
+	private List<AcClass> mockRpAcClasses() {
+		List<AcClass> acClasses = new ArrayList<>();
+		acClasses.add(AcClass.builder()
+							 .order(SamlTestBase.Qoa.KERBEROS.getLevel())
+							 .contextClass(SamlTestBase.Qoa.KERBEROS.getName())
+							 .build());
+		acClasses.add(AcClass.builder()
+							 .order(SamlTestBase.Qoa.KERBEROS.getLevel())
+							 .contextClass(SamlTestBase.Qoa.KERBEROS.getName())
+							 .build());
+		acClasses.add(AcClass.builder()
+							 .order(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getLevel())
+							 .contextClass(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName())
+							 .build());
+		acClasses.add(AcClass.builder()
+							 .order(SamlTestBase.Qoa.PASSWORD_PROTECTED_TRANSPORT.getLevel())
+							 .contextClass(SamlTestBase.Qoa.PASSWORD_PROTECTED_TRANSPORT.getName())
+							 .build());
+		acClasses.add(AcClass.builder()
+							 .order(SamlTestBase.Qoa.SOFTWARE_TIME_SYNC_TOKEN.getLevel())
+							 .contextClass(SamlTestBase.Qoa.SOFTWARE_TIME_SYNC_TOKEN.getName())
+							 .build());
+		acClasses.add(AcClass.builder()
+							 .order(SamlTestBase.Qoa.SOFTWARE_PKI.getLevel())
+							 .contextClass(SamlTestBase.Qoa.SOFTWARE_PKI.getName())
+							 .build());
+		return acClasses;
 	}
 
 }

@@ -25,11 +25,13 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
- * SAML protocol endpoints.
+ * SAML/OIDC protocol endpoints.
  *
  * @see <a href="http://saml.xml.org/saml-specifications">SAML Specifications</a>
+ * @see <a href="https://openid.net/specs/openid-connect-discovery-1_0.html">OIDC Discovery</a>
  */
 @XmlRootElement(name = "ProtocolEndpoints")
 @XmlAccessorType(XmlAccessType.FIELD)
@@ -37,13 +39,24 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Slf4j
 public class ProtocolEndpoints implements Serializable {
 
 	/**
-	 * SAML metadata URL.
+	 * SAML/OIDC metadata URL.
 	 */
 	@XmlElement(name = "MetadataUrl")
 	private String metadataUrl;
+
+	/**
+	 * Proxy URL for these endpoints that overrides global default.
+	 * <br/>
+	 * Set to empty string to override global default to use no proxy.
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlElement(name = "ProxyUrl")
+	private String proxyUrl;
 
 	/**
 	 * SAML Artifact Resolution Protocol URL.
@@ -55,14 +68,30 @@ public class ProtocolEndpoints implements Serializable {
 	 * SAML Artifact Resolution Protocol index.
 	 */
 	@XmlElement(name = "ArtifactResolutionIndex")
-	private int artifactResolutionIndex;
+	private Integer artifactResolutionIndex;
 
 	/**
-	 * 	Proxy URL overrides global default.
-	 * 	<br/>
-	 *  Set to empty string to override without proxy.
+	 * @deprecated Use proxyUrl.
 	 */
+	@Deprecated(since = "1.9.0", forRemoval = true)
 	@XmlElement(name = "ArtifactResolutionProxyUrl")
 	private String artifactResolutionProxyUrl;
 
+	/**
+	 * @deprecated Use proxyUrl.
+	 */
+	@Deprecated(since = "1.9.0", forRemoval = true)
+	@SuppressWarnings("java:S4275") // renaming getter for transition
+	public String getArtifactResolutionProxyUrl() {
+		return proxyUrl;
+	}
+
+	/**
+	 * @deprecated Use proxyUrl
+	 */
+	@Deprecated(since = "1.9.0", forRemoval = true)
+	public void setArtifactResolutionProxyUrl(String proxyUrl) {
+		log.warn("Use of deprecated ProtocolEndpoints.ArtifactResolutionProxyUrl={} - change to ProxyUrl", proxyUrl);
+		this.proxyUrl = proxyUrl;
+	}
 }

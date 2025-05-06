@@ -16,7 +16,7 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 
-import { IdpObject } from '../model/idpObject';
+import { IdpObject } from '../model/IdpObject';
 
 @Injectable({
 	providedIn: 'root'

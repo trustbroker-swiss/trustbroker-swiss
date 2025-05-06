@@ -30,9 +30,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.config.TestConstants;
 import swiss.trustbroker.config.TrustBrokerProperties;
@@ -65,10 +65,10 @@ class ScriptServiceTest {
 	@Autowired
 	ScriptService scriptService;
 
-	@MockBean
+	@MockitoBean
 	RelyingPartySetupService relyingPartySetupService;
 
-	@MockBean
+	@MockitoBean
 	TrustBrokerProperties trustBrokerProperties;
 
 	@BeforeEach

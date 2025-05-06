@@ -41,7 +41,7 @@ import net.shibboleth.shared.xml.ParserPool;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
-import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
+import org.apache.hc.client5.http.ssl.DefaultClientTlsStrategy;
 import org.apache.hc.core5.ssl.SSLContextBuilder;
 import org.opensaml.core.xml.XMLObject;
 import org.opensaml.core.xml.config.XMLObjectProviderRegistrySupport;
@@ -307,10 +307,10 @@ public class WsTrustSoapClientBase extends WebServiceGatewaySupport {
 			var password = CredentialUtil.processPassword(trustStoreProperties.getPassword());
 			var sslContext = SSLContextBuilder.create().loadTrustMaterial(new File(trustStoreFile),
 					CredentialUtil.passwordToCharArray(password)).build();
-			var socketFactory = new SSLConnectionSocketFactory(sslContext);
-			PoolingHttpClientConnectionManager connectionManager = PoolingHttpClientConnectionManagerBuilder
+			var socketFactory = new DefaultClientTlsStrategy(sslContext);
+			var connectionManager = PoolingHttpClientConnectionManagerBuilder
 					.create()
-					.setSSLSocketFactory(socketFactory)
+					.setTlsSocketStrategy(socketFactory)
 					.build();
 
 			var httpClient = HttpClientBuilder.create()

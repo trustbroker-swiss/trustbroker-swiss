@@ -38,6 +38,7 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.tracing.TraceSupport;
+import swiss.trustbroker.common.util.ProcessUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.config.dto.TomcatSessionMode;
@@ -60,8 +61,6 @@ public class TomcatSessionManager extends ManagerBase {
 
 	private static final String NAME = TomcatSessionManager.class.getSimpleName();
 
-	private static final long SESSION_CACHE_WARN_THRESHOLD = 1000;
-
 	private final StateCacheService stateCacheService;
 
 	private final SsoService ssoService;
@@ -80,15 +79,15 @@ public class TomcatSessionManager extends ManagerBase {
 		// set an upper limit to work against (D)DOS in BOTH and IN_MEMORY mode
 		super.setMaxActive(trustBrokerProperties.getStateCache().getTargetMaxEntries() * 2);
 		super.setPersistAuthentication(true); // principal to/from DB for logout
-		log.info(NAME + " started (using sessionMode={})", mode);
+		log.info("{} started (using sessionMode={})", NAME, mode);
 	}
 
 	@Override
 	public void stopInternal() throws LifecycleException {
-		log.info(NAME + " stopping...");
+		log.info("{} stopping...", NAME);
 		setState(LifecycleState.STOPPING);
 		super.stopInternal();
-		log.info(NAME + " stopped");
+		log.info("{} stopped", NAME);
 	}
 
 	@Override
@@ -162,6 +161,21 @@ public class TomcatSessionManager extends ManagerBase {
 				.build();
 	}
 
+	public TomcatSession findSessionWithRetry(String id) {
+		var session = findSession(id);
+		if (session == null) {
+			var txRetryDelayMs = trustBrokerProperties.getStateCache().getTxRetryDelayMs();
+			if (txRetryDelayMs > 0) {
+				ProcessUtil.sleep(txRetryDelayMs);
+				session = findSession(id);
+				if (session != null) {
+					log.warn("Delayed DB save handled, retrying after {}ms returned session={} on 2nd try", txRetryDelayMs, id);
+				}
+			}
+		}
+		return session;
+	}
+
 	@Override
 	public TomcatSession findSession(String id) {
 		// session check without a key? no way
@@ -229,7 +243,7 @@ public class TomcatSessionManager extends ManagerBase {
 			}
 
 			// really load
-			var session = decodeSession(stateData.get().getOidcSessionData(), sessionId);
+			var session = decodeSession(stateData.get(), sessionId);
 			return attachStateData(session, stateData.get());
 		}
 		catch (TechnicalException ex) {
@@ -257,13 +271,13 @@ public class TomcatSessionManager extends ManagerBase {
 	@Override
 	public void processExpires() {
 		var count = sessions.size();
-		var sessionLimit = SESSION_CACHE_WARN_THRESHOLD;
+		var sessionLimit = trustBrokerProperties.getStateCache().getTargetMaxEntries() / 10 * 8; // 80%
 		if (mode == TomcatSessionMode.IN_DB && count < sessionLimit) {
 			log.debug("Session cache reaper not required IN_DB mode would run on sessionCount={} items now", count);
 			return;
 		}
 		if (count >= sessionLimit) {
-			log.warn("Session cache has sessionCount={} items, growing above warnLimit={}", count, SESSION_CACHE_WARN_THRESHOLD);
+			log.warn("Session cache has sessionCount={} items, growing above warnLimit={} (80%)", count, sessionLimit);
 		}
 		log.debug("Session cache reaping sessionCount={} items", count);
 		super.processExpires();
@@ -365,7 +379,7 @@ public class TomcatSessionManager extends ManagerBase {
 		}
 
 		// if found, make sure we also cached it during execution, and it was not expiring in the meantime in sessiondb
-		var session = findSession(sessionId);
+		var session = findSessionWithRetry(sessionId);
 		if (isSessionValid(session)) {
 			ensureSessionIsCached(session);
 			// we now run on the OIDC session
@@ -430,7 +444,7 @@ public class TomcatSessionManager extends ManagerBase {
 		sessions.put(session.getIdInternal(), session);
 
 		// session invalidate if forced, otherwise continue with it
-		return OidcSessionSupport.invalidateSessionOnPromptLogin(session, trustBrokerProperties.getPerimeterUrl(),
+		return OidcSessionSupport.invalidateSessionOnPromptLoginOrStepup(session,
 				messageClient, trustBrokerProperties.getNetwork());
 	}
 
@@ -605,7 +619,7 @@ public class TomcatSessionManager extends ManagerBase {
 		}
 	}
 
-	// since v16 we do not need webs ession backing anymore for /token retrival
+	// since v16 we do not need websession backing anymore for /token retrieval
 	void validateOidcTokenState(TomcatSession session, Object context) {
 		logSession(session, "validateOidcTokenState");
 		if (context == null) {
@@ -678,9 +692,9 @@ public class TomcatSessionManager extends ManagerBase {
 		}
 	}
 
-	private TomcatSession decodeSession(String oidcSessionData, String sessionId) {
+	private TomcatSession decodeSession(StateData stateData, String sessionId) {
 		try {
-			var byteInputStream = new ByteArrayInputStream(Base64.getDecoder().decode(oidcSessionData));
+			var byteInputStream = new ByteArrayInputStream(Base64.getDecoder().decode(stateData.getOidcSessionData()));
 			var objectInputStream = new ObjectInputStream(byteInputStream);
 			var session = new TomcatSession(this);
 			session.readObjectData(objectInputStream);
@@ -688,6 +702,9 @@ public class TomcatSessionManager extends ManagerBase {
 			return session;
 		}
 		catch (Exception ex) {
+			// possible cause: serialization compatibility issues (e.g. serialVersionUID changed, class removed)
+			log.error("Failed to decode sessionId={} - invalidating: cause={}", sessionId, ex.getMessage());
+			stateCacheService.tryInvalidate(stateData, NAME);
 			throw new TechnicalException(String.format("Failed to decode sessionId=%s: %s",
 					sessionId, ex.getMessage()), ex);
 		}

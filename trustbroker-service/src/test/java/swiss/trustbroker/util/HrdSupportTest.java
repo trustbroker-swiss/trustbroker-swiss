@@ -18,22 +18,29 @@ package swiss.trustbroker.util;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import jakarta.servlet.http.Cookie;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import swiss.trustbroker.api.homerealmdiscovery.service.HrdService;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.NetworkConfig;
+import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
-import swiss.trustbroker.homerealmdiscovery.service.NoOpHrdService;
 import swiss.trustbroker.oidc.session.HttpExchangeSupport;
 
 @SpringBootTest(classes = WebSupport.class)
@@ -51,24 +58,37 @@ class HrdSupportTest {
 
 	private static final String AUTOLOGIN_COOKIE = "TEST_autoLogin";
 
-	@SpyBean
-	private NoOpHrdService hrdService;
+	@MockitoBean
+	private HrdService hrdService;
 
-	@Test
-	void testClaimsProviderHintUrlTesterHeader() {
-		var request = new MockHttpServletRequest();
-		var properties = givenProperties();
-		request.addHeader(HrdSupport.HTTP_URLTESTER_CP, CP_PUBLIC_ID);
-		assertThat(HrdSupport.getClaimsProviderHint(request, properties), is(CP_PUBLIC_ID));
+	@BeforeEach
+	void setUp() {
+		doAnswer(invocation -> invocation.getArgument(1)).when(hrdService).adaptClaimsProviderMappings(any(), any());
 	}
 
-	@Test
-	void testClaimsProviderHintUrlTesterCookie() {
+	@ParameterizedTest
+	@CsvSource(value = { "true," + CP_PUBLIC_ID, "false,null" }, nullValues = "null")
+	void testClaimsProviderHintUrlTesterHeader(boolean intranet, String expected) {
 		var request = new MockHttpServletRequest();
 		var properties = givenProperties();
-		var cookie = new Cookie(HrdSupport.HTTP_URLTESTER_CP, CP_PUBLIC_ID);
+		request.addHeader(HrdSupport.HTTP_HRD_HINT_HEADER, CP_PUBLIC_ID);
+		var network = properties.getNetwork();
+		request.addHeader(network.getNetworkHeader(),
+				intranet ? network.getIntranetNetworkName() : network.getInternetNetworkName());
+		assertThat(HrdSupport.getClaimsProviderHint(request, properties), is(expected));
+	}
+
+	@ParameterizedTest
+	@CsvSource(value = { "true," + CP_PUBLIC_ID, "false,null" }, nullValues = "null")
+	void testClaimsProviderHintUrlTesterCookie(boolean intranet, String expected) {
+		var request = new MockHttpServletRequest();
+		var properties = givenProperties();
+		var cookie = new Cookie(HrdSupport.HTTP_HRD_HINT_HEADER, CP_PUBLIC_ID);
 		request.setCookies(cookie);
-		assertThat(HrdSupport.getClaimsProviderHint(request, properties), is(CP_PUBLIC_ID));
+		var network = properties.getNetwork();
+		request.addHeader(network.getNetworkHeader(),
+				intranet ? network.getIntranetNetworkName() : network.getInternetNetworkName());
+		assertThat(HrdSupport.getClaimsProviderHint(request, properties), is(expected));
 	}
 
 	@ParameterizedTest
@@ -101,10 +121,10 @@ class HrdSupportTest {
 	}
 
 	@Test
-	void testClaimsProviderHintEnterpriseIdp() {
+	void testClaimsProviderPreselectionWithHrdHint() {
 		var request = new MockHttpServletRequest();
 		var properties = givenProperties();
-		request.addParameter(HrdSupport.HTTP_CP_HINT, "enterprise");
+		request.addParameter(HrdSupport.HTTP_HRD_HINT_PARAMETER, CP_ENTERPRISE_ID);
 		assertThat(HrdSupport.getClaimsProviderHint(request, properties), is(CP_ENTERPRISE_ID));
 	}
 
@@ -163,6 +183,51 @@ class HrdSupportTest {
 		var mappings = givenClaimsProviderMappings();
 		var reduced = HrdSupport.reduceClaimsProviderMappings(request, "MISS", null, null, mappings, givenProperties(), hrdService);
 		assertThat(reduced.size(), equalTo(2)); // all CPs matched
+	}
+
+	@Test
+	void isXtbDestinationDestinationTest() {
+		var trustBrokerProperties = new TrustBrokerProperties();
+		var oidcProperties = new OidcProperties();
+		oidcProperties.setPerimeterUrl("https://example.com");
+		trustBrokerProperties.setOidc(oidcProperties);
+
+		boolean result = HrdSupport.isXtbDestination(trustBrokerProperties, null);
+
+		assertFalse(result, "Result should be false when the destination is null.");
+
+		assertFalse(HrdSupport.isXtbDestination(trustBrokerProperties, "invalid-url"));
+	}
+
+	@Test
+	void isXtbDestinationPerimeterUrlTest(){
+		var trustBrokerProperties = new TrustBrokerProperties();
+		var oidcProperties = new OidcProperties();
+		oidcProperties.setPerimeterUrl(null);
+		trustBrokerProperties.setOidc(oidcProperties);
+
+		boolean result = HrdSupport.isXtbDestination(trustBrokerProperties, "https://example.com");
+
+		assertFalse(result, "Result should be false when the OIDC perimeter URL is null.");
+
+		trustBrokerProperties.getOidc().setPerimeterUrl("invalid-url");
+
+		assertFalse(HrdSupport.isXtbDestination(trustBrokerProperties, "https://example.com"));
+	}
+
+	@Test
+	void isXtbDestinationHostMatchTest() {
+		var trustBrokerProperties = new TrustBrokerProperties();
+		var oidcProperties = new OidcProperties();
+		oidcProperties.setPerimeterUrl("https://example.com");
+		trustBrokerProperties.setOidc(oidcProperties);
+
+		boolean resultTrue = HrdSupport.isXtbDestination(trustBrokerProperties, "https://example.com/some-path");
+
+		assertTrue(resultTrue, "Result should be true when the hosts of the destination and perimeter URL match.");
+
+		boolean resultFalse = HrdSupport.isXtbDestination(trustBrokerProperties, "https://different.com");
+		assertFalse(resultFalse, "Result should be false when the hosts of the destination and perimeter URL do not match.");
 	}
 
 	private static List<ClaimsProviderRelyingParty> givenClaimsProviderMappings() {

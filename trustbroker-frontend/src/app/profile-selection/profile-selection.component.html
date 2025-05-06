@@ -20,14 +20,16 @@
 				<p [innerHTML]="'trustbroker.profile.subtitle' | translate | safeMarkup"></p>
 			</div>
 		</div>
-		<div *ngFor="let profile of profiles" class="card-container" role="listitem">
-			<app-profile-selection-card
-				[profileName]="profile.name"
-				[organization]="profile.unit"
-				[applications]="profile.applications"
-				(cardClick)="onClick(profile.id)"
-			>
-			</app-profile-selection-card>
-		</div>
+		@for (profile of profiles; track profile) {
+			<div class="card-container" role="listitem">
+				<app-profile-selection-card
+					[profileName]="profile.name"
+					[organization]="profile.unit"
+					[applications]="profile.applications"
+					(cardClick)="onClick(profile.id)"
+				>
+				</app-profile-selection-card>
+			</div>
+		}
 	</div>
 </main>

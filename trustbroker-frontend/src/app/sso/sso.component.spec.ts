@@ -22,6 +22,7 @@ import { TranslationService } from '../app.module';
 import { ApiService } from '../services/api.service';
 import { anything, mock, when } from 'ts-mockito';
 import { of } from 'rxjs';
+import { SafeMarkupPipe } from '../pipes/safe-markup.pipe';
 
 describe('SsoComponent', () => {
 	let component: SsoComponent;
@@ -30,7 +31,7 @@ describe('SsoComponent', () => {
 
 	beforeEach(async () => {
 		await TestBed.configureTestingModule({
-			declarations: [SsoComponent],
+			declarations: [SsoComponent, SafeMarkupPipe],
 			imports: [
 				HttpClientModule,
 				RouterTestingModule,

@@ -25,10 +25,8 @@ import swiss.trustbroker.api.accessrequest.service.AccessRequestService;
 import swiss.trustbroker.api.announcements.service.AnnouncementService;
 import swiss.trustbroker.api.homerealmdiscovery.service.HrdService;
 import swiss.trustbroker.api.profileselection.service.ProfileSelectionService;
-import swiss.trustbroker.api.qoa.service.QualityOfAuthenticationService;
 import swiss.trustbroker.homerealmdiscovery.service.NoOpHrdService;
 import swiss.trustbroker.profileselection.service.NoOpProfileSelectionService;
-import swiss.trustbroker.qoa.service.NoOpQualityOfAuthenticationService;
 
 @SpringBootApplication
 @EnableScheduling
@@ -54,12 +52,6 @@ public class Application {
 	@ConditionalOnMissingBean(AnnouncementService.class)
 	public AnnouncementService announcementService() {
 		return new NoOpAnnouncementService();
-	}
-
-	@Bean
-	@ConditionalOnMissingBean(QualityOfAuthenticationService.class)
-	public QualityOfAuthenticationService qoaService() {
-		return new NoOpQualityOfAuthenticationService();
 	}
 
 	@Bean

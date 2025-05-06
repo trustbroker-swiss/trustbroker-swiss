@@ -38,7 +38,7 @@ class ClaimsProviderUtilTest {
 	void loadClaimsProviderSetup() {
 		var definition = RuleDefinitionUtilTest.class.getClassLoader().getResource(TEST_SETUP_CP).getFile();
 		var claimsProviderSetup = ClaimsProviderUtil.loadClaimsProviderSetup(definition);
-		assertThat(claimsProviderSetup.getClaimsParties(), hasSize(3));
+		assertThat(claimsProviderSetup.getClaimsParties(), hasSize(TestConstants.VALID_TEST_CPS));
 	}
 
 	@Test

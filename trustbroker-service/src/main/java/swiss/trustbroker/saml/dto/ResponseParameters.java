@@ -22,6 +22,7 @@ import lombok.Builder;
 import lombok.Data;
 import org.opensaml.security.credential.Credential;
 import swiss.trustbroker.common.config.RegexNameValue;
+import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 
 @Data
 @Builder
@@ -36,6 +37,10 @@ public class ResponseParameters {
 	private String rpReferer;
 
 	private String rpAuthnRequestId;
+
+	private QoaComparison rpComparison;
+
+	private List<String> rpContextClasses;
 
 	private Credential credential;
 

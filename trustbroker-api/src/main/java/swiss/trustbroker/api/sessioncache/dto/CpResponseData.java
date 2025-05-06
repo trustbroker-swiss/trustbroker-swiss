@@ -33,7 +33,7 @@ public interface CpResponseData {
 
 	String getClientName();
 
-	// IDP attributes
+	// CP attributes
 
 	/**
 	 * @return never null, but may be unmodifiable.
@@ -81,5 +81,9 @@ public interface CpResponseData {
 	List<String> getProperties(String name);
 
 	String getProperty(String name);
+
+	List<String> getProperties(String name, String source);
+
+	String getProperty(String name, String source);
 
 }

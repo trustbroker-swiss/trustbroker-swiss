@@ -26,11 +26,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.exception.ErrorCode;
 import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.OidcUtil;
@@ -44,16 +44,16 @@ import swiss.trustbroker.util.WebSupport;
 @SpringBootTest(classes = AppErrorViewResolver.class)
 class AppErrorViewResolverTest {
 
-	private static final String REDIRECT_URI = "https://example.trustbroker.swiss/client";
-
 	private static final String ISSUER = "https://localhost:4200";
+
+	private static final String REDIRECT_URI = ISSUER + "/client";
 
 	private static final String FAILURE_PATH = "/failure/url";
 
-	@MockBean
+	@MockitoBean
 	private ApiSupport apiSupport;
 
-	@MockBean
+	@MockitoBean
 	private TrustBrokerProperties properties;
 
 	@Autowired
@@ -72,6 +72,7 @@ class AppErrorViewResolverTest {
 		var oidcProperties = new OidcProperties();
 		oidcProperties.setIssuer(issuer);
 		doReturn(oidcProperties).when(properties).getOidc();
+		doReturn(true).when(apiSupport).isInternalUrl(REDIRECT_URI);
 		doReturn(url).when(apiSupport).getErrorPageUrl(errorCode.getLabel(), TraceSupport.getOwnTraceParent());
 		Map<String, Object> model = Map.of("test", "value");
 		var result = appErrorViewResolver.resolveErrorView(request, status, model);

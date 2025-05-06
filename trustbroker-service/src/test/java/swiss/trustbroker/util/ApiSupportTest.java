@@ -28,12 +28,15 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import swiss.trustbroker.common.saml.util.Base64Util;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.OidcProperties;
 
 class ApiSupportTest {
 
 	private static final String BASE_URL = "http://localhost:4200";
 
 	private static final String PERIMETER_URL = "http://localhost:8080";
+
+	private static final String OIDC_PERIMETER_URL = "http://localhost:6060";
 
 	private static final String GROUP_NAME = "SSO1";
 
@@ -58,14 +61,17 @@ class ApiSupportTest {
 
 	@BeforeEach
 	void setUp() {
-		setupApi(BASE_URL, PERIMETER_URL);
+		setupApi(BASE_URL, PERIMETER_URL, OIDC_PERIMETER_URL);
 	}
 
-	private void setupApi(String baseUrl, String perimeterUrl) {
+	private void setupApi(String baseUrl, String perimeterUrl, String oidcPerimeterUrl) {
 		var trustBrokerProperties = new TrustBrokerProperties();
 		trustBrokerProperties.setFrontendBaseUrl(baseUrl);
 		trustBrokerProperties.setPerimeterUrl(perimeterUrl);
 		trustBrokerProperties.setVersionInfo(VERSION_INFO);
+		var oidc = new OidcProperties();
+		oidc.setPerimeterUrl(oidcPerimeterUrl);
+		trustBrokerProperties.setOidc(oidc);
 		apiSupport = new ApiSupport(trustBrokerProperties);
 	}
 
@@ -154,14 +160,14 @@ class ApiSupportTest {
 
 	@Test
 	void testGetAnnouncementsUrl() {
-		var referer = "https://localhost/path";
-		assertThat(apiSupport.getAnnouncementsUrl(ISSUER_1_ID, REQUEST_ID, referer),
-				is(BASE_URL + ApiSupport.FRONTEND_CONTEXT + ApiSupport.ANNOUNCEMENTS_PAGE + '/' + ISSUER_1_ENCODED + '/' + REQUEST_ID + '/' +
-						ApiSupport.encodeUrlParameter(referer)));
+		var appName = "appName";
+		var encodedAppName = Base64Util.urlEncode(appName);
+		assertThat(apiSupport.getAnnouncementsUrl(ISSUER_1_ID, REQUEST_ID, appName),
+				is(BASE_URL + ApiSupport.FRONTEND_CONTEXT + ApiSupport.ANNOUNCEMENTS_PAGE + '/' + ISSUER_1_ENCODED + '/' + REQUEST_ID + '/' + encodedAppName));
 	}
 
 	@Test
-	void testGetAnnouncementsUrlNoReferrer() {
+	void testGetAnnouncementsUrlNoAppName() {
 		assertThat(apiSupport.getAnnouncementsUrl(ISSUER_1_ID, REQUEST_ID, null),
 				is(BASE_URL + ApiSupport.FRONTEND_CONTEXT + ApiSupport.ANNOUNCEMENTS_PAGE + '/' + ISSUER_1_ENCODED + '/' + REQUEST_ID));
 	}
@@ -211,7 +217,7 @@ class ApiSupportTest {
 	@ParameterizedTest
 	@CsvSource(value = { "''", "null" }, nullValues = "null")
 	void testGetAccessRequestCompleteApiWithAccessRequestBase(String baseUrl) {
-		setupApi(baseUrl, PERIMETER_URL);
+		setupApi(baseUrl, PERIMETER_URL, OIDC_PERIMETER_URL);
 		assertThat(apiSupport.getAccessRequestCompleteApi(REQUEST_ID),
 				is(PERIMETER_URL + ApiSupport.API_CONTEXT + ApiSupport.ACCESS_REQUEST_COMPLETE + '/' + REQUEST_ID));
 	}
@@ -231,8 +237,8 @@ class ApiSupportTest {
 
 	@Test
 	void testGetHrdRpApi() {
-		assertThat(apiSupport.getHrdRpApi(ISSUER_1_ID), is(BASE_URL + ApiSupport.API_CONTEXT + ApiSupport.HRD_RP_API +
-				'/' + ISSUER_1_ENCODED + ApiSupport.HRD_TILES_POSTFIX));
+		assertThat(apiSupport.getHrdRpApi(ISSUER_1_ID, REQUEST_ID), is(BASE_URL + ApiSupport.API_CONTEXT + ApiSupport.HRD_RP_API +
+				'/' + ISSUER_1_ENCODED + ApiSupport.HRD_TILES_POSTFIX + '?' + ApiSupport.HRD_ID_PARAM + '=' + REQUEST_ID));
 	}
 
 	@Test
@@ -266,14 +272,14 @@ class ApiSupportTest {
 
 	@Test
 	void testContextNotDuplicated() {
-		setupApi(BASE_URL + ApiSupport.FRONTEND_CONTEXT, PERIMETER_URL);
+		setupApi(BASE_URL + ApiSupport.FRONTEND_CONTEXT, PERIMETER_URL, OIDC_PERIMETER_URL);
 		assertThat(apiSupport.getSsoUrl(), is(BASE_URL + ApiSupport.FRONTEND_CONTEXT + ApiSupport.SSO_PAGE));
 	}
 
 	@ParameterizedTest
 	@MethodSource
 	void testRemovePrefix(String baseUrl, String url, String relative) {
-		setupApi(baseUrl, PERIMETER_URL);
+		setupApi(baseUrl, PERIMETER_URL, OIDC_PERIMETER_URL);
 		assertThat(apiSupport.relativeUrl(url), is(relative));
 	}
 
@@ -364,6 +370,24 @@ class ApiSupportTest {
 	}, nullValues = "null")
 	void testIsSamlPath(String path, boolean expected) {
 		assertThat(ApiSupport.isSamlPath(path), is(expected));
+	}
+
+	@ParameterizedTest
+	@CsvSource(value = {
+			"null,false",
+			"http://%%localhost,false",
+			"http://testuser:dummy@localhost:4200,false",
+			"http://user@localhost:4200,false",
+			OIDC_PERIMETER_URL + ",true",
+			OIDC_PERIMETER_URL + "/test,true",
+			BASE_URL + ",true",
+			BASE_URL + "/path?a=b,true",
+			PERIMETER_URL + ",true",
+			PERIMETER_URL + "?param1=v1&param2=v2,true",
+			"https://client.trustbroker.swiss,false"
+	}, nullValues = "null")
+	void testIsInternalUrl(String url, boolean expected) {
+		assertThat(apiSupport.isInternalUrl(url), is(expected));
 	}
 
 }

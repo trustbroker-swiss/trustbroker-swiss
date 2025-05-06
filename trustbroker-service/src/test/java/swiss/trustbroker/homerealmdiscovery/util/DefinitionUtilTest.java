@@ -17,36 +17,43 @@ package swiss.trustbroker.homerealmdiscovery.util;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
 
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-import swiss.trustbroker.api.profileselection.dto.ProfileSelectionResult;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import swiss.trustbroker.api.sessioncache.dto.AttributeName;
-import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.saml.util.CoreAttributeInitializer;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
-import swiss.trustbroker.config.TrustBrokerProperties;
-import swiss.trustbroker.config.dto.OidcProperties;
-import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.Definition;
-import swiss.trustbroker.saml.dto.CpResponse;
+import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
 
+@ExtendWith(MockitoExtension.class)
 class DefinitionUtilTest {
+
+	@Mock
+	private ScriptService scriptService;
+
+	@BeforeAll
+	static void setUp() {
+		// for findSingleValueByNameOrNamespace
+		new CoreAttributeInitializer().init();
+		SamlTestBase.setAnyAttributeNamespaceUri(CoreAttributeName.HOME_NAME);
+		SamlTestBase.setAnyAttributeNamespaceUri(CoreAttributeName.CLAIMS_NAME);
+	}
 
 	@ParameterizedTest
 	@MethodSource
@@ -76,7 +83,7 @@ class DefinitionUtilTest {
 		var resultDefinition = DefinitionUtil.findByNameOrNamespace(new Definition(inputName), null, input);
 		validateAttributes(expected, resultDefinition, definition);
 
-		var resultCp = DefinitionUtil.findAttributeByNameOrNamespace(inputName, null, inputCp);
+		var resultCp = DefinitionUtil.findByNameOrNamespace(inputName, null, inputCp);
 		validateAttributes(expected, resultCp, definition);
 
 		Map<AttributeName, List<String>> attributes = Map.of(
@@ -86,7 +93,6 @@ class DefinitionUtilTest {
 							 .namespaceUri(definitionNamespace)
 							 .build(),
 				List.of(expected));
-		Map<AttributeName, List<String>> cpAttributes = new HashMap<>(attributes);
 	}
 
 	static String[][] findByNameOrNamespace() {
@@ -104,33 +110,45 @@ class DefinitionUtilTest {
 		}
 		else {
 			assertThat(result.isPresent(), is(true));
-			assertThat(result.get()
-							 .getKey(), is(definition));
-			assertThat(result.get()
-							 .getValue(), is(expected));
+			assertThat(result.get().getKey(), is(definition));
+			assertThat(result.get().getValue(), is(expected));
 		}
 	}
 
 	@ParameterizedTest
 	@MethodSource
 	void findListByNameOrNamespace(String inputName, String definitionName, String definitionNamespace, List<String> expected) {
+		var source = "source1";
 		var definition = new Definition(definitionName, definitionNamespace);
+		definition.setSource(source);
 		// empty expected indicate not found, put a dummy value in the map to distinguish it from found empty list
 		var values = expected.isEmpty() ? List.of("dummy") : expected;
 		Map<Definition, List<String>> input =
 				Map.of(Definition.ofName(CoreAttributeName.NAME), List.of("other"), definition, values);
-		var result = DefinitionUtil.findListByNameOrNamespace(inputName, input);
+		var result = DefinitionUtil.findListByNameOrNamespace(inputName, null, input);
 		assertThat(result, is(expected));
 
-		var resultDefinition = DefinitionUtil.findListByNameOrNamespace(new Definition(inputName), input);
+		var resultDefinition = DefinitionUtil.findListByNameOrNamespace(new Definition(inputName), null, input);
 		assertThat(result, is(resultDefinition));
 
+		var resultOtherSource = DefinitionUtil.findListByNameOrNamespace(definition, "source2", input);
+		assertThat(resultOtherSource, is(Collections.emptyList()));
+
+		var resultSource = DefinitionUtil.findListByNameOrNamespace(definition, source, input);
+		assertThat(resultSource, is(values));
+
 		var expectedValue = expected.isEmpty() ? null : expected.get(0);
-		var singleValue = DefinitionUtil.findSingleValueByNameOrNamespace(inputName, input);
+		var singleValue = DefinitionUtil.findSingleValueByNameOrNamespace(inputName, null, input);
 		assertThat(singleValue, is(expectedValue));
 
-		var singleValueDefinition = DefinitionUtil.findSingleValueByNameOrNamespace(new Definition(inputName), input);
+		var singleValueDefinition = DefinitionUtil.findSingleValueByNameOrNamespace(new Definition(inputName), null, input);
 		assertThat(singleValueDefinition, is(expectedValue));
+
+		var singleValueOtherSource = DefinitionUtil.findSingleValueByNameOrNamespace(definition, "source2", input);
+		assertThat(singleValueOtherSource, is(nullValue()));
+
+		var singleValueSource = DefinitionUtil.findSingleValueByNameOrNamespace(definition, source, input);
+		assertThat(singleValueSource, is(values.get(0)));
 
 		Map<AttributeName, List<String>> inputCp =
 				Map.of(Definition.ofName(CoreAttributeName.NAME), List.of("other"), definition, values);
@@ -262,113 +280,6 @@ class DefinitionUtilTest {
 	}
 
 	@Test
-	void attributeToDropEmptyTest(){
-		var definition = new Definition("attr1");
-		List<String> attributesToBeDropped = Collections.emptyList();
-		Map<Definition, List<String>> userDetails = new HashMap<>();
-		Map<Definition, List<String>> properties = new HashMap<>();
-		var constAttributes = mock(ConstAttributes.class);
-
-		boolean result = DefinitionUtil.attributeToDrop(definition, attributesToBeDropped, userDetails, properties, constAttributes);
-
-		assertFalse(result, "Result should be false when attributesToBeDropped is empty.");
-
-	}
-
-	@Test
-	void attributeToDropNoInListTest(){
-		Definition definition = Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME);
-		List<String> attributesToBeDropped = List.of("otherAttr");
-		Map<Definition, List<String>> userDetails = new HashMap<>();
-		Map<Definition, List<String>> properties = new HashMap<>();
-		ConstAttributes constAttributes = mock(ConstAttributes.class);
-
-		boolean result = DefinitionUtil.attributeToDrop(definition, attributesToBeDropped, userDetails, properties, constAttributes);
-
-		assertFalse(result, "Result should be false when the attribute is not in the list of attributes to be dropped.");
-
-	}
-
-	@Test
-	void attributeToDropInListTest() {
-		Definition definition = Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME);
-		List<String> attributesToBeDropped = Collections.singletonList(CoreAttributeName.FIRST_NAME.getNamespaceUri());
-		Map<Definition, List<String>> userDetails = new HashMap<>();
-		userDetails.put(definition, List.of("someValue"));
-		Map<Definition, List<String>> properties = new HashMap<>();
-		ConstAttributes constAttributes = mock(ConstAttributes.class);
-
-		boolean result = DefinitionUtil.attributeToDrop(definition, attributesToBeDropped, userDetails, properties, constAttributes);
-
-		assertTrue(result, "Result should be true when the attribute is in the list and is present in userDetails.");
-
-	}
-
-	@Test
-	void isXtbDestinationDestinationTest() {
-		var trustBrokerProperties = new TrustBrokerProperties();
-		var oidcProperties = new OidcProperties();
-		oidcProperties.setPerimeterUrl("https://example.com");
-		trustBrokerProperties.setOidc(oidcProperties);
-
-		boolean result = DefinitionUtil.isXtbDestination(trustBrokerProperties, null);
-
-		assertFalse(result, "Result should be false when the destination is null.");
-
-		assertFalse(DefinitionUtil.isXtbDestination(trustBrokerProperties, "invalid-url"));
-	}
-
-	@Test
-	void isXtbDestinationPerimeterUrlTest(){
-		var trustBrokerProperties = new TrustBrokerProperties();
-		var oidcProperties = new OidcProperties();
-		oidcProperties.setPerimeterUrl(null);
-		trustBrokerProperties.setOidc(oidcProperties);
-
-		boolean result = DefinitionUtil.isXtbDestination(trustBrokerProperties, "https://example.com");
-
-		assertFalse(result, "Result should be false when the OIDC perimeter URL is null.");
-
-		trustBrokerProperties.getOidc().setPerimeterUrl("invalid-url");
-
-		assertFalse(DefinitionUtil.isXtbDestination(trustBrokerProperties, "https://example.com"));
-	}
-
-	@Test
-	void isXtbDestinationHostMatchTest() {
-		var trustBrokerProperties = new TrustBrokerProperties();
-		var oidcProperties = new OidcProperties();
-		oidcProperties.setPerimeterUrl("https://example.com");
-		trustBrokerProperties.setOidc(oidcProperties);
-
-		boolean resultTrue = DefinitionUtil.isXtbDestination(trustBrokerProperties, "https://example.com/some-path");
-
-		assertTrue(resultTrue, "Result should be true when the hosts of the destination and perimeter URL match.");
-
-		boolean resultFalse = DefinitionUtil.isXtbDestination(trustBrokerProperties, "https://different.com");
-		assertFalse(resultFalse, "Result should be false when the hosts of the destination and perimeter URL do not match.");
-	}
-
-	@Test
-	void applyProfileSelectionTest() {
-		var cpResponse = givenCpResponse();
-		var userDetails = cpResponse.getUserDetails();
-
-		DefinitionUtil.applyProfileSelection(cpResponse, null);
-		assertEquals(userDetails, cpResponse.getUserDetails());
-
-		Map<AttributeName, List<String>> psUserDetails = givenPSResultUserDetails();
-		var psResult = ProfileSelectionResult.builder()
-											 .filteredAttributes(Optional.of(psUserDetails))
-											 .build();
-		DefinitionUtil.applyProfileSelection(cpResponse, psResult);
-		assertNotEquals(userDetails, cpResponse.getUserDetails());
-		assertTrue(cpResponse.getUserDetails().entrySet().stream()
-				.filter(map -> map.getKey().getName().equals(CoreAttributeName.CLAIMS_NAME.getName()))
-				.findFirst().isPresent());
-	}
-
-	@Test
 	void definitionAndValueEqualsTest() {
 		var def1 = Definition.builder()
 									.name(CoreAttributeName.FIRST_NAME.getName())
@@ -402,76 +313,6 @@ class DefinitionUtilTest {
 		assertTrue(DefinitionUtil.listMatch(List.of("name1", "name2"), List.of("name2", "name1")));
 
 		assertFalse(DefinitionUtil.listMatch(List.of("name1", "name4"), List.of("name2", "name1")));
-	}
-
-	@Test
-	void filterAndCreateCpDefinitionsExceptionTest() {
-		var confAttributes = Collections.singletonList(new Definition("attr1"));
-
-
-		assertThrows(TechnicalException.class, () ->
-				DefinitionUtil.filterAndCreateCpDefinitions(null, confAttributes)
-		);
-	}
-
-	@Test
-	void filterAndCreateCpDefinitionsIsEmptyTest() {
-		Map<Definition, List<String>> attributes = new HashMap<>();
-		Collection<Definition> confAttributes = Collections.emptyList();
-
-		Map<Definition, List<String>> result = DefinitionUtil.filterAndCreateCpDefinitions(attributes, confAttributes);
-
-		assertTrue(result.isEmpty(), "Result should be an empty map when confAttributes is empty.");
-	}
-
-	@Test
-	void filterAndCreateCpDefinitionsTest() {
-		Map<Definition, List<String>> attributes = new HashMap<>();
-		Definition definition1 = new Definition("attr1");
-		Definition definition2 = new Definition("attr2");
-
-		List<String> values1 = Arrays.asList("value1", "value2");
-		List<String> values2 = Arrays.asList("value3", "value4");
-
-		attributes.put(definition1, values1);
-		attributes.put(definition2, values2);
-
-		Collection<Definition> confAttributes = List.of(definition1);
-
-		Map<Definition, List<String>> result = DefinitionUtil.filterAndCreateCpDefinitions(attributes, confAttributes);
-
-		assertEquals(1, result.size());
-		assertTrue(result.containsKey(definition1));
-	}
-
-	@Test
-	void deduplicatedRpAttributesTest() {
-		Map<Definition, List<String>> userDetailMap = new HashMap<>();
-		Map<Definition, List<String>> properties = new HashMap<>();
-		ConstAttributes constAttributes = mock(ConstAttributes.class);
-
-		var result = DefinitionUtil.deduplicatedRpAttributes(userDetailMap, properties, constAttributes);
-
-		assertTrue(result.isEmpty(), "Result should be an empty map when the userDetailMap is empty.");
-
-		Definition definition1 = new Definition("attr1", CoreAttributeName.CLAIMS_NAME.getNamespaceUri());
-		List<String> values1 = List.of("value1");
-		Definition definition2 = new Definition("attr2");
-		List<String> values2 = List.of("value2");
-		Definition definition3 = new Definition("attr3", CoreAttributeName.CLAIMS_NAME.getNamespaceUri());
-		userDetailMap.put(definition1, values1);
-		userDetailMap.put(definition2, values2);
-		userDetailMap.put(definition3, values1);
-
-		result = DefinitionUtil.deduplicatedRpAttributes(userDetailMap, properties, constAttributes);
-		assertFalse(result.isEmpty());
-		assertTrue(result.size() < userDetailMap.size());
-
-		properties.put(definition3, values1);
-		result = DefinitionUtil.deduplicatedRpAttributes(userDetailMap, properties, constAttributes);
-		assertFalse(result.isEmpty());
-		assertTrue(result.size() < userDetailMap.size());
-
 	}
 
 	@Test
@@ -572,28 +413,67 @@ class DefinitionUtilTest {
 		};
 	}
 
-	private static CpResponse givenCpResponse() {
-		Map<Definition, List<String>> attributeValueMap = new HashMap<>();
-		attributeValueMap.put(new Definition(CoreAttributeName.EMAIL), List.of("email"));
-		return CpResponse.builder()
-						 .attributes(attributeValueMap)
-						 .userDetails(givenUserDetails())
-						 .build();
+	@ParameterizedTest
+	@MethodSource
+	<K extends AttributeName> void findSingleValueByNameOrNamespace(List<K> definitions, K key, String source,
+			Optional<K> expected) {
+		var singleByNameAttribute = DefinitionUtil.findSingleValueByNameOrNamespace(key, source, definitions);
+		assertThat(singleByNameAttribute, is(expected));
+		var name = key != null ? key.getName() : null;
+		var singleByName = DefinitionUtil.findSingleValueByNameOrNamespace(name, source, definitions);
+		assertThat(singleByName, is(expected));
+		var namespace = key != null ? key.getNamespaceUri() : null;
+		var singleByNamespace = DefinitionUtil.findSingleValueByNameOrNamespace(namespace, source, definitions);
+		assertThat(singleByNamespace, is(expected));
 	}
 
-	private static Map<Definition, List<String>> givenUserDetails() {
-		return Map.of(
-				Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME), List.of(
-						"first_name_1"),
-				Definition.ofNamespaceUri(CoreAttributeName.NAME), List.of(
-						"family_name_1"));
+	static Object[][] findSingleValueByNameOrNamespace() {
+		var source1 = "cp";
+		var source2 = "idm.tenant";
+		List<AttributeName> attributes =
+				List.of(CoreAttributeName.CONVERSATION_ID, CoreAttributeName.NAME, CoreAttributeName.FIRST_NAME,
+						CoreAttributeName.HOME_NAME);
+		var homeName = Definition.builder()
+								 .name(CoreAttributeName.HOME_NAME.getName())
+								 .namespaceUri(CoreAttributeName.HOME_NAME.getNamespaceUri())
+								 .build();
+		var claimsName = Definition.builder()
+								   .name(CoreAttributeName.CLAIMS_NAME.getName())
+								   .namespaceUri(CoreAttributeName.CLAIMS_NAME.getNamespaceUri())
+								   .build();
+		List<Definition> definitions = List.of(homeName, claimsName);
+		var homeNameSource = Definition.builder()
+								 .name(CoreAttributeName.HOME_NAME.getName())
+								 .namespaceUri(CoreAttributeName.HOME_NAME.getNamespaceUri())
+								 .source(source1)
+								 .build();
+		var claimsNameSource = Definition.builder()
+								 .name(CoreAttributeName.CLAIMS_NAME.getName())
+								 .namespaceUri(CoreAttributeName.CLAIMS_NAME.getNamespaceUri())
+								 .source(source2)
+								 .build();
+		List<Definition> definitionsWithSource = List.of(homeNameSource, claimsNameSource);
+
+		return new Object[][] {
+				{ null, null, null, Optional.empty() },
+				// AttributeName (no source)
+				{ attributes, null, null, Optional.empty() },
+				{ attributes, CoreAttributeName.NAME, null, Optional.of(CoreAttributeName.NAME) },
+				{ attributes, CoreAttributeName.NAME, source1, Optional.of(CoreAttributeName.NAME) },
+				// Definitions without source
+				{ definitions, null, null, Optional.empty() },
+				{ definitions, CoreAttributeName.FIRST_NAME, null, Optional.empty() },
+				{ definitions, CoreAttributeName.HOME_NAME, null, Optional.of(homeName) },
+				{ definitions, CoreAttributeName.CLAIMS_NAME, source1, Optional.of(claimsName) },
+				{ definitions, CoreAttributeName.CLAIMS_NAME, source2, Optional.of(claimsName) },
+				// Definitions with source
+				{ definitionsWithSource, null, null, Optional.empty() },
+				{ definitionsWithSource, CoreAttributeName.FIRST_NAME, source1, Optional.empty() },
+				{ definitionsWithSource, CoreAttributeName.CLAIMS_NAME, source1, Optional.empty() },
+				{ definitionsWithSource, CoreAttributeName.HOME_NAME, null, Optional.of(homeNameSource) },
+				{ definitionsWithSource, CoreAttributeName.CLAIMS_NAME, source2, Optional.of(claimsNameSource) },
+				{ definitionsWithSource, CoreAttributeName.CLAIMS_NAME, "idm", Optional.of(claimsNameSource) } // source prefix
+		};
 	}
 
-	private static Map<AttributeName, List<String>> givenPSResultUserDetails() {
-		return Map.of(
-				 SamlTestBase.TestAttributeName.of(CoreAttributeName.CLAIMS_NAME), List.of(
-						"first_name_1"),
-				SamlTestBase.TestAttributeName.of(CoreAttributeName.NAME), List.of(
-						"family_name_1"));
-	}
 }

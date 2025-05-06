@@ -18,6 +18,7 @@ package swiss.trustbroker.saml.service;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
@@ -40,6 +41,7 @@ import org.springframework.stereotype.Service;
 import swiss.trustbroker.api.announcements.dto.Announcement;
 import swiss.trustbroker.api.announcements.service.AnnouncementService;
 import swiss.trustbroker.api.homerealmdiscovery.service.HrdService;
+import swiss.trustbroker.api.saml.dto.DestinationType;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.audit.service.InboundAuditMapper;
 import swiss.trustbroker.common.exception.RequestDeniedException;
@@ -54,21 +56,29 @@ import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.Banner;
+import swiss.trustbroker.config.dto.GuiFeatures;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
 import swiss.trustbroker.federation.xmlconfig.Definition;
-import swiss.trustbroker.federation.xmlconfig.Qoa;
+import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
 import swiss.trustbroker.homerealmdiscovery.util.OperationalUtil;
+import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.oidc.session.OidcSessionSupport;
+import swiss.trustbroker.saml.dto.ClaimSource;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.ResponseData;
 import swiss.trustbroker.saml.dto.RpRequest;
+import swiss.trustbroker.saml.dto.UiBanner;
 import swiss.trustbroker.saml.dto.UiObject;
+import swiss.trustbroker.saml.dto.UiObjects;
 import swiss.trustbroker.saml.util.AssertionValidator;
 import swiss.trustbroker.saml.util.ResponseFactory;
 import swiss.trustbroker.saml.util.SamlStatusCode;
@@ -76,7 +86,6 @@ import swiss.trustbroker.saml.util.SamlValidationUtil;
 import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.sessioncache.service.StateCacheService;
-import swiss.trustbroker.sso.service.SsoService;
 import swiss.trustbroker.util.ApiSupport;
 import swiss.trustbroker.util.HrdSupport;
 import swiss.trustbroker.util.WebSupport;
@@ -96,13 +105,13 @@ public class AssertionConsumerService {
 
 	private final ScriptService scriptService;
 
-	private final SsoService ssoService;
-
 	private final AuditService auditService;
 
 	private final AnnouncementService announcementService;
 
 	private final HrdService hrdService;
+
+	private final QoaMappingService qoaMappingService;
 
 	public CpResponse handleSuccessCpResponse(ResponseData<Response> responseData) {
 		// message assertions
@@ -123,7 +132,9 @@ public class AssertionConsumerService {
 		log.debug("CP response assertion validated");
 
 		// internal processing context
-		var cpResponse = extractCpResponseDto(response, responseAssertions);
+		List<Definition> cpAttributeDefinitions =
+				relyingPartySetupService.getCpAttributeDefinitions(OpenSamlUtil.getMessageIssuerId(response), "");
+		var cpResponse = extractCpResponseDto(response, responseAssertions, cpAttributeDefinitions);
 
 		// Known attributes from config as a default before we offer the opportunity to modify it in the CP/RP BeforeIdm scripts
 		cpResponse.setHomeName(
@@ -152,8 +163,6 @@ public class AssertionConsumerService {
 		cpResponse.setOriginalAttributes(new HashMap<>(cpResponse.getAttributes()));
 
 		// Filter CP attributes
-		List<Definition> cpAttributeDefinitions =
-				relyingPartySetupService.getCpAttributeDefinitions(cpResponse.getIssuer(), "");
 		if (!cpAttributeDefinitions.isEmpty()) {
 			ResponseFactory.filterCpAttributes(cpResponse, cpAttributeDefinitions);
 		}
@@ -260,29 +269,43 @@ public class AssertionConsumerService {
 
 	private void validateResponse(boolean expectSuccess, ResponseData<Response> responseData, StateData idpStateData,
 			ClaimsParty claimsParty, List<Assertion> responseAssertions) {
-		validateBinding(claimsParty, responseData.getBinding());
-		String existingRelayState = idpStateData.getRelayState();
+		validateBinding(claimsParty, responseData.getBinding(), idpStateData.getRequestedResponseBinding());
+		var existingRelayState = idpStateData.getRelayState();
 		List<Credential> claimTrustCred = claimsParty.getCpTrustCredential();
 		var expectedAudienceId = claimsParty.getAuthnRequestIssuerId();
+		var spStateData = idpStateData.getSpStateData();
+
 		var expectedValues = AssertionValidator.ExpectedAssertionValues
 				.builder()
 				.expectedIssuer(idpStateData.getIssuer())
 				.expectedAudience(expectedAudienceId)
 				.expectSuccess(expectSuccess)
 				.expectedRelayState(existingRelayState)
+				.expectedComparison(idpStateData.getComparisonType())
+				.expectedContextClasses(idpStateData.getContextClasses())
+				.expectedRpId(spStateData.getOidcClientId() != null ?
+						spStateData.getOidcClientId() : idpStateData.getRpIssuer())
 				.build();
+
 		AssertionValidator.validateResponse(responseData, responseAssertions, claimTrustCred,
-				trustBrokerProperties, claimsParty.getSecurityPolicies(), expectedValues);
+				trustBrokerProperties, claimsParty, claimsParty.getQoa(), expectedValues);
 	}
 
-	private static void validateBinding(ClaimsParty claimsParty, SamlBinding binding) {
-		if (!claimsParty.isValidInboundBinding(binding)) {
+	private static void validateBinding(ClaimsParty claimsParty, SamlBinding actualBinding,
+			SamlBinding requestedResponseBinding) {
+		if (!claimsParty.isValidInboundBinding(actualBinding)) {
 			throw new RequestDeniedException(String.format("ClaimsParty cpIssuerId=%s does not support inbound binding=%s",
-					claimsParty.getId(), binding));
+					claimsParty.getId(), actualBinding));
+		}
+		if (!actualBinding.compatibleWithRequestedBinding(requestedResponseBinding)) {
+			throw new RequestDeniedException(
+					String.format("ClaimsParty cpIssuerId=%s responded with binding=%s instead of requested protocolBinding=%s",
+							claimsParty.getId(), actualBinding, requestedResponseBinding));
 		}
 	}
 
-	private static CpResponse extractCpResponseDto(Response response, List<Assertion> assertions) {
+	private static CpResponse extractCpResponseDto(Response response, List<Assertion> assertions,
+			List<Definition> cpAttributeDefinitions) {
 		var cpResponse = new CpResponse();
 
 		// assertions input (actually only one, we throw an exception if list.size > 1 before)
@@ -311,7 +334,10 @@ public class AssertionConsumerService {
 					log.debug("Ignoring namespaceUri={} value={}", namespaceUri, values);
 					continue;
 				}
-				cpResponse.setAttributes(namespaceUri, values); // free to be processed afterwards
+				var def = DefinitionUtil.findSingleValueByNameOrNamespace(namespaceUri, null, cpAttributeDefinitions);
+				// Fallback necessary only for OriginalAttributes
+				var definition = def.orElseGet(() -> Definition.ofNameAndSource(namespaceUri, ClaimSource.CP.name()));
+				cpResponse.setAttributes(definition, values); // free to be processed afterward
 				if (CoreAttributeName.AUTH_LEVEL.getNamespaceUri().equals(namespaceUri)) {
 					cpResponse.setAuthLevel(values.get(0));
 					log.debug("Got authLevel={} from cpIssuer={}", cpResponse.getAuthLevel(),
@@ -354,7 +380,7 @@ public class AssertionConsumerService {
 		cpResponse.setNameId(nameId);
 		cpResponse.setOriginalNameId(nameId);
 		cpResponse.setNameIdFormat(SamlUtil.getAssertionNameIDFormat(assertion));
-		cpResponse.setAttribute(CoreAttributeName.NAME_ID.getNamespaceUri(), nameId);
+		cpResponse.setAttribute(CoreAttributeName.NAME_ID.getName(), CoreAttributeName.NAME_ID.getNamespaceUri(), nameId);
 		if (CollectionUtils.isNotEmpty(subject.getSubjectConfirmations())) {
 			cpResponse.setSubjectConfirmationMethod(subject.getSubjectConfirmations().get(0).getMethod());
 		}
@@ -388,13 +414,14 @@ public class AssertionConsumerService {
 				.mapFrom(request)
 				.mapFrom(relyingParty)
 				.build();
+		auditDto.setSide(DestinationType.RP.getLabel());
 		auditService.logInboundSamlFlow(auditDto);
 	}
 
 	private RpRequest createUiObjects(String rpIssuer, String requestId, String applicationName,
 									  HttpServletRequest httpRequest, StateData stateData) {
 		var referer = WebUtil.getHeader(HttpHeaders.REFERER, httpRequest);
-		return renderUI(rpIssuer, referer, applicationName, httpRequest, requestId, stateData);
+		return renderUi(rpIssuer, referer, applicationName, httpRequest, requestId, stateData);
 	}
 
 	// This method decides what we have in the SAML POST form target. Priorities:
@@ -460,13 +487,12 @@ public class AssertionConsumerService {
 		var rpIssuer = WebUtil.getHeader(HttpHeaders.ORIGIN, request);
 		var ascUrl = getAssertionConsumerServiceUrl(
 				authnRequest.getAssertionConsumerServiceURL(), referer, rpIssuer, relyingParty);
-		var initiatedByArtifactBinding = binding == SamlBinding.ARTIFACT;
-		return saveState(authnRequest, ascUrl, referer, request, ssoState, relyingParty.getQoa(), initiatedByArtifactBinding);
+		return saveState(authnRequest, ascUrl, referer, request, ssoState, binding);
 	}
 
 	// Internal method used by monitoring only aside from above as ACL check is skipped
 	private StateData saveState(AuthnRequest authnRequest, String ascUrl, String referer, HttpServletRequest request,
-			Optional<StateData> ssoState, Qoa qoa, boolean initiatedViaArtifactBinding) {
+			Optional<StateData> ssoState, SamlBinding requestBinding) {
 		// RP using relay state?
 		var spRelayState = request.getParameter(SamlIoUtil.SAML_RELAY_STATE);
 		if (log.isDebugEnabled()) {
@@ -479,13 +505,16 @@ public class AssertionConsumerService {
 
 		// remember RP for AuthnRequest/response exchange OR as initiator for SSO
 		var rpContexts = WebSupport.getHttpContext(request, trustBrokerProperties.getNetwork());
-		var contextClasses = getContextClasses(OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest), qoa);
-		var comparisonType = getComparisonType(authnRequest);
+		var contextClasses = OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest);
+		var comparisonType = OpenSamlUtil.extractAuthnRequestComparison(authnRequest);
+		var qoaComparisonType = QoaComparison.ofLowerCase(comparisonType != null ? comparisonType.toString() : null);
 		var providerName = authnRequest.getProviderName();
+		var hrdHint = OpenSamlUtil.extractIdpScoping(authnRequest);
 
 		// support correlation with OIDC invocation in scripts too on SAML side (if login was trigger by client_id)
 		var oidcClientId = OidcSessionSupport.getSamlExchangeAcsUrlClientId(ascUrl);
 		var conversationId = TraceSupport.switchToConversationFromSamlId(authnRequestId);
+		var requestedResponseBinding = SamlBinding.of(authnRequest.getProtocolBinding());
 
 		// sp state data
 		var spStateData = StateData.builder()
@@ -496,12 +525,14 @@ public class AssertionConsumerService {
 								   .rpContext(rpContexts)
 								   .relayState(spRelayState)
 								   .contextClasses(contextClasses)
-								   .comparisonType(comparisonType)
+								   .comparisonType(qoaComparisonType)
 								   .assertionConsumerServiceUrl(ascUrl)
 								   .applicationName(providerName)
 								   .oidcClientId(oidcClientId)
 								   .issueInstant(authnRequest.getIssueInstant().toString())
-								   .initiatedViaArtifactBinding(initiatedViaArtifactBinding)
+								   .requestBinding(requestBinding)
+								   .requestedResponseBinding(requestedResponseBinding)
+								   .hrdHint(hrdHint)
 								   .build();
 
 		StateData stateData;
@@ -532,20 +563,11 @@ public class AssertionConsumerService {
 		return stateData;
 	}
 
-	List<String> getContextClasses(List<String> requestContextClasses, Qoa qoa) {
-		if (requestContextClasses.isEmpty() && qoa != null && !qoa.getClasses().isEmpty()) {
-			return qoa.getClasses();
+	private static QoaComparison getRpComparison(StateData stateData) {
+		if (stateData == null || stateData.getSpStateData() == null) {
+			return null;
 		}
-		return requestContextClasses;
-	}
-
-	// Specified comparison operator, so we have to pass it on
-	String getComparisonType(AuthnRequest authnRequest) {
-		if (authnRequest != null && authnRequest.getRequestedAuthnContext() != null &&
-				authnRequest.getRequestedAuthnContext().getComparison() != null) {
-			return authnRequest.getRequestedAuthnContext().getComparison().toString();
-		}
-		return null;
+		return stateData.getSpStateData().getComparisonType();
 	}
 
 	private static List<String> getRpContextClasses(StateData stateData) {
@@ -599,7 +621,10 @@ public class AssertionConsumerService {
 		}
 
 		// apply urltester hint, overrides network and any other selection, so we can simulate INTRANET even if only on INTERNET
-		final var cpSelectionHint = HrdSupport.getClaimsProviderHint(request, trustBrokerProperties);
+		var cpSelectionHint = HrdSupport.getClaimsProviderHint(request, trustBrokerProperties);
+		if (cpSelectionHint == null && stateData != null) {
+			cpSelectionHint = stateData.getRpHrdHint();
+		}
 
 		// Allow script to override manipulate cpMappings before we do it internally
 		scriptService.processHrdSelection(rpRequest);
@@ -621,36 +646,75 @@ public class AssertionConsumerService {
 			var stateContextClasses = stateData.getRpContextClasses();
 			if (!CollectionUtils.isEqualCollection(stateContextClasses, rpRequest.getContextClasses())) {
 				stateData.getSpStateData().setContextClasses(rpRequest.getContextClasses());
+				stateData.getSpStateData().setComparisonType(rpRequest.getComparisonType());
 				stateCacheService.save(stateData, this.getClass().getSimpleName());
 			}
 		}
 	}
 
 	// Show HRD screen when we have multiple CPs
-	public RpRequest renderUI(String rpIssuer, String referer, String applicationName,
-							  HttpServletRequest httpRequest, String requestId,
-			StateData stateData) {
+	public RpRequest renderUi(String rpIssuer, String referer, String applicationName,
+							  HttpServletRequest httpRequest, String requestId, StateData stateData) {
 		var rpRequest = getRpRequestDetails(rpIssuer, referer, applicationName, httpRequest, requestId, stateData);
-		var uiObjects = new ArrayList<UiObject>();
+		var uiObjects = new UiObjects();
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuer, referer);
 
-		var globalDisabledAppNames = getGlobalDisabledAppNames(rpIssuer, referer, httpRequest, rpRequest);
+		var globalDisabledAppNames = getGlobalDisabledAppNames(relyingParty, httpRequest, rpRequest);
 
-		rpRequest.getClaimsProviders().forEach(mapp -> {
-			var claimsProvider = relyingPartyDefinitions.getClaimsProviderById(mapp.getId());
-			uiObjects.add(createUIElement(claimsProvider, globalDisabledAppNames));
+		var hrdBanners = trustBrokerProperties.getGui().hasFeature(GuiFeatures.HRD_BANNERS);
+		rpRequest.getClaimsProviders().stream()
+				.filter(ClaimsProviderRelyingParty::isDisplayed)
+				.forEach(
+						mapping -> {
+							var claimsProvider = relyingPartyDefinitions.getClaimsProviderById(mapping.getId());
+							var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(mapping.getId(), referer);
+							var qoaOkForCp = qoaMappingService.canCpFulfillRequestQoas(
+									getRpComparison(stateData),
+									getRpContextClasses(stateData),
+									relyingParty.getQoaConfig(),
+									claimsParty.getQoaConfig());
+							uiObjects.addTile(
+									createUiElement(mapping, claimsProvider, globalDisabledAppNames, qoaOkForCp, hrdBanners));
+							uiObjects.addBanner(
+									createBanner(mapping, hrdBanners));
 		});
+		if (hrdBanners) {
+			// global banners
+			trustBrokerProperties.getGui().getBanners().stream()
+					.filter(Banner::isGlobal)
+					.forEach(
+							globalBanner -> uiObjects.addBanner(createBannerFromConfig(globalBanner, null))
+					);
+		}
+		uiObjects.setBanners(orderAndLimitBanners(uiObjects.getBanners(), trustBrokerProperties.getGui().getMaxBanners()));
 		rpRequest.setUiObjects(uiObjects);
 
+		log.debug("HRD final selecting uiObjects='{}'", uiObjects);
 		return rpRequest;
 	}
 
-	private ArrayList<String> getGlobalDisabledAppNames(String rpIssuer, String referer, HttpServletRequest httpRequest,
+	// sort by order and restrict
+	static List<UiBanner> orderAndLimitBanners(List<UiBanner> banners, Integer bannerLimit) {
+		if (bannerLimit == null) {
+			bannerLimit = Integer.MAX_VALUE;
+		}
+		return banners.stream()
+						.sorted(Comparator.comparing(AssertionConsumerService::orderBanners))
+						.limit(bannerLimit)
+						.toList();
+	}
+
+	private static Integer orderBanners(UiBanner banner) {
+		var order = banner.getOrder();
+		return order != null ? order : Integer.MAX_VALUE;
+	}
+
+	private ArrayList<String> getGlobalDisabledAppNames(RelyingParty relyingParty, HttpServletRequest httpRequest,
 			RpRequest rpRequest) {
-		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuer, referer);
 		var skipUserFeatures = OperationalUtil.skipUserFeatures(rpRequest, httpRequest, trustBrokerProperties); // skip
 		// disabling
 		var globalAnnouncements = new ArrayList<String>();
-		if (announcementService.showAnnouncements(relyingParty.getAnnouncement()) && !skipUserFeatures) {
+		if (announcementService.showAnnouncements(relyingParty.getAnnouncement(), rpRequest.getApplicationName()) && !skipUserFeatures) {
 			for (Announcement announcement : announcementService.getGlobalAnnouncements()) {
 				if (announcement.getApplicationAccessible() != null && !announcement.getApplicationAccessible()) {
 					globalAnnouncements.add(getGlobalAppName(announcement.getApplicationName()));
@@ -684,8 +748,9 @@ public class AssertionConsumerService {
 		return title;
 	}
 
-	private static UiObject createUIElement(ClaimsProvider claimsProvider, ArrayList<String> globalDisabledAppNames) {
-		// UI data for the frontend
+	// UI data for the frontend
+	private static UiObject createUiElement(ClaimsProviderRelyingParty claimsProviderRelyingParty,
+			ClaimsProvider claimsProvider, ArrayList<String> globalDisabledAppNames, boolean qoaOkForCp, boolean hrdBanners) {
 		var uiObject = new UiObject();
 		uiObject.setUrn(claimsProvider.getId());
 		uiObject.setImage(claimsProvider.getImg());
@@ -695,14 +760,41 @@ public class AssertionConsumerService {
 		uiObject.setShortcut(claimsProvider.getShortcut());
 		uiObject.setColor(claimsProvider.getColor());
 		uiObject.setTileTitle(getTileTile(claimsProvider));
+		if (hrdBanners) {
+			uiObject.setOrder(claimsProviderRelyingParty.getOrder());
+		}
 		uiObject.setDisabled(false);
-		if (isIdpDisabled(claimsProvider.getId(), globalDisabledAppNames)) {
+		if (isIdpDisabled(claimsProvider.getId(), globalDisabledAppNames, qoaOkForCp)) {
 			uiObject.setDisabled(true);
 		}
 		return uiObject;
 	}
 
-	private static boolean isIdpDisabled(String id, ArrayList<String> globalDisabledAppNames) {
+	// Banner for the frontend
+	private UiBanner createBanner(ClaimsProviderRelyingParty claimsProviderRelyingParty, boolean hrdBanners) {
+		if (!hrdBanners) {
+			return null;
+		}
+		var bannerOpt = trustBrokerProperties.getGui().getBanner(claimsProviderRelyingParty.getBanner());
+		return bannerOpt
+				.map(banner -> createBannerFromConfig(banner, claimsProviderRelyingParty.getOrder()))
+				.orElse(null);
+	}
+
+	static UiBanner createBannerFromConfig(Banner banner, Integer order) {
+		return UiBanner.builder()
+					   .name(banner.getName())
+					   .mainImage(banner.getMainImage())
+					   .secondaryImages(banner.getSecondaryImages())
+					   .collapseParagraphsOnSmallScreen(banner.collapseParagraphsOnSmallScreen())
+					   .order(order != null ? order : banner.getOrder())
+					   .build();
+	}
+
+	private static boolean isIdpDisabled(String id, ArrayList<String> globalDisabledAppNames, boolean qoaOkForCp) {
+		if (!qoaOkForCp) {
+			return true;
+		}
 		if (globalDisabledAppNames.isEmpty()) {
 			return false;
 		}
@@ -744,8 +836,9 @@ public class AssertionConsumerService {
 			var referer = WebUtil.getHeader(org.springframework.http.HttpHeaders.REFERER, request);
 			var trustCredentials = relyingPartySetupService.getRelyingTrustCredentials(issuer, referer);
 			var acWhiteList = relyingPartySetupService.getAcWhiteList(issuer, null);
+			var qoa = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(issuer, referer).getQoa();
 			AssertionValidator.validateAuthnRequest(authnRequest, trustCredentials, acWhiteList, trustBrokerProperties,
-					securityPolicies, signatureContext);
+					securityPolicies, signatureContext, qoa);
 		}
 		else {
 			log.error("trustbroker.config.security.validateAuthnRequest=false: Security on AuthnRequest disabled!!!");
@@ -773,7 +866,9 @@ public class AssertionConsumerService {
 		validateResponse(false, responseData, idpStateData, claimsParty, responseAssertions);
 
 		// internal processing context
-		var cpResponse = extractCpResponseDto(responseData.getResponse(), responseAssertions);
+		AttributesSelection attributesSelection = claimsParty.getAttributesSelection();
+		List<Definition> definitions = attributesSelection != null ? attributesSelection.getDefinitions() : null;
+		var cpResponse = extractCpResponseDto(responseData.getResponse(), responseAssertions, definitions);
 		cpResponse.setRpContext(idpStateData.getRpContext());
 
 		// session for SSO

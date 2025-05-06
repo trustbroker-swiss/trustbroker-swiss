@@ -23,6 +23,9 @@ import { anything, mock, when } from 'ts-mockito';
 import { TranslationService } from '../app.module';
 import { HelpPanelComponent } from './help-panel.component';
 import { ApiService } from '../services/api.service';
+import { SafeMarkupPipe } from '../pipes/safe-markup.pipe';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 describe('HelpPanelComponent', () => {
 	let component: HelpPanelComponent;
@@ -31,9 +34,11 @@ describe('HelpPanelComponent', () => {
 
 	beforeEach(async () => {
 		await TestBed.configureTestingModule({
-			declarations: [HelpPanelComponent],
+			declarations: [HelpPanelComponent, SafeMarkupPipe],
 			imports: [
 				HttpClientModule,
+				MatExpansionModule,
+				NoopAnimationsModule,
 				RouterTestingModule,
 				TranslateModule.forRoot({
 					loader: {
@@ -49,7 +54,7 @@ describe('HelpPanelComponent', () => {
 	beforeEach(() => {
 		// mock services
 		mockApiService = mock(ApiService);
-		when(mockApiService.getIdpObjects(anything())).thenReturn(of([]));
+		when(mockApiService.getIdpObjects(anything(), anything())).thenReturn(of({}));
 		TestBed.configureTestingModule({
 			providers: [{ provide: ApiService, useValue: mockApiService }]
 		});

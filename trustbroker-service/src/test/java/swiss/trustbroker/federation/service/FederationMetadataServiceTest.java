@@ -32,7 +32,6 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.opensaml.messaging.encoder.MessageEncodingException;
 import org.opensaml.saml.common.xml.SAMLConstants;
 import org.opensaml.saml.saml2.metadata.ArtifactResolutionService;
 import org.opensaml.saml.saml2.metadata.Endpoint;
@@ -47,6 +46,7 @@ import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.ArtifactResolution;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.config.dto.SamlProperties;
+import swiss.trustbroker.config.dto.WsTrustConfig;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
@@ -77,6 +77,7 @@ class FederationMetadataServiceTest {
 		var trustBrokerProperties = givenProperties();
 		var relyingPartySetupService = givenRpSetupService(trustBrokerProperties);
 		federationMetadataService = new FederationMetadataService(trustBrokerProperties, relyingPartySetupService);
+		federationMetadataService.onApplicationEvent(); // final application context
 	}
 
 	private RelyingPartySetupService givenRpSetupService(TrustBrokerProperties trustBrokerProperties) {
@@ -128,12 +129,15 @@ class FederationMetadataServiceTest {
 		saml.setArtifactResolution(ar);
 		trustBrokerProperties.setSaml(saml);
 		trustBrokerProperties.setPerimeterUrl(PERIMETER_URL);
+		var wsTrust = new WsTrustConfig();
+		wsTrust.setWsBasePath(ApiSupport.WSTRUST_API);
+		trustBrokerProperties.setWstrust(wsTrust);
 		return trustBrokerProperties;
 	}
 
 	@Test
-	void getFederationMetadata() throws MessageEncodingException {
-		var result = federationMetadataService.getFederationMetadata();
+	void getFederationMetadata() {
+		var result = federationMetadataService.getFederationMetadata(true, true);
 		assertThat(result, is(not(nullValue())));
 		var samlObj = SamlIoUtil.getXmlObjectFromStream(
 				new ByteArrayInputStream(result.getBytes(StandardCharsets.UTF_8)), "test");
@@ -143,68 +147,70 @@ class FederationMetadataServiceTest {
 		validateIdp(entityDescriptor);
 		validateSp(entityDescriptor);
 		// AuthnAuthority
-		var authDescriptor = entityDescriptor.getAuthnAuthorityDescriptor(FederationMetadataService.SUPPORTED_PROTOCOL);
+		var authDescriptor = entityDescriptor.getAuthnAuthorityDescriptor(SAMLConstants.SAML20P_NS);
 		assertThat(authDescriptor, is(not(nullValue())));
 		var authServices = authDescriptor.getAuthnQueryServices();
 		validateLocation(authServices, PERIMETER_URL + ApiSupport.ADFS_SERVICES_PATH);
-		validateBinding(authServices, SAMLConstants.SAML2_SOAP11_BINDING_URI);
+		validateBinding(authServices, SAMLConstants.SAML2_SOAP11_BINDING_URI, true);
 	}
 
 	private void validateIdp(EntityDescriptor entityDescriptor) {
-		var idpSsoDescriptor = entityDescriptor.getIDPSSODescriptor(FederationMetadataService.SUPPORTED_PROTOCOL);
+		var idpSsoDescriptor = entityDescriptor.getIDPSSODescriptor(SAMLConstants.SAML20P_NS);
 		assertThat(idpSsoDescriptor, is(not(nullValue())));
 		assertThat(idpSsoDescriptor.getWantAuthnRequestsSigned(), is(true));
-		assertThat(idpSsoDescriptor.getSupportedProtocols(), contains(FederationMetadataService.SUPPORTED_PROTOCOL));
+		assertThat(idpSsoDescriptor.getSupportedProtocols(), contains(SAMLConstants.SAML20P_NS));
 		validateNameIdFormats(idpSsoDescriptor.getNameIDFormats());
 		// SSO
 		var ssoServices = idpSsoDescriptor.getSingleSignOnServices();
 		validateLocation(ssoServices, CONSUMER_URL);
-		validateBindings(ssoServices);
+		validateBindings(ssoServices, true);
 		// SLO
 		var sloServices = idpSsoDescriptor.getSingleLogoutServices();
 		validateLocation(sloServices, CONSUMER_URL);
-		validateBindings(sloServices);
+		validateBindings(sloServices, true);
 		// ARP
 		var arpServices = idpSsoDescriptor.getArtifactResolutionServices();
 		validateLocation(arpServices, ARP_URL);
 		validateArpIndexes(arpServices, ARP_INDEX);
-		validateBinding(arpServices, SAMLConstants.SAML2_SOAP11_BINDING_URI);
+		validateBinding(arpServices, SAMLConstants.SAML2_SOAP11_BINDING_URI, true);
 		// KeyDescriptor
 		validateKeyDescriptor(idpSsoDescriptor.getKeyDescriptors());
 	}
 
 	private void validateSp(EntityDescriptor entityDescriptor) {
-		var spSsoDescriptor = entityDescriptor.getSPSSODescriptor(FederationMetadataService.SUPPORTED_PROTOCOL);
+		var spSsoDescriptor = entityDescriptor.getSPSSODescriptor(SAMLConstants.SAML20P_NS);
 		assertThat(spSsoDescriptor, is(not(nullValue())));
 		assertThat(spSsoDescriptor.getWantAssertionsSigned(), is(true));
 		assertThat(spSsoDescriptor.isAuthnRequestsSigned(), is(true));
-		assertThat(spSsoDescriptor.getSupportedProtocols(), contains(FederationMetadataService.SUPPORTED_PROTOCOL));
+		assertThat(spSsoDescriptor.getSupportedProtocols(), contains(SAMLConstants.SAML20P_NS));
 		validateNameIdFormats(spSsoDescriptor.getNameIDFormats());
 		// ACS
 		var acsServices = spSsoDescriptor.getAssertionConsumerServices();
 		validateLocation(acsServices, CONSUMER_URL);
-		validateBindings(acsServices);
+		validateBindings(acsServices, true);
 		// SLO
 		var spSloServices = spSsoDescriptor.getSingleLogoutServices();
 		validateLocation(spSloServices, CONSUMER_URL);
-		validateBindings(spSloServices);
+		validateBindings(spSloServices, false);
 		// KeyDescriptors
 		validateKeyDescriptor(spSsoDescriptor.getKeyDescriptors());
 	}
 
 	private static void validateNameIdFormats(List<NameIDFormat> nameIDFormats) {
+		var props = new SamlProperties();
 		assertThat(nameIDFormats.stream().map(NameIDFormat::getURI).toList(),
-				is(FederationMetadataService.SUPPORTED_NAMEID_FORMATS));
+				is(props.getIdpNameFormats()));
 	}
 
-	private static void validateBindings(List<? extends Endpoint> services) {
-		for (String binding : FederationMetadataService.SUPPORTED_SAML_BINDINGS) {
-			validateBinding(services, binding);
+	private static void validateBindings(List<? extends Endpoint> services, boolean present) {
+		var props = new SamlProperties();
+		for (String binding : props.getBindings()) {
+			validateBinding(services, binding, present);
 		}
 	}
 
-	private static void validateBinding(List<? extends Endpoint> services, String binding) {
-		assertThat(services.stream().anyMatch(svc -> binding.equals(svc.getBinding())), is(true));
+	private static void validateBinding(List<? extends Endpoint> services, String binding, boolean present) {
+		assertThat(services.stream().anyMatch(svc -> binding.equals(svc.getBinding())), is(present));
 	}
 
 	private static void validateLocation(List<? extends Endpoint> services, String location) {

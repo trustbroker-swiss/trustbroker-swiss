@@ -26,16 +26,21 @@ import com.google.common.collect.Sets;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.opensaml.saml.saml2.core.AuthnContextClassRef;
 import org.opensaml.saml.saml2.core.RequestedAuthnContext;
+import org.opensaml.saml.saml2.core.Scoping;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
+import swiss.trustbroker.common.saml.util.SamlFactory;
 import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.federation.xmlconfig.Qoa;
+import swiss.trustbroker.mapping.dto.QoaConfig;
+import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.oidc.opensaml5.OpenSaml5AuthenticationRequestResolver;
 import swiss.trustbroker.oidc.session.OidcSessionSupport;
+import swiss.trustbroker.util.HrdSupport;
 
 @AllArgsConstructor
 @Slf4j
@@ -44,6 +49,8 @@ class OidcAuthnRequestContextCustomizer implements Consumer<OpenSaml5Authenticat
 	private final TrustBrokerProperties properties;
 
 	private final RelyingPartyDefinitions relyingPartyDefinitions;
+
+	private final QoaMappingService qoaMappingService;
 
 	@Override
 	public void accept(OpenSaml5AuthenticationRequestResolver.AuthnRequestContext authnRequestContext) {
@@ -59,11 +66,12 @@ class OidcAuthnRequestContextCustomizer implements Consumer<OpenSaml5Authenticat
 		// map HTTP acr_values or config Qoa settings to context classes
 		var contextClasses = constructAuthnRequestContextClasses(authnRequestContext.getRequest());
 		authnRequest.setRequestedAuthnContext(contextClasses);
+		// if client sends a hrd_hint we propagate it (it's called scoping)
+		authnRequest.setScoping(constructIdpScoping(authnRequestContext.getRequest()));
 	}
 
 	private RequestedAuthnContext constructAuthnRequestContextClasses(HttpServletRequest httpServletRequest) {
 		// QoA/LoA mapping
-		var requestedAuthnContext = OpenSamlUtil.buildSamlObject(RequestedAuthnContext.class);
 		var acrValues = httpServletRequest.getParameter(OidcUtil.OIDC_ACR_VALUES);
 		var clientId = OidcConfigurationUtil.getClientIdFromRequest(httpServletRequest);
 		Set<String> qoas = new HashSet<>();
@@ -76,32 +84,40 @@ class OidcAuthnRequestContextCustomizer implements Consumer<OpenSaml5Authenticat
 			qoas = getQoaFromConfiguration(clientId);
 			log.debug("Got qoas={} from clientId={} configuration", qoas, clientId);
 		}
-		var authnContextClassRefs = mapQoaScopeToAuthnContextClassRef(qoas);
-		if (!authnContextClassRefs.isEmpty()) {
-			requestedAuthnContext.getAuthnContextClassRefs()
-								 .addAll(authnContextClassRefs);
+		return SamlFactory.createRequestedAuthnContext(qoas, null);
+	}
+
+	private static Scoping constructIdpScoping(HttpServletRequest httpServletRequest) {
+		var hrdHint = httpServletRequest.getParameter(HrdSupport.HTTP_HRD_HINT_PARAMETER);
+		if (hrdHint != null) {
+			return OpenSamlUtil.constructIdpScoping(hrdHint);
 		}
-		return requestedAuthnContext;
+		return null;
+	}
+
+	private Qoa getQoaConfig(String clientId) {
+		// from Oidc Client (if multiple clients differ in Qoa requirements)
+		var oidcClient = relyingPartyDefinitions.getOidcClientConfigById(clientId, properties);
+		if (oidcClient.isPresent() && oidcClient.get().getQoa() != null) {
+			return oidcClient.get().getQoa();
+		}
+		// from RelyingParty
+		var relyingParty = relyingPartyDefinitions.getRelyingPartyByOidcClientId(clientId, clientId, properties, false);
+		if (relyingParty.getQoa() != null) {
+			return relyingParty.getQoa();
+		}
+		return null;
 	}
 
 	private Set<String> getQoaFromConfiguration(String clientId) {
 		List<String> qoas = null;
-		// from Oidc Client (if multiple clients differ in Qoa requirements)
-		var oidcClient = relyingPartyDefinitions.getOidcClientConfigById(clientId, properties);
-		if (oidcClient.isPresent() && oidcClient.get()
-												.getQoa() != null) {
-			qoas = oidcClient.get()
-							 .getQoa()
-							 .getClasses();
+
+		var qoaConfig = getQoaConfig(clientId);
+		if (qoaConfig != null) {
+			qoas = qoaMappingService.computeDefaultQoaFromConf(new QoaConfig(qoaConfig, clientId));
+			log.debug("Set Context classes={} from Oidc.Client.Qoa for clientId={}", qoas, StringUtil.clean(clientId));
 		}
-		// from RelyingParty
-		if (qoas == null) {
-			var relyingParty = relyingPartyDefinitions.getRelyingPartyByOidcClientId(clientId, clientId, properties, false);
-			if (relyingParty.getQoa() != null) {
-				qoas = relyingParty.getQoa()
-								   .getClasses();
-			}
-		}
+
 		// global fallback
 		if (qoas == null) {
 			qoas = getDefaultQoa();
@@ -122,17 +138,4 @@ class OidcAuthnRequestContextCustomizer implements Consumer<OpenSaml5Authenticat
 		return new ArrayList<>();
 	}
 
-	private static List<AuthnContextClassRef> mapQoaScopeToAuthnContextClassRef(Set<String> qoas) {
-		var ret = new ArrayList<AuthnContextClassRef>();
-		for (var qoa : qoas) {
-			ret.add(createContextClassRef(qoa));
-		}
-		return ret;
-	}
-
-	private static AuthnContextClassRef createContextClassRef(String classRef) {
-		var authnContextClassRef = OpenSamlUtil.buildSamlObject(AuthnContextClassRef.class);
-		authnContextClassRef.setURI(classRef);
-		return authnContextClassRef;
-	}
 }

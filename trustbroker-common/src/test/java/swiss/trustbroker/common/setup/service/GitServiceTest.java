@@ -34,8 +34,8 @@ import org.mockito.InOrder;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.setup.config.BootstrapProperties;
 import swiss.trustbroker.common.setup.config.SshTransportConfig;
@@ -51,7 +51,7 @@ class GitServiceTest {
 	@Autowired
 	GitService gitService;
 
-	@MockBean
+	@MockitoBean
 	DirectoryUtil directoryUtil;
 
 	private MemoryAppender memoryAppender;

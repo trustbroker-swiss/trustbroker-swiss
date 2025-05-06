@@ -18,58 +18,164 @@ package swiss.trustbroker.common.util;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.InetSocketAddress;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
-import org.apache.hc.client5.http.io.HttpClientConnectionManager;
-import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
-import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactoryBuilder;
+import org.apache.hc.client5.http.ssl.DefaultClientTlsStrategy;
 import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.http.HttpStatus;
 import org.apache.hc.core5.ssl.SSLContextBuilder;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import swiss.trustbroker.common.config.KeystoreProperties;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CredentialUtil;
 
+/**
+ * HTTP utility functions.
+ * <br/>
+ * XTB uses the Java HTTP client, but as OpenSAML uses the Apache HTTP client some API calls need that.
+ */
+@Slf4j
 public class HttpUtil {
+
+	public static final String SCHEME_HTTPS = "https";
+
+	public static final String SCHEME_HTTP = "http";
 
 	private HttpUtil() {
 	}
 
-	public static HttpClient createHttpClient(URI applicationUrl, KeystoreProperties truststoreParameters) {
-		return createHttpClient(applicationUrl, truststoreParameters, null, null);
+	// Java HTTP client
+
+	public static HttpClient createHttpClient(String scheme, KeystoreProperties truststoreParameters) {
+		return createHttpClient(scheme, truststoreParameters, null, null, null, HttpClient.Version.HTTP_2);
 	}
 
-	public static HttpClient createHttpClient(URI applicationUrl,
-			KeystoreProperties truststoreParameters, KeystoreProperties keystoreParameters, String keystoreBasePath) {
-		var sslContext = createSSLContext(applicationUrl, truststoreParameters, keystoreParameters, keystoreBasePath);
+	public static HttpClient createHttpClient(String scheme,
+			KeystoreProperties truststoreParameters, KeystoreProperties keystoreParameters, String keystoreBasePath,
+			URI proxyUri, HttpClient.Version protocolVersion) {
+		var sslContext = createSslContext(scheme, truststoreParameters, keystoreParameters, keystoreBasePath);
+		if (protocolVersion == null) {
+			protocolVersion = HttpClient.Version.HTTP_1_1;
+		}
+		var proxySelector = createProxySelector(proxyUri);
 		return HttpClient.newBuilder()
 				.sslContext(sslContext)
-				.version(HttpClient.Version.HTTP_2)
+				.proxy(proxySelector)
+				.version(protocolVersion)
 				.build();
 	}
 
-	public static CloseableHttpClient createApacheHttpClient(URI applicationUrl,
+	private static ProxySelector createProxySelector(URI proxyUri) {
+		if (proxyUri == null) {
+			return HttpClient.Builder.NO_PROXY;
+		}
+		return ProxySelector.of(InetSocketAddress.createUnresolved(proxyUri.getHost(), proxyUri.getPort()));
+	}
+
+	public static Optional<String> getHttpFormPostString(HttpClient httpClient, URI uri,
+			Map<String, String> params, Map<String, String> headers) {
+		return getHttpFormPostResponse(httpClient, uri, params, headers, HttpResponse.BodyHandlers.ofString())
+				.map(HttpResponse::body);
+	}
+
+	public static Optional<InputStream> getHttpFormPostStream(HttpClient httpClient, URI uri,
+			Map<String, String> params, Map<String, String> headers) {
+		return getHttpFormPostResponse(httpClient, uri, params, headers, HttpResponse.BodyHandlers.ofInputStream())
+				.map(HttpResponse::body);
+	}
+
+	private static <T> Optional<HttpResponse<T>> getHttpFormPostResponse(HttpClient httpClient, URI uri,
+			Map<String, String> params, Map<String, String> headers, HttpResponse.BodyHandler<T> bodyHandler) {
+		var formPost = encodeFormParameters(params);
+		var request = HttpRequest.newBuilder()
+				.uri(uri)
+				.POST(HttpRequest.BodyPublishers.ofString(formPost))
+				.header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_FORM_URLENCODED_VALUE);
+		headers.forEach(request::header);
+		return fetchHttpResponse(httpClient, HttpMethod.POST, uri, request.build(), bodyHandler);
+	}
+
+	private static String encodeFormParameters(Map<String, String> params) {
+		return params.entrySet()
+				.stream()
+				.map(entry -> entry.getKey() + "=" + WebUtil.urlEncodeValue(entry.getValue()))
+				.collect(Collectors.joining("&"));
+	}
+
+	public static Optional<String> getHttpResponseString(HttpClient httpClient, URI uri) {
+		return getHttpResponse(httpClient, uri, HttpResponse.BodyHandlers.ofString()).map(HttpResponse::body);
+	}
+
+	public static Optional<InputStream> getHttpResponseStream(HttpClient httpClient, URI uri) {
+		return getHttpResponse(httpClient, uri, HttpResponse.BodyHandlers.ofInputStream()).map(HttpResponse::body);
+	}
+
+	private static <T> Optional<HttpResponse<T>> getHttpResponse(HttpClient httpClient, URI uri,
+			HttpResponse.BodyHandler<T> bodyHandler) {
+		var request = HttpRequest.newBuilder()
+				.uri(uri)
+				.GET()
+				.build();
+		return fetchHttpResponse(httpClient, HttpMethod.GET, uri, request, bodyHandler);
+	}
+
+	private static <T> Optional<HttpResponse<T>> fetchHttpResponse(HttpClient httpClient,
+			HttpMethod method, URI uri, // for tracing
+			HttpRequest request, HttpResponse.BodyHandler<T> bodyHandler) {
+		try {
+
+			var response = httpClient.send(request, bodyHandler); // could use stream here
+			if (response.statusCode() != HttpStatus.SC_OK) {
+				log.error("HTTP {} uri={} returned HTTP statusCode={}", method, uri, response.statusCode());
+				return Optional.empty();
+			}
+			return Optional.of(response);
+		}
+		catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			log.error("HTTP {} uri={} interrupted", method, uri);
+			return Optional.empty();
+		}
+		catch (IOException ex) {
+			log.error("HTTP {} uri={} failed with message={}", method, uri, ex.getMessage(), ex);
+			return Optional.empty();
+		}
+	}
+
+	// Apache HTTP client used by OpenSaml
+
+	public static CloseableHttpClient createApacheHttpClient(String scheme,
 			KeystoreProperties truststoreParameters, KeystoreProperties keystoreParameters,
 			String keystoreBasePath, String proxyUrl) {
-		var sslContext = createSSLContext(applicationUrl, truststoreParameters, keystoreParameters, keystoreBasePath);
+		var sslContext = createSslContext(scheme, truststoreParameters, keystoreParameters, keystoreBasePath);
 		var httpProxy = createHttpProxy(proxyUrl);
-		final SSLConnectionSocketFactory sslSocketFactory = SSLConnectionSocketFactoryBuilder.create()
-																							 .setSslContext(sslContext)
-																							 .build();
-		final HttpClientConnectionManager cm = PoolingHttpClientConnectionManagerBuilder.create()
-																						.setSSLSocketFactory(sslSocketFactory)
-																						.build();
+		var sslSocketFactory = new DefaultClientTlsStrategy(sslContext);
+		var cm = PoolingHttpClientConnectionManagerBuilder.create()
+														  .setTlsSocketStrategy(sslSocketFactory)
+														  .build();
 		return HttpClients.custom()
 						  .setConnectionManager(cm)
 						  .setProxy(httpProxy)
@@ -89,12 +195,11 @@ public class HttpUtil {
 		}
 	}
 
-	private static SSLContext createSSLContext(URI applicationUrl, KeystoreProperties truststoreParameters,
+	private static SSLContext createSslContext(String scheme, KeystoreProperties truststoreParameters,
 			KeystoreProperties keystoreParameters, String keystoreBasePath) {
 		try {
 			var builder = SSLContextBuilder.create();
-			if (applicationUrl.getScheme()
-							  .equals("https")) {
+			if (SCHEME_HTTPS.equals(scheme)) {
 				if (truststoreParameters != null && StringUtils.isNotEmpty(truststoreParameters.getSignerCert())) {
 					var password = CredentialUtil.processPassword(truststoreParameters.getPassword());
 					builder.loadTrustMaterial(
@@ -137,8 +242,8 @@ public class HttpUtil {
 			return -1;
 		}
 		return switch (uri.getScheme()) {
-			case "http" -> 80;
-			case "htps" -> 443;
+			case SCHEME_HTTP -> 80;
+			case SCHEME_HTTPS -> 443;
 			default -> -1;
 		};
 	}

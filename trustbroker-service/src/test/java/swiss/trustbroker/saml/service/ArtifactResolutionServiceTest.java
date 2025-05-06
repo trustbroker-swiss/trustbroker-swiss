@@ -56,10 +56,10 @@ import org.opensaml.soap.soap11.Body;
 import org.opensaml.soap.soap11.Envelope;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.audit.dto.EventType;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.common.config.KeystoreProperties;
@@ -107,31 +107,31 @@ class ArtifactResolutionServiceTest {
 	@Autowired
 	ArtifactResolutionService artifactResolutionService;
 
-	@MockBean
+	@MockitoBean
 	RelyingPartyService relyingPartyService;
 
-	@MockBean
+	@MockitoBean
 	TrustBrokerProperties trustBrokerProperties;
 
-	@MockBean
+	@MockitoBean
 	ArtifactCacheService artifactCacheService;
 
-	@MockBean
+	@MockitoBean
 	RelyingPartySetupService relyingPartySetupService;
 
-	@MockBean
+	@MockitoBean
 	AuditService auditService;
 
-	@MockBean
+	@MockitoBean
 	HttpClient httpClient;
 
-	@MockBean
+	@MockitoBean
 	ClassicHttpResponse httpResponse;
 
-	@MockBean
+	@MockitoBean
 	StatusLine httpStatusLine;
 
-	@MockBean
+	@MockitoBean
 	HttpEntity httpEntity;
 
 	@BeforeAll

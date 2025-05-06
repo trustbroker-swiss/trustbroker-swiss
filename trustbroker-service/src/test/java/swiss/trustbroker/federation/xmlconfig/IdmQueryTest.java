@@ -27,8 +27,8 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.api.idm.dto.IdmRequest;
 
 @SpringBootTest
@@ -37,7 +37,7 @@ class IdmQueryTest {
 
 	private static final String ATTRIBUTE_NAME = "attribute1";
 
-	@MockBean
+	@MockitoBean
 	private IdmRequest idmRequest;
 
 	@Test

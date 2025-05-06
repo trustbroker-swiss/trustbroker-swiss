@@ -19,9 +19,13 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.when;
 
 import java.io.IOException;
+import java.util.List;
 
+import org.apache.commons.lang3.tuple.Pair;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -45,7 +49,10 @@ import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
+import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
+import swiss.trustbroker.oidc.session.HttpExchangeSupport;
 
 class CustomFailureHandlerTest {
 
@@ -80,12 +87,25 @@ class CustomFailureHandlerTest {
 		customFailureHandler = new CustomFailureHandler("test", relyingPartyDefinitions, trustBrokerProperties);
 	}
 
+	@AfterEach
+	void tearDown() {
+		HttpExchangeSupport.end();
+	}
+
 	@ParameterizedTest
 	@MethodSource
 	void testOnAuthenticationFailure(AuthenticationException exception, String redirectUri, String expectedRedirect)
 			throws IOException {
 		var rp = RelyingParty.builder().id("rpId").build();
 		var clientId = "client1";
+		var acWhitelist = AcWhitelist.builder()
+									   .acUrls(List.of(RETURN_URL))
+									   .build();
+		acWhitelist.calculateDerivedUrls();
+		var client = OidcClient.builder()
+							   .id(clientId)
+							   .redirectUris(acWhitelist)
+							   .build();
 		var request = new MockHttpServletRequest();
 		TraceSupport.setMdcTraceContext(request);
 		request.setParameter(OidcUtil.OIDC_CLIENT_ID, clientId);
@@ -97,11 +117,13 @@ class CustomFailureHandlerTest {
 			session.setAttribute(OidcExceptionHelper.SAVED_REQUEST, savedRequest);
 		}
 		var response = new MockHttpServletResponse();
-
 		var oidcProperties = new OidcProperties();
 		oidcProperties.setIssuer(ISSUER);
-		doReturn(oidcProperties).when(trustBrokerProperties).getOidc();
-		doReturn(rp).when(relyingPartyDefinitions).getRelyingPartyByOidcClientId(clientId, null, trustBrokerProperties, true);
+		when(trustBrokerProperties.getOidc()).thenReturn(oidcProperties);
+		when(trustBrokerProperties.getPerimeterUrl()).thenReturn(ISSUER);
+		when(relyingPartyDefinitions.getRelyingPartyOidcClientByOidcClientId(clientId, null, trustBrokerProperties, true))
+				.thenReturn(Pair.of(rp, client));
+		HttpExchangeSupport.begin(request, response, true);
 
 		customFailureHandler.onAuthenticationFailure(request, response, exception);
 
@@ -112,6 +134,9 @@ class CustomFailureHandlerTest {
 	}
 
 	static Object[][] testOnAuthenticationFailure() {
+		var exception = new Saml2AuthenticationException(new Saml2Error(OAuth2ErrorCodes.INVALID_REQUEST,
+				OidcExceptionHelper.CLIENT_AUTH_FAILED + "code"),
+				"ignored");
 		return new Object[][] {
 				{
 					new OAuth2AuthenticationException(new OAuth2Error(OAuth2ErrorCodes.INVALID_REQUEST, "ignored",
@@ -121,18 +146,25 @@ class CustomFailureHandlerTest {
 								WebUtil.urlEncodeValue(ISSUER + ERROR_URL)
 				},
 				{
-						new Saml2AuthenticationException(new Saml2Error(OAuth2ErrorCodes.INVALID_REQUEST,
-								OidcExceptionHelper.CLIENT_AUTH_FAILED + "code"),
-								"ignored"),
+						exception,
 						RETURN_URL,
 						RETURN_URL + "?error=invalid_request&error_description=code&error_uri=" +
 								WebUtil.urlEncodeValue(ISSUER + ERROR_URL)
 				},
 				{
-						new Saml2AuthenticationException(new Saml2Error(OAuth2ErrorCodes.INVALID_REQUEST,
-								OidcExceptionHelper.CLIENT_AUTH_FAILED + "code"),
-								"ignored"),
+						exception,
 						null,
+						ERROR_URL
+				},
+				{
+						exception,
+						ISSUER + "/path",
+						ISSUER + "/path?error=invalid_request&error_description=code&error_uri=" +
+								WebUtil.urlEncodeValue(ISSUER + ERROR_URL)
+				},
+				{
+						exception,
+						"https://client.trustbroker.swiss/return",
 						ERROR_URL
 				},
 				{

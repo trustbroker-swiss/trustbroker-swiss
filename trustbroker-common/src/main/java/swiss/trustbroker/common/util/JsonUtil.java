@@ -144,4 +144,22 @@ public class JsonUtil {
 		throw new TechnicalException(String.format("Not a JsonArray: class=%s", element.getClass()));
 	}
 
+	/**
+	 * @param jsonMap returned by parseJsonObject
+	 * @param attribute
+	 * @param expectedClass
+	 * @return attribute from map or null if not found or not of expectedClass
+	 * @param <T>
+	 */
+	public static <T> T getField(Map<String, Object> jsonMap, String attribute, Class<T> expectedClass) {
+		if (jsonMap == null) {
+			return null;
+		}
+		var element = jsonMap.get(attribute);
+		if (expectedClass.isInstance(element)) {
+			return expectedClass.cast(element);
+		}
+		return null;
+	}
+
 }

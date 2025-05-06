@@ -288,16 +288,29 @@ public class RelyingPartyDefinitions {
 			TrustBrokerProperties properties, boolean tryOnly) {
 		var relyingParty = getRelyingPartyByClientId(clientId, properties);
 		if (relyingParty.isEmpty()) {
-			var msg = String.format(
-					"OIDC client mapping failed with clientId=%s on realmName=%s (no relying party found). " +
-					"HINT: Check service startup for 'Invalid configFile' messages and fix rejected setups.",
-					clientId, realmName);
-			if (!tryOnly) {
-				throw new RequestDeniedException(msg);
-			}
-			log.error(msg);
+			missingOidcClient(clientId, realmName, tryOnly);
 		}
 		return relyingParty.orElse(null);
+	}
+
+	public Pair<RelyingParty, OidcClient> getRelyingPartyOidcClientByOidcClientId(String clientId, String realmName,
+			TrustBrokerProperties properties, boolean tryOnly) {
+		var entry = getRelyingPartyOidcPair(clientId, properties);
+		if (entry == null) {
+			missingOidcClient(clientId, realmName, tryOnly);
+		}
+		return entry;
+	}
+
+	private static void missingOidcClient(String clientId, String realmName, boolean tryOnly) {
+		var msg = String.format(
+				"OIDC client mapping failed with clientId=%s on realmName=%s (no relying party found). " +
+				"HINT: Check service startup for 'Invalid configFile' messages and fix rejected setups.",
+				clientId, realmName);
+		if (!tryOnly) {
+			throw new RequestDeniedException(msg);
+		}
+		log.error(msg);
 	}
 
 	public Optional<Pair<RelyingParty, AuthorizedApplication>> getRelyingPartyByAuthorizedApplication(String application) {
@@ -320,6 +333,7 @@ public class RelyingPartyDefinitions {
 		return oidcConfigurations.values().stream()
 				.map(Pair::getValue)
 				.filter(predicate)
+				.distinct()
 				.toList();
 	}
 

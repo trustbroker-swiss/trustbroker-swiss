@@ -16,6 +16,7 @@
 package swiss.trustbroker.audit.service;
 
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -32,6 +33,7 @@ import org.opensaml.saml.saml2.core.ArtifactResponse;
 import org.opensaml.saml.saml2.core.Assertion;
 import org.opensaml.saml.saml2.core.Attribute;
 import org.opensaml.saml.saml2.core.AuthnRequest;
+import org.opensaml.saml.saml2.core.AuthnStatement;
 import org.opensaml.saml.saml2.core.LogoutRequest;
 import org.opensaml.saml.saml2.core.LogoutResponse;
 import org.opensaml.saml.saml2.core.RequestAbstractType;
@@ -52,7 +54,9 @@ import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
+import swiss.trustbroker.saml.dto.ClaimSource;
 import swiss.trustbroker.saml.dto.CpResponse;
+import swiss.trustbroker.saml.util.ClaimSourceUtil;
 import swiss.trustbroker.sessioncache.dto.AccessRequestSessionState;
 import swiss.trustbroker.sessioncache.dto.Lifecycle;
 import swiss.trustbroker.sessioncache.dto.SsoState;
@@ -120,7 +124,9 @@ public abstract class AuditMapper {
 		setIfNotNull(builder::destination, request.getDestination());
 		setIfNotNull(builder::samlMessage, request);
 		if (request instanceof AuthnRequest authnRequest) {
+			var ctxClasses = OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest);
 			setIfNotNull(builder::assertionConsumerUrl, authnRequest.getAssertionConsumerServiceURL());
+			setIfNotNull(builder::ctxClasses, !ctxClasses.isEmpty() ? Arrays.toString(ctxClasses.toArray()) : null);
 			setIfNotNull(builder::eventType, EventType.AUTHN_REQUEST);
 		}
 		else if (request instanceof LogoutRequest) {
@@ -331,6 +337,7 @@ public abstract class AuditMapper {
 		if (CollectionUtils.isEmpty(response.getAssertions())) {
 			return;
 		}
+		List<String> ctxClasses = new ArrayList<>();
 		for (var assertion : response.getAssertions()) {
 			var subject = assertion.getSubject();
 			if (subject == null) {
@@ -346,7 +353,19 @@ public abstract class AuditMapper {
 					setIfNotNull(builder::principal, nameId.getValue());
 				}
 			}
+			mapContextClasses(assertion, ctxClasses);
 		}
+	}
+
+	private void mapContextClasses(Assertion assertion, List<String> ctxClasses) {
+		List<AuthnStatement> authnStatements = assertion.getAuthnStatements();
+		for (AuthnStatement authnStatement : authnStatements) {
+			var contextClass = OpenSamlUtil.extractAuthnStatementContextClass(authnStatement);
+			if (contextClass != null) {
+				ctxClasses.add(contextClass);
+			}
+		}
+		setIfNotNull(builder::ctxClasses, !ctxClasses.isEmpty() ? Arrays.toString(ctxClasses.toArray()) : null);
 	}
 
 	private void mapStatus(StatusResponseType response) {
@@ -386,8 +405,11 @@ public abstract class AuditMapper {
 		return this;
 	}
 
-	private static AuditDto.AttributeSource mapSource(String querySource, AuditDto.AttributeSource source) {
+	static AuditDto.AttributeSource mapSource(String querySource, AuditDto.AttributeSource source) {
 		if (querySource != null) {
+			if (querySource.equals(ClaimSource.CP.name())) {
+				return source != null ? source : AuditDto.AttributeSource.CP_RESPONSE;
+			}
 			// we loose some details in case of multiple queries for now but the counter will show ambiguities
 			return AuditDto.AttributeSource.IDM_RESPONSE;
 		}
@@ -411,8 +433,9 @@ public abstract class AuditMapper {
 				name = truncatedName;
 			}
 		}
-
-		putResponseAttribute(name, namespaceUri, value, source, querySource, cid);
+		var finalQuerySource = querySource != null && querySource.contains(ClaimSourceUtil.SEPARATOR) ?
+				querySource.split(ClaimSourceUtil.SEPARATOR)[1] : querySource;
+		putResponseAttribute(name, namespaceUri, value, source, finalQuerySource, cid);
 	}
 
 	private static Object flattenList(Object value) {

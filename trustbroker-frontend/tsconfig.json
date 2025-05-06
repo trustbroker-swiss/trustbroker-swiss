@@ -2,27 +2,41 @@
 {
   "compileOnSave": false,
   "compilerOptions": {
+    "outDir": "./out-tsc/app",
+    /* as in empty angular application */
+    "strict": false,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "declaration": false,
+    "experimentalDecorators": true,
+    "moduleResolution": "bundler",
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "ES2022",
+    "lib": [
+      "ES2022",
+      "dom"
+    ],
+
+    /* additional settings */
+    "downlevelIteration": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "baseUrl": "./",
-    "sourceMap": true,
-    "declaration": false,
-    "downlevelIteration": true,
-    "experimentalDecorators": true,
-    "moduleResolution": "node",
-    "importHelpers": true,
-    "target": "ES2022",
-    "module": "es2020",
-    "lib": [
-      "es2018",
-      "dom"
-    ],
-    "outDir": "./out-tsc/app",
     "types": [],
     "useDefineForClassFields": false
   },
   "angularCompilerOptions": {
-    "enableI18nLegacyMessageIdFormat": false
+    "enableI18nLegacyMessageIdFormat": false,
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true,
+    "strictTemplates": false
   },
   "references": [
     { "path": "./tsconfig.app.json" },

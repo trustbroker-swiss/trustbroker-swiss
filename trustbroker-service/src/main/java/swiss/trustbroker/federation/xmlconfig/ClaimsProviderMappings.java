@@ -20,6 +20,7 @@ import java.util.List;
 
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
+import jakarta.xml.bind.annotation.XmlAttribute;
 import jakarta.xml.bind.annotation.XmlElement;
 import jakarta.xml.bind.annotation.XmlRootElement;
 import lombok.AllArgsConstructor;
@@ -37,6 +38,14 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ClaimsProviderMappings implements Serializable {
+
+	/**
+	 * Allow pre-configuration of ClaimsProviderMappings in profiles without considering the RP setup
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlAttribute(name = "enabled")
+	private Boolean enabled;
 
 	/**
 	 * List of CP mappings.

@@ -33,11 +33,12 @@ import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import swiss.trustbroker.api.idm.dto.IdmRequest;
 import swiss.trustbroker.api.idm.dto.IdmRequests;
+import swiss.trustbroker.api.idm.service.IdmQueryService;
 
 /**
  * Specify a list of queries that are executed in the specified order.
  *
- * @see swiss.trustbroker.api.idm.service.IdmService
+ * @see IdmQueryService
  */
 @XmlRootElement(name = "IDMLookup")
 @XmlAccessorType(XmlAccessType.FIELD)
@@ -65,7 +66,7 @@ public class IdmLookup implements Serializable, IdmRequests {
 	 * </ul>
 	 */
 	@XmlAttribute(name = "multiQueryPolicy")
-	private MultiQueryResultPolicy multiQueryPolicy;
+	private MultiResultPolicy multiQueryPolicy;
 
 	/**
 	 * List of queries to be executed.

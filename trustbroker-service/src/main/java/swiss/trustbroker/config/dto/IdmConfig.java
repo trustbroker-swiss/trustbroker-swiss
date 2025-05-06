@@ -22,13 +22,14 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import swiss.trustbroker.api.idm.service.IdmQueryService;
 import swiss.trustbroker.common.config.KeystoreProperties;
 import swiss.trustbroker.common.config.RegexNameValue;
 
 /**
  * Configuration for optional IDM integration.
  *
- * @see swiss.trustbroker.api.idm.service.IdmService
+ * @see IdmQueryService
  * @see swiss.trustbroker.federation.xmlconfig.IdmLookup
  */
 @Data

@@ -36,6 +36,7 @@ import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.AttributeRegistry;
 import swiss.trustbroker.common.saml.util.CredentialReader;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
+import swiss.trustbroker.common.saml.util.SamlContextClass;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
 import swiss.trustbroker.common.saml.util.SamlUtil;
@@ -201,5 +202,77 @@ public class SamlTestBase {
 		AttributeRegistry.updateAttributeNameFromConfig(attribute);
 	}
 
+	public enum Qoa {
+
+		QOA_10("urn:qoa:names:tc:ac:classes:10", 10),
+
+		MOBILE_ONE_FACTOR_UNREGISTERED(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, 10),
+
+		QOA_20("urn:qoa:names:tc:ac:classes:20", 20),
+
+		PASSWORD_PROTECTED_TRANSPORT(SamlContextClass.PASSWORD_PROTECTED_TRANSPORT, 20),
+
+		QOA_30("urn:qoa:names:tc:ac:classes:30", 30),
+
+		SOFTWARE_TIME_SYNC_TOKEN(SamlContextClass.SOFTWARE_TIME_SYNC_TOKEN, 30),
+
+		NOMAD_TELEPHONY(SamlContextClass.NOMAD_TELEPHONY, 30),
+
+		QOA_40("urn:qoa:names:tc:ac:classes:40", 40),
+
+		KERBEROS(SamlContextClass.KERBEROS, 40),
+
+		QOA_50("urn:qoa:names:tc:ac:classes:50", 50),
+
+		SOFTWARE_PKI(SamlContextClass.SOFTWARE_PKI, 50),
+
+		MOBILE_TWO_FACTOR_CONTACT(SamlContextClass.MOBILE_TWO_FACTOR_CONTACT, 50),
+
+		TIME_SYNC_TOKEN(SamlContextClass.TIME_SYNC_TOKEN, 50),
+
+		QOA_60("urn:qoa:names:tc:ac:classes:60", 60),
+
+		SMART_CARD_PKI(SamlContextClass.SMART_CARD_PKI, 60),
+
+		AUTH_GUEST("urn:names:tc:SAML:2.0:ac:classes:AuthGuest", 10),
+
+		AUTH_WEAK("urn:names:tc:SAML:2.0:ac:classes:AuthWeak", 20),
+
+		AUTH_NORMAL("urn:names:tc:SAML:2.0:ac:classes:AuthNormal", 30),
+
+		AUTH_NORMAL_VERIFIED("urn:names:tc:SAML:2.0:ac:classes:AuthNormalVerified", 40),
+
+		AUTH_STRONG("urn:names:tc:SAML:2.0:ac:classes:AuthStrong", 50),
+
+		AUTH_VERY_STRONG("urn:names:tc:SAML:2.0:ac:classes:AuthVeryStrong", 60),
+
+		STRONGEST_POSSIBLE("urn:names:tc:SAML:2.0:ac:classes:StrongestPossible", -2),
+
+		UNSPECIFIED(SamlContextClass.UNSPECIFIED, -1);
+
+		public static final int STRONGEST_POSSIBLE_LEVEL = STRONGEST_POSSIBLE.level;
+
+		public static final int UNSPECIFIED_LEVEL = UNSPECIFIED.level;
+
+		public static final String CONTEXT_CLASS_PREFIX = "urn:qoa:names:tc:ac:classes:";
+
+		private final String name;
+
+		private final int level;
+
+		Qoa(String name, int level) {
+			this.name = name;
+			this.level = level;
+		}
+
+
+		public String getName() {
+			return this.name;
+		}
+
+		public int getLevel() {
+			return this.level;
+		}
+	}
 
 }

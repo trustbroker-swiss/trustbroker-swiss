@@ -35,7 +35,7 @@ import org.opensaml.security.x509.X509Credential;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.api.idm.dto.IdmRequests;
-import swiss.trustbroker.api.idm.service.IdmService;
+import swiss.trustbroker.api.idm.service.IdmQueryService;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
@@ -56,7 +56,9 @@ import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.federation.xmlconfig.Signature;
 import swiss.trustbroker.federation.xmlconfig.SsoGroup;
 import swiss.trustbroker.homerealmdiscovery.util.RelyingPartyUtil;
+import swiss.trustbroker.mapping.dto.QoaConfig;
 import swiss.trustbroker.saml.dto.CpResponse;
+import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.util.PropertyUtil;
 
 @Service
@@ -68,7 +70,7 @@ public class RelyingPartySetupService {
 
 	private final TrustBrokerProperties trustBrokerProperties;
 
-	private final List<IdmService> idmServices;
+	private final List<IdmQueryService> idmQueryServices;
 
 	public long getRelyingPartiesCount() {
 		return relyingPartiesMapping.getRelyingPartySetup().getRelyingParties().size();
@@ -385,7 +387,7 @@ public class RelyingPartySetupService {
 		// Get homeName from configured HomeName reference, otherwise use configured constant value
 		var homeName = claimsProviderSetupByIssuerId.getHomeName();
 		if (homeName != null) {
-			configHomeName = getHomeNameFromConfig(homeName);
+			configHomeName = homeName.getName();
 			messageHomeName = getHomeNameFromCpResponse(homeName, cpResponseDTO);
 		}
 		if (!configHomeName.isEmpty() && !messageHomeName.isEmpty() && !configHomeName.equals(messageHomeName)) {
@@ -403,17 +405,6 @@ public class RelyingPartySetupService {
 			messageHomeName = cpResponse.getAttribute(homeName.getReference());
 		}
 		return messageHomeName;
-	}
-
-	private static String getHomeNameFromConfig(HomeName homeName) {
-		var configHomeName = "";
-		if (homeName.getValue() != null) {
-			configHomeName = homeName.getValue();
-		}
-		if (configHomeName.isEmpty() && homeName.getAttrValue() != null) {
-			configHomeName = homeName.getAttrValue();
-		}
-		return configHomeName;
 	}
 
 	// AuthLevel from config, override from CP assertion
@@ -458,18 +449,18 @@ public class RelyingPartySetupService {
 	public List<Definition> getRpAttributesDefinitions(String requestIssuer, String refererUrl) {
 		var attributesSelection = getRelyingPartyByIssuerIdOrReferrer(requestIssuer, refererUrl).getAttributesSelection();
 		if (attributesSelection != null && attributesSelection.getDefinitions() != null) {
-			return attributesSelection.getDefinitions();
+			return Collections.unmodifiableList(attributesSelection.getDefinitions());
 		}
 
-		return new ArrayList<>();
+		return Collections.emptyList();
 	}
 
 	public List<Definition> getCpAttributeDefinitions(String cpIssuer, String referrer) {
 		var cpAttributes = getClaimsProviderSetupByIssuerId(cpIssuer, referrer).getAttributesSelection();
 		if (cpAttributes != null && cpAttributes.getDefinitions() != null) {
-			return cpAttributes.getDefinitions();
+			return Collections.unmodifiableList(cpAttributes.getDefinitions());
 		}
-		return new ArrayList<>();
+		return Collections.emptyList();
 	}
 
 	public ConstAttributes getConstantAttributes(String issuerId, String refererUrl) {
@@ -494,7 +485,7 @@ public class RelyingPartySetupService {
 
 	public List<Credential> getCpsEncryptionTrustCredentials() {
 		if (relyingPartiesMapping.getClaimsProviderSetup() == null) {
-			log.error("Missing RelyingPartiesMapping.ClaimsProviderSetup");
+			log.warn("RelyingPartiesMapping.ClaimsProviderSetup not initialized, CP side encryption data missing");
 			return Collections.emptyList();
 		}
 		List<ClaimsParty> claimsParties = relyingPartiesMapping.getClaimsProviderSetup().getClaimsParties();
@@ -517,7 +508,7 @@ public class RelyingPartySetupService {
 
 	public List<Credential> getRpsEncryptionCredentials() {
 		if (relyingPartiesMapping.getRelyingPartySetup() == null) {
-			log.error("Missing RelyingPartiesMapping.RelyingPartySetup");
+			log.warn("RelyingPartiesMapping.RelyingPartySetup not initialized, RP side encryption data missing");
 			return Collections.emptyList();
 		}
 		List<RelyingParty> relyingPartySetup = relyingPartiesMapping.getRelyingPartySetup().getRelyingParties();
@@ -574,7 +565,7 @@ public class RelyingPartySetupService {
 	}
 
 	public Optional<String> getClientExtId(IdmRequests idmRequests) {
-		for (var idmService : idmServices) {
+		for (var idmService : idmQueryServices) {
 			var result = idmService.getClientExtId(idmRequests);
 			if (result.isPresent()) {
 				return result;
@@ -587,11 +578,19 @@ public class RelyingPartySetupService {
 		return getClaimsProviderSetupByIssuerId(claimURN, referrer).isDisableACUrl();
 	}
 
-
 	public AttributesSelection getPropertiesAttrSelection(String requestIssuer, String refererUrl) {
 		var attributesSelection = getRelyingPartyByIssuerIdOrReferrer(requestIssuer, refererUrl).getPropertiesSelection();
 		if (attributesSelection != null && attributesSelection.getDefinitions() != null) {
 			return attributesSelection;
+		}
+
+		return null;
+	}
+
+	public AttributesSelection getClaimsSelection(String requestIssuer, String refererUrl) {
+		var claimsSelection = getRelyingPartyByIssuerIdOrReferrer(requestIssuer, refererUrl).getClaimsSelection();
+		if (claimsSelection != null && claimsSelection.getDefinitions() != null) {
+			return claimsSelection;
 		}
 
 		return null;
@@ -650,4 +649,18 @@ public class RelyingPartySetupService {
 		return null;
 	}
 
+	public QoaConfig getQoaConfiguration(StateData spStateData, String rpIssuerId, String refererUrl,
+			TrustBrokerProperties trustBrokerProperties) {
+		if (spStateData != null && spStateData.getOidcClientId() != null) {
+			var oidcClientConfigById =
+					relyingPartiesMapping.getOidcClientConfigById(spStateData.getOidcClientId(), trustBrokerProperties);
+			if (oidcClientConfigById.isPresent()) {
+				var oidcQoa = oidcClientConfigById.get().getQoaConfig();
+				if (oidcQoa.hasConfig()) {
+					return oidcQoa;
+				}
+			}
+		}
+		return getRelyingPartyByIssuerIdOrReferrer(rpIssuerId, refererUrl).getQoaConfig();
+	}
 }

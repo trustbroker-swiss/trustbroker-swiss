@@ -19,8 +19,10 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
+import jakarta.xml.bind.annotation.XmlAttribute;
 import jakarta.xml.bind.annotation.XmlElement;
 import jakarta.xml.bind.annotation.XmlRootElement;
 import lombok.AllArgsConstructor;
@@ -31,7 +33,7 @@ import lombok.NoArgsConstructor;
 /**
  * Quality of Authentication (QoA) configuration.
  *
- * @see swiss.trustbroker.api.qoa.service.QualityOfAuthenticationService
+ * @see swiss.trustbroker.mapping.service.QoaMappingService
  */
 @XmlRootElement(name = "Qoa")
 @XmlAccessorType(XmlAccessType.FIELD)
@@ -42,6 +44,49 @@ import lombok.NoArgsConstructor;
 public class Qoa implements Serializable {
 
 	/**
+	 * Enable QoA enforcement.
+	 * <br/>
+	 * Default: false
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlAttribute(name = "enforce")
+	@Builder.Default
+	private Boolean enforce = Boolean.FALSE;
+
+	/**
+	 * Enable mapping of outbound QoA.
+	 * <br/>
+	 * Default: true
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlAttribute(name = "mapOutbound")
+	@Builder.Default
+	private Boolean mapOutbound = Boolean.TRUE;
+
+	/**
+	 * Send single QoA in response (to RP).
+	 * <br/>
+	 * Relevant for comparison EXACT - send maximum matching value instead.
+	 * <br/>
+	 * Default: true
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlAttribute(name = "singleQoaResponse")
+	@Builder.Default
+	private Boolean singleQoaResponse = Boolean.TRUE;
+
+	/**
+	 * Comparison type.
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlAttribute(name = "comparison")
+	private QoaComparison comparison;
+
+	/**
 	 * List of SAML AuthnContextClassRef entries.
 	 * <br/>
 	 * If the RP does not send and AuthnRequest class references, the configured context classes are added to the
@@ -49,6 +94,21 @@ public class Qoa implements Serializable {
 	 */
 	@XmlElement(name = "ACClass")
 	@Builder.Default
-	private List<String> classes = new ArrayList<>();
+	private List<AcClass> classes = new ArrayList<>();
+
+	@JsonIgnore
+	public boolean isEnforce() {
+		return Boolean.TRUE.equals(enforce);
+	}
+
+	@JsonIgnore
+	public boolean isMapOutbound() {
+		return Boolean.TRUE.equals(mapOutbound);
+	}
+
+	@JsonIgnore
+	public boolean useSingleQoaInResponse() {
+		return Boolean.TRUE.equals(singleQoaResponse);
+	}
 
 }

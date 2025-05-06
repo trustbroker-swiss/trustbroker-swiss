@@ -7,7 +7,7 @@
 		</Announcements>
 		<ClaimsProviderMappings>
 			<ClaimsProvider id="urn:test:MOCK" clientNetworks="INTRANET" relyingPartyAlias="urn:test:TESTRP-MOCK"/>
-			<ClaimsProvider id="urn:test:TESTRP" clientNetworks="INTERNET,INTRANET" relyingPartyAlias="urn:test:TESTRP-PRIVATE"/>
+			<ClaimsProvider id="urn:test:TESTCP" clientNetworks="INTERNET,INTRANET" relyingPartyAlias="urn:test:TESTRP-PRIVATE"/>
 		</ClaimsProviderMappings>
 		<ConstAttributes>
 			<Definition name='IssuedClientExtId' namespaceUri='http://trustbroker.swiss/claims/issuedClientExtId'

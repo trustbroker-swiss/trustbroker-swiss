@@ -74,6 +74,18 @@ management:
   endpoint:
     prometheus:
       enabled: true
+    health:
+      #show-components: always
+      #show-details: always
+      # auto-enabled on K8S environment:
+      probes:
+        enabled: true
+      group:
+        # names are the class names without "HealthIndicator"
+        readiness:
+          include: readinessState,stateCache
+        liveness:
+          include: livenessState
   prometheus:
     metrics:
       export:
@@ -136,6 +148,7 @@ trustbroker:
       reapMaxDelaySec: 25 # each replica reaps, so reduce propability for parallel processing
       targetMaxEntries: 250000 # limiting session (10G PVC, 40k/login => 10G / 40k == 250000 retained sessions)
       minSessionLifetimeSec: 600 # minimum remaining session lifetime not to reap anymore
+      txRetryDelayMs: 20 # try to save and load DB state with a resilient retry in case of TX problems
     security:
       acceptSubjectConfirmationMethods: "urn:oasis:names:tc:SAML:2.0:cm:holder-of-key,urn:oasis:names:tc:SAML:2.0:cm:bearer"
       doSignAssertions: true
@@ -166,6 +179,20 @@ trustbroker:
       validateSubjectConfirmationInResponseTo: true
       validateSubjectConfirmationTimestamp: true
       validateXmlSchema: true
+    # global Qoa model defining the order, order then optional in SetupRP/SetupCP
+    qoa:
+      defaultQoa: 'urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'
+      strongestPossible: 'urn:oasis:names:tc:SAML:2.0:ac:classes:SmartcardPKI'
+      mapping:
+        '[urn:oasis:names:tc:SAML:2.0:ac:classes:MobileOneFactorUnregistered]': 100
+        '[urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport]': 200
+        '[urn:oasis:names:tc:SAML:2.0:ac:classes:NomadTelephony]': 300
+        '[urn:oasis:names:tc:SAML:2.0:ac:classes:SoftwareTimeSyncToken]': 300
+        '[urn:oasis:names:tc:SAML:2.0:ac:classes:Kerberos]': 400
+        '[urn:oasis:names:tc:SAML:2.0:ac:classes:SoftwarePKI]': 500
+        '[urn:oasis:names:tc:SAML:2.0:ac:classes:MobileTwoFactorContract]': 500
+        '[urn:oasis:names:tc:SAML:2.0:ac:classes:TimeSyncToken]': 500
+        '[urn:oasis:names:tc:SAML:2.0:ac:classes:SmartcardPKI]': 600
     cors:
       allowedOrigins:
         - '*'
@@ -200,6 +227,20 @@ trustbroker:
         # namespace prefix added to IDs of FlowPolicies
         - namespace: urn:oasis:names:tc:SAML:2.0:status
           prefix: oasis
+      bindings:
+        - urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST
+        - urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect
+        - urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact
+      spMetadataEnabled: false
+      spLogoutMetadataEnabled: false
+      spNameFormats:
+        - urn:oasis:names:tc:SAML:2.0:nameid-format:transient
+        - urn:oasis:names:tc:SAML:2.0:nameid-format:persistent
+      idpMetadataEnabled: true
+      idpLogoutMetadataEnabled: true
+      idpNameFormats:
+        - urn:oasis:names:tc:SAML:2.0:nameid-format:transient
+        - urn:oasis:names:tc:SAML:2.0:nameid-format:persistent
       artifactResolution:
         serviceUrl: ${trustbroker.config.perimeterUrl}/api/v1/saml/arp
         index: 0
@@ -218,6 +259,7 @@ trustbroker:
       # 30min for overall login process (12min would be enough potentially)
       sessionLifetimeSec: ${trustbroker.config.sessionLifetimeSec}
       sessionCookie: true
+      codeLifetimeSec: 60
       identityProvider:
         assertionConsumerService: "${trustbroker.config.saml.consumerUrl}"
         responseIssuerId: ${trustbroker.config.issuer}
@@ -230,6 +272,7 @@ trustbroker:
       keyExpirationMinutes: 10080 # 7 days
       keyDeletionMinutes: 11520 # 8 days
       reapSchedule: '30 * * * * *'
+      syncSchedule: '0 */15 * * * *'
       # disable OIDC endpoints not required by applications
       revocationEnabled: true
       introspectionEnabled: true
@@ -278,6 +321,7 @@ trustbroker:
         - namespace: urn:oasis:names:tc:SAML:2.0:status
     # WSTrust is supported for clients sending our own assertions in the SOAP security header of w RST request to get a new one
     wstrust:
+      enabled: true
       wsBasePath: /api/v1/wstrust
       soapHeadersToConsider:
         - Security
@@ -379,7 +423,7 @@ logging:
     # injection container warnings about beans not valid for AOP proxying
     org.springframework.context.support.PostProcessorRegistrationDelegate: ERROR
     # XML santuario complains when we iterate over multiple credentials from JKS/PEM/P12 truststores
-    #org.apache.xml.security.signature.XMLSignature: ERROR
+    org.apache.xml.security.signature.XMLSignature: ERROR
     # Debug Assertion Encryption/Decryption
     #org.opensaml.xmlsec.encryption.support: TRACE
     #org.opensaml.saml.saml2.encryption: TRACE
@@ -411,7 +455,6 @@ logging:
     #org.flywaydb.core.internal.command.DbMigrate: DEBUG
     #org.flywaydb: DEBUG
     #org.hibernate.SQL: DEBUG
-    #org.hibernate.orm.jdbc.bind: TRACE
-    #org.hibernate.orm.results: DEBUG
+    #org.hibernate.orm.jdbc: TRACE
 
 # NOTE: The rest of the configuration is fetched from GIT_URL

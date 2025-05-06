@@ -16,7 +16,9 @@
 package swiss.trustbroker.api.idm.service;
 
 /**
- * Callback for enforcing the status policy, to be called by the IdmService implementation.
+ * Callback for enforcing the status policy, to be called by the <code>IdmQueryService</code>> implementation.
+ *
+ * @see IdmQueryService
  */
 public interface IdmStatusPolicyCallback {
 

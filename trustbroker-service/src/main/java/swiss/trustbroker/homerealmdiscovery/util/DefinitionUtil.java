@@ -15,13 +15,8 @@
 
 package swiss.trustbroker.homerealmdiscovery.util;
 
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -30,21 +25,11 @@ import java.util.stream.Collectors;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
-import swiss.trustbroker.api.profileselection.dto.ProfileSelectionResult;
 import swiss.trustbroker.api.sessioncache.dto.AttributeName;
-import swiss.trustbroker.audit.dto.AuditDto;
-import swiss.trustbroker.common.exception.RequestDeniedException;
-import swiss.trustbroker.common.exception.TechnicalException;
-import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.common.util.CollectionUtil;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.Definition;
-import swiss.trustbroker.federation.xmlconfig.RelyingParty;
-import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
-import swiss.trustbroker.saml.dto.CpResponse;
-import swiss.trustbroker.saml.dto.ResponseParameters;
-import swiss.trustbroker.saml.util.AttributeFilterUtil;
 
 @Slf4j
 public class DefinitionUtil {
@@ -54,8 +39,8 @@ public class DefinitionUtil {
 	private DefinitionUtil() {
 	}
 
-	public static <T> Optional<Map.Entry<Definition, T>> findByNameOrNamespace(AttributeName name, String source,
-			Map<Definition, T> definitions) {
+	public static <K extends AttributeName, T> Optional<Map.Entry<K, T>> findByNameOrNamespace(AttributeName name, String source,
+			Map<K, T> definitions) {
 		var ret = definitions.entrySet()
 				.stream()
 				.filter(e -> e.getKey().equalsByNameOrNamespace(name, source))
@@ -64,18 +49,8 @@ public class DefinitionUtil {
 		return ret.isEmpty() ? Optional.empty() : Optional.of(ret.entrySet().iterator().next());
 	}
 
-	public static <T> Optional<Map.Entry<Definition, T>> findByNameOrNamespace(String name, String source,
-			Map<Definition, T> definitions) {
-		var ret = definitions.entrySet()
-				.stream()
-				.filter(e -> e.getKey().equalsByNameOrNamespace(name, source))
-				.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-		checkAmbiguities(ret, name, source);
-		return ret.isEmpty() ? Optional.empty() : Optional.of(ret.entrySet().iterator().next());
-	}
-
-	public static <T> Optional<Map.Entry<AttributeName, T>> findAttributeByNameOrNamespace(String name, String source,
-			Map<AttributeName, T> definitions) {
+	public static <K extends AttributeName, T> Optional<Map.Entry<K, T>> findByNameOrNamespace(String name, String source,
+			Map<K, T> definitions) {
 		var ret = definitions.entrySet()
 				.stream()
 				.filter(e -> e.getKey().equalsByNameOrNamespace(name, source))
@@ -100,52 +75,43 @@ public class DefinitionUtil {
 				.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 	}
 
-	public static <T> List<T> findListByNameOrNamespace(AttributeName name, Map<Definition, List<T>> definitions) {
-		var entry = findByNameOrNamespace(name, null, definitions);
-		return getList(entry);
+	public static <K extends AttributeName, T> List<T> findListByNameOrNamespace(AttributeName name, String source,
+			Map<K, List<T>> definitions) {
+		var entry = findByNameOrNamespace(name, source, definitions);
+		return CollectionUtil.getList(entry);
 	}
 
-	public static <T> List<T> findListByNameOrNamespace(String name, Map<Definition, List<T>> definitions) {
-		var entry = findByNameOrNamespace(name, null, definitions);
-		return getList(entry);
+	public static <K extends AttributeName, T> List<T> findListByNameOrNamespace(String name, String source,
+			Map<K, List<T>> definitions) {
+		var entry = findByNameOrNamespace(name, source, definitions);
+		return CollectionUtil.getList(entry);
 	}
 
-	public static <T> T findSingleValueByNameOrNamespace(AttributeName name, Map<Definition, List<T>> definitions) {
-		var list = findListByNameOrNamespace(name, definitions);
-		return getSingleValue(list, name);
+	public static <T> T findSingleValueByNameOrNamespace(AttributeName name, String source,
+			Map<? extends AttributeName, List<T>> definitions) {
+		var list = findListByNameOrNamespace(name, source, definitions);
+		return CollectionUtil.getSingleValue(list, name);
 	}
 
-	public static <T> T findSingleValueByNameOrNamespace(String name, Map<Definition, List<T>> definitions) {
-		var list = findListByNameOrNamespace(name, definitions);
-		return getSingleValue(list, name);
+	public static <T> T findSingleValueByNameOrNamespace(String name, String source,
+			Map<? extends AttributeName, List<T>> definitions) {
+		var list = findListByNameOrNamespace(name, source, definitions);
+		return CollectionUtil.getSingleValue(list, name);
 	}
 
-	public static <K extends AttributeName, T> List<T> getList(Optional<Map.Entry<K, List<T>>> entry) {
-		return entry.isPresent() ? entry.get().getValue() : Collections.emptyList();
+	public static <K extends AttributeName> Optional<K> findSingleValueByNameOrNamespace(
+			AttributeName name, String source, List<K> definitions) {
+		return CollectionUtil.findSingleValueByPredicate(definitions, attr -> attr.equalsByNameOrNamespace(name, source));
 	}
 
-	private static <K extends AttributeName, T> K getName(Optional<Map.Entry<K, T>> entry) {
-		return entry.isPresent() ? entry.get().getKey() : null;
-	}
-
-	public static <T, K> T getSingleValue(List<T> list, K nameForTracing) {
-		if (CollectionUtils.isEmpty(list)) {
-			return null;
-		}
-		if (list.size() > 1) {
-			log.info("Potential ambiguity: Picking first value for name={} from values={}", nameForTracing, list);
-		}
-		return list.get(0);
-	}
-
-	public static <K extends AttributeName, T> T getSingleValue(Optional<Map.Entry<K, List<T>>> entry) {
-		var values = getList(entry);
-		return getSingleValue(values, getName(entry));
+	public static <K extends AttributeName> Optional<K> findSingleValueByNameOrNamespace(
+			String name, String source, List<K> definitions) {
+		return CollectionUtil.findSingleValueByPredicate(definitions, attr -> attr.equalsByNameOrNamespace(name, source));
 	}
 
 	public static <T> List<T> findCpAttributeListByNameOrNamespace(String name, Map<AttributeName, List<T>> definitions) {
-		var entry = findAttributeByNameOrNamespace(name, null, definitions);
-		return getList(entry);
+		var entry = findByNameOrNamespace(name, null, definitions);
+		return CollectionUtil.getList(entry);
 	}
 
 	// get namespace part after last slash or null if there is no slash
@@ -164,7 +130,7 @@ public class DefinitionUtil {
 			return;
 		}
 		for (var attribute : attributes.entrySet()) {
-			AttributeName attributeDefinition = attribute.getKey();
+			var attributeDefinition = attribute.getKey();
 			var key = mapCpAttributeName(attributeDefinition.getName(), attributeDefinition.getNamespaceUri(),
 					attributeDefinition.getSource());
 			definitions.put(key, attribute.getValue());
@@ -208,12 +174,12 @@ public class DefinitionUtil {
 
 	// Restricted by design: Used by AfterIdm groovy scripting only
 	public static void putDefinitionValue(Map<Definition, List<String>> attributes,
-			String name, String fqName, AuditDto.AttributeSource source, String value) {
+			String name, String fqName, String source, String value) {
 		var newValue = valueToList(value);
 		var key = Definition.builder()
 							.name(name)
 							.namespaceUri(fqName)
-							.source(source != null ? source.name() : null)
+							.source(source)
 							.build();
 		attributes.put(key, newValue);
 	}
@@ -266,128 +232,33 @@ public class DefinitionUtil {
 		}
 	}
 
-	public static void applyProfileSelection(CpResponse cpResponse, ProfileSelectionResult psResult) {
-		if (psResult != null) {
-			var filteredAttributes = psResult.getFilteredAttributes();
-			if (filteredAttributes.isPresent()) {
-				Map<Definition, List<String>> responseAttrs = new HashMap<>();
-				for (Map.Entry<AttributeName, List<String>> entry : filteredAttributes.get().entrySet()) {
-					responseAttrs.put(new Definition(entry.getKey()), entry.getValue());
-				}
-				cpResponse.setUserDetails(responseAttrs);
-			}
-		}
-	}
-
-	public static void applyDeduplication(TrustBrokerProperties trustBrokerProperties, String destination,
-			CpResponse cpResponse, RelyingParty relyingParty) {
-
-		List<String> dropDuplicatedAttributes = Collections.emptyList();
-		var dropDuplicatedAttributesConfig = trustBrokerProperties.getOidc().getDropDuplicatedAttributeFromOriginalIssuer();
-		if (isXtbDestination(trustBrokerProperties, destination) && ArrayUtils.isNotEmpty(dropDuplicatedAttributesConfig)) {
-			dropDuplicatedAttributes = Arrays.asList(dropDuplicatedAttributesConfig);
-			log.debug("OIDC: Dropping original issuer version if duplicated for attributes={}", dropDuplicatedAttributes);
-		}
-
-		cpResponse.setUserDetails(deduplicatedRpAttributes(cpResponse.getUserDetails(), cpResponse.getProperties(),
-				relyingParty.getConstAttributes()));
-		cpResponse.setAttributes(deduplicatedCpAttributes(cpResponse, dropDuplicatedAttributes, relyingParty.getConstAttributes()));
-	}
-
-	public static Map<Definition, List<String>> deduplicatedRpAttributes(Map<Definition, List<String>> userDetailMap,
-			Map<Definition, List<String>> properties, ConstAttributes constAttributes) {
-		Map<Definition, List<String>> responseAttrs = new HashMap<>();
-		for (Map.Entry<Definition, List<String>> entry : userDetailMap.entrySet()) {
-			Definition key = entry.getKey();
-			List<String> value = entry.getValue();
-			// Result does not contain the Definition and Properties does not contains it
-			if (!definitionInRpMaps(key, value, responseAttrs, properties, constAttributes)) {
-				responseAttrs.put(key, value);
-			}
-		}
-		return responseAttrs;
-	}
-
-	private static boolean constContainsDefinition(ConstAttributes constAttributes, Definition key, List<String> value) {
+	public static boolean constContainsDefinition(ConstAttributes constAttributes, Definition key, List<String> value) {
 		if (constAttributes == null || constAttributes.getAttributeDefinitions() == null
 				|| constAttributes.getAttributeDefinitions().isEmpty()) {
 			return false;
 		}
 		for (Definition constDef : constAttributes.getAttributeDefinitions()) {
-			if (definitionAndValueEquals(key, value, constDef, constDef.getValues())) {
+			if (DefinitionUtil.definitionAndValueEquals(key, value, constDef, constDef.getMultiValues())) {
 				return true;
 			}
 		}
 		return false;
 	}
 
-	private static boolean constContainsDefinition(ConstAttributes constAttributes, Definition key) {
+	public static boolean constContainsDefinition(ConstAttributes constAttributes, Definition key) {
 		if (constAttributes == null || constAttributes.getAttributeDefinitions() == null
 				|| constAttributes.getAttributeDefinitions().isEmpty()) {
 			return false;
 		}
 		for (Definition constDef : constAttributes.getAttributeDefinitions()) {
-			if (definitionEqualsNamespaceUriOrName(key, constDef)) {
+			if (DefinitionUtil.definitionEqualsNamespaceUriOrName(key, constDef)) {
 				return true;
 			}
 		}
 		return false;
 	}
 
-	public static Map<Definition, List<String>> deduplicatedCpAttributes(CpResponse cpResponse,
-			List<String> dropDuplicatedAttributes, ConstAttributes constAttributes) {
-
-		Map<Definition, List<String>> attributes = cpResponse.getAttributes();
-		Map<Definition, List<String>> userDetails = cpResponse.getUserDetails();
-		Map<Definition, List<String>> properties = cpResponse.getProperties();
-
-		Map<Definition, List<String>> responseAttrs = new HashMap<>();
-		for (Map.Entry<Definition, List<String>> entry : attributes.entrySet()) {
-			Definition key = entry.getKey();
-			List<String> value = entry.getValue();
-			if (mapContainsDefinitionWithValue(responseAttrs, key, value)
-					|| attributeToDrop(key, dropDuplicatedAttributes, userDetails, properties, constAttributes)) {
-				log.debug("Dropping duplicated attribute={} from original issuer in list={}", key, dropDuplicatedAttributes);
-			}
-			else {
-				responseAttrs.put(key, value);
-			}
-		}
-
-		return responseAttrs;
-	}
-
-	static boolean attributeToDrop(Definition definition, List<String> attributesToBeDropped,
-			Map<Definition, List<String>> userDetails, Map<Definition, List<String>> properties,
-			ConstAttributes constAttributes) {
-		if (CollectionUtils.isEmpty(attributesToBeDropped)) {
-			return false;
-		}
-		var attributeToDrop = definition.getNamespaceUri() != null ? definition.getNamespaceUri() : definition.getName();
-		// Check if attribute should be dropped
-		if (attributeToDrop != null && attributesToBeDropped.contains(attributeToDrop)) {
-			// Drop if the Definition is in userDetails, properties or constants
-			return definitionInRpMaps(definition, userDetails, properties, constAttributes);
-		}
-		return false;
-	}
-
-	private static boolean definitionInRpMaps(Definition definition,
-			Map<Definition, List<String>> userDetails, Map<Definition, List<String>> properties,
-			ConstAttributes constAttributes) {
-		return mapContainsDefinitionWithValue(userDetails, definition) || mapContainsDefinitionWithValue(properties, definition)
-				|| constContainsDefinition(constAttributes, definition);
-	}
-
-	private static boolean definitionInRpMaps(Definition definition, List<String> values,
-			Map<Definition, List<String>> userDetails, Map<Definition, List<String>> properties,
-			ConstAttributes constAttributes) {
-		return mapContainsDefinitionWithValue(userDetails, definition, values)
-				|| mapContainsDefinitionWithValue(properties, definition, values)
-				|| constContainsDefinition(constAttributes, definition, values);
-	}
-
-	static boolean mapContainsDefinitionWithValue(Map<Definition, List<String>> attributes, Definition definition,
+	public static boolean mapContainsDefinitionWithValue(Map<Definition, List<String>> attributes, Definition definition,
 			List<String> values) {
 		for (Map.Entry<Definition, List<String>> entry : attributes.entrySet()){
 			Definition attrDef = entry.getKey();
@@ -399,7 +270,7 @@ public class DefinitionUtil {
 		return false;
 	}
 
-	private static boolean mapContainsDefinitionWithValue(Map<Definition, List<String>> attributes, Definition definition) {
+	public static boolean mapContainsDefinitionWithValue(Map<Definition, List<String>> attributes, Definition definition) {
 		for (Map.Entry<Definition, List<String>> entry : attributes.entrySet()) {
 			Definition attrDef = entry.getKey();
 			if (definitionEqualsNamespaceUriOrName(definition, attrDef)) {
@@ -430,63 +301,6 @@ public class DefinitionUtil {
 		}
 
 		return CollectionUtils.isEqualCollection(values, resultValues);
-	}
-
-	public static boolean isXtbDestination(TrustBrokerProperties trustBrokerProperties, String destination) {
-		if (destination == null || trustBrokerProperties.getOidc().getPerimeterUrl() == null) {
-			return false;
-		}
-		try {
-			URI destinationUrl = new URI(destination);
-			URI oidcPerimeterUrl = new URI(trustBrokerProperties.getOidc().getPerimeterUrl());
-			if (destinationUrl.getHost() == null || oidcPerimeterUrl.getHost() == null) {
-				return false;
-			}
-			return destinationUrl.getHost().equals(oidcPerimeterUrl.getHost());
-		}
-		catch (URISyntaxException ex) {
-			throw new RequestDeniedException("Invalid URL", ex);
-		}
-	}
-
-	public static void applyConfigFilter(CpResponse cpResponse, RelyingPartySetupService relyingPartySetupService,
-			ResponseParameters params, RelyingParty relyingParty) {
-
-		// filter CP attributes on relying party side (CP side already done)
-		var idpAttributesDefinition = RelyingPartySetupUtil.getIdpAttrDefinitions(cpResponse, relyingPartySetupService, params);
-		cpResponse.setAttributes(filterAndCreateCpDefinitions(cpResponse.getAttributes(), idpAttributesDefinition));
-
-		// Apply RP config filter
-		cpResponse.setUserDetails(AttributeFilterUtil.filteredUserDetails(cpResponse.getUserDetails(), relyingParty.getIdmLookup()));
-
-		// Apply final Property selection (properties set in script but not in config must be filtered out)
-		cpResponse.setProperties(AttributeFilterUtil.filterProperties(cpResponse.getProperties(), relyingParty.getPropertiesSelection()));
-	}
-
-	static Map<Definition, List<String>> filterAndCreateCpDefinitions(Map<Definition, List<String>> attributes,
-			Collection<Definition> confAttributes) {
-		if (attributes == null) {
-			throw new TechnicalException("Missing IDP response attributes");
-		}
-		Map<Definition, List<String>> respIdpAttributes = new HashMap<>();
-		for (Definition definition : confAttributes) {
-			var attributeValues = getAttributeValues(attributes, definition);
-			if (!attributeValues.isEmpty()) {
-				var newDefinition = definition.toBuilder().values(attributeValues).build();
-				respIdpAttributes.put(newDefinition,  attributeValues);
-			}
-		}
-		return respIdpAttributes;
-	}
-
-	private static List<String> getAttributeValues(Map<Definition, List<String>> userDetails, Definition definition) {
-		return userDetails.entrySet()
-				.stream()
-				.filter(userAttribute -> userAttribute.getKey().equalsByNameOrNamespace(definition))
-				.map(Map.Entry::getValue)
-				.findFirst() // CP attributes are unique within CP source
-				.orElse(Collections.emptyList());
-
 	}
 
 	/**

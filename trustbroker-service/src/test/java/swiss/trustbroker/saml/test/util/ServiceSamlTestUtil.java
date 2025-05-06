@@ -67,15 +67,15 @@ import swiss.trustbroker.test.saml.util.SamlTestBase;
 
 public class ServiceSamlTestUtil implements SamlHttpTestBase {
 
-	private final static String TEST_AUTHN_REQUEST = LATEST_DEFINITION_PATH + "RPToTBAuthnRequest.xml";
+	private static final String TEST_AUTHN_REQUEST = LATEST_DEFINITION_PATH + "RPToTBAuthnRequest.xml";
 
-	private final static String TEST_AUTHN_RESPONSE = LATEST_DEFINITION_PATH + "CPToTBAuthnResponse.xml";
+	private static final String TEST_AUTHN_RESPONSE = LATEST_DEFINITION_PATH + "CPToTBAuthnResponse.xml";
 
-	private final static String TEST_LOGOUT_REQUEST = LATEST_DEFINITION_PATH + "LogoutRequest.xml";
+	private static final String TEST_LOGOUT_REQUEST = LATEST_DEFINITION_PATH + "LogoutRequest.xml";
 
-	private final static String SAMPLE_CP_RESPONSE = LATEST_DEFINITION_PATH + "SampleCPResponse.xml";
+	private static final String SAMPLE_CP_RESPONSE = LATEST_DEFINITION_PATH + "SampleCPResponse.xml";
 
-	private final static String TEST_LOGOUT_RESPONSE = LATEST_DEFINITION_PATH + "LogoutResponse.xml";
+	private static final String TEST_LOGOUT_RESPONSE = LATEST_DEFINITION_PATH + "LogoutResponse.xml";
 
 	public static final String AUTHN_REQUEST_ISSUER_ID = "urn:test:TESTRP";
 
@@ -132,14 +132,12 @@ public class ServiceSamlTestUtil implements SamlHttpTestBase {
 
 	public static RelyingPartySetup loadRelyingPartySetup() {
 		String ruleDefinition = SamlTestBase.filePathFromClassPath(TEST_SETUP_RP);
-		RelyingPartySetup relyingPartySetup = ClaimsProviderUtil.loadRelyingPartySetup(ruleDefinition);
-		return relyingPartySetup;
+		return ClaimsProviderUtil.loadRelyingPartySetup(ruleDefinition);
 	}
 
 	public static ClaimsProviderDefinitions loadClaimsProviderDefinitions() {
 		String claimsProvider = SamlTestBase.filePathFromClassPath(TEST_CP_DEFINITIONS);
-		ClaimsProviderDefinitions claimsProviderDefinitions = ClaimsProviderUtil.loadClaimsProviderDefinitions(claimsProvider);
-		return claimsProviderDefinitions;
+		return ClaimsProviderUtil.loadClaimsProviderDefinitions(claimsProvider);
 	}
 
 	public static SsoGroupSetup loadSsoGroups() {

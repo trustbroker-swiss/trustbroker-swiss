@@ -18,27 +18,35 @@
 		<p class="subtitle body-3">{{ message }}</p>
 	</div>
 	<div id="contactInfo">
-		<div class="infoColumn" *ngIf="contactUrl !== null && contactUrl !== undefined">
-			<p class="title high-emphasis body-3">{{ "trustbroker.announcements.furtherinfo" | translate }}</p>
-			<p class="body-3">
-				<a href="{{ contactUrl }}" target="_blank">{{ "trustbroker.announcements.documentation" | translate }}</a>
-			</p>
-		</div>
+		@if (contactUrl !== null && contactUrl !== undefined) {
+			<div class="infoColumn">
+				<p class="title high-emphasis body-3">{{ "trustbroker.announcements.furtherinfo" | translate }}</p>
+				<p class="body-3">
+					<a href="{{ contactUrl }}" target="_blank">{{ "trustbroker.announcements.documentation" | translate }}</a>
+				</p>
+			</div>
+		}
 
-		<div class="infoColumn high-emphasis" *ngIf="announcementPhoneNumber !== null || announcementEmailAddress !== null">
-			<p class="title body-3">{{ "trustbroker.announcements.servicedesk" | translate }}</p>
-			<div class="infoContainer" *ngIf="announcementEmailAddress !== null">
-				<p class="infoContent subtitle medium-emphasis body-3">{{ "trustbroker.announcements.emailladdress" | translate }}</p>
-				<p class="body-3">
-					<a href="mailto:{{ announcementEmailAddress }}">{{ announcementEmailAddress }}</a>
-				</p>
+		@if (announcementPhoneNumber !== null || announcementEmailAddress !== null) {
+			<div class="infoColumn high-emphasis">
+				<p class="title body-3">{{ "trustbroker.announcements.servicedesk" | translate }}</p>
+				@if (announcementEmailAddress !== null) {
+					<div class="infoContainer">
+						<p class="infoContent subtitle medium-emphasis body-3">{{ "trustbroker.announcements.emailladdress" | translate }}</p>
+						<p class="body-3">
+							<a href="mailto:{{ announcementEmailAddress }}">{{ announcementEmailAddress }}</a>
+						</p>
+					</div>
+				}
+				@if (announcementPhoneNumber !== null) {
+					<div class="infoContainer">
+						<p class="infoContent subtitle medium-emphasis body-3">{{ "trustbroker.announcements.phonennumber" | translate }}</p>
+						<p class="body-3">
+							<a href="tel:{{ announcementPhoneNumber }}"> {{ announcementPhoneNumber }}</a>
+						</p>
+					</div>
+				}
 			</div>
-			<div class="infoContainer" *ngIf="announcementPhoneNumber !== null">
-				<p class="infoContent subtitle medium-emphasis body-3">{{ "trustbroker.announcements.phonennumber" | translate }}</p>
-				<p class="body-3">
-					<a href="tel:{{ announcementPhoneNumber }}"> {{ announcementPhoneNumber }}</a>
-				</p>
-			</div>
-		</div>
+		}
 	</div>
 </div>

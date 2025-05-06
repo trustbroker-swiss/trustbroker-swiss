@@ -34,7 +34,7 @@ export class AnnouncementsComponent implements OnInit {
 	theme: Theme;
 	private authnRequestId: string;
 	private issuer: string;
-	private referer: string;
+	private appName: string;
 
 	constructor(
 		private readonly announcementService: AnnouncementsService,
@@ -54,9 +54,9 @@ export class AnnouncementsComponent implements OnInit {
 		this.route.params.subscribe((params: Params) => {
 			this.authnRequestId = params.authnRequestId;
 			this.issuer = params.issuer;
-			this.referer = params.referer;
+			this.appName = params.appName;
 			const navRoute = `home/${this.issuer}/${this.authnRequestId}`;
-			this.announcementService.getAnnouncements(this.issuer, this.referer).subscribe({
+			this.announcementService.getAnnouncements(this.issuer, this.appName).subscribe({
 				next: resp => {
 					if (resp == null || resp.length === 0) {
 						void this.router.navigate([navRoute]);

@@ -79,7 +79,7 @@ public class OidcTxFilter implements Filter {
 		var wrappedRequest = new OidcTxRequestWrapper(httpRequest);
 		var frameAncestorHandler = new OidcFrameAncestorHandler(wrappedRequest, relyingPartyDefinitions, properties);
 		var wrappedResponse = new OidcTxResponseWrapper(wrappedRequest, httpResponse, relyingPartyDefinitions, properties,
-				frameAncestorHandler);
+				apiSupport, frameAncestorHandler);
 
 		try {
 			// transaction start
@@ -104,16 +104,17 @@ public class OidcTxFilter implements Filter {
 			else if (ApiSupport.isOidcConfigPath(path) && properties.getOidc().isUseKeycloakIssuerId()) {
 				wrappedResponse.catchOutputStream();
 				chain.doFilter(wrappedRequest, wrappedResponse);
-				patchOpenidConfiguration(path, wrappedResponse);
+				patchOpenIdConfiguration(path, wrappedResponse);
 			}
 			else {
 				// stop here to check on requests, responses, sessions
 				chain.doFilter(wrappedRequest, wrappedResponse);
 			}
 
-			// post processing
+			// post-processing
 			if (ApiSupport.isOidcSessionPath(path)) {
 				FragmentUtil.checkAndRememberFragmentMode(wrappedRequest);
+				OidcSessionSupport.rememberAcrValues(wrappedRequest);
 			}
 		}
 		finally {
@@ -195,7 +196,7 @@ public class OidcTxFilter implements Filter {
 	}
 
 	// Support OIDC clients connecting to Keycloak validating the issuer ID containing /realms/X
-	private void patchOpenidConfiguration(String path, OidcTxResponseWrapper response) throws IOException {
+	private void patchOpenIdConfiguration(String path, OidcTxResponseWrapper response) throws IOException {
 		var realmName = getKeycloakRealm(path);
 		var config = response.getBody();
 		if (realmName != null && config != null) {

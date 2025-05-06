@@ -53,11 +53,11 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.api.idm.dto.IdmRequest;
 import swiss.trustbroker.api.idm.dto.IdmRequests;
 import swiss.trustbroker.api.idm.dto.IdmResult;
-import swiss.trustbroker.api.idm.service.IdmService;
+import swiss.trustbroker.api.idm.service.IdmQueryService;
 import swiss.trustbroker.api.idm.service.IdmStatusPolicyCallback;
 import swiss.trustbroker.api.relyingparty.dto.RelyingPartyConfig;
 import swiss.trustbroker.api.sessioncache.dto.CpResponseData;
@@ -87,7 +87,7 @@ import swiss.trustbroker.script.service.ScriptService;
 @MockitoSettings(strictness = Strictness.STRICT_STUBS)
 class RuleDefinitionUtilTest {
 
-	private static class SortingIdmService implements IdmService {
+	private static class SortingIdmService implements IdmQueryService {
 
 		@Override
 		public Optional<IdmResult> getAttributes(RelyingPartyConfig relyingPartyConfig, CpResponseData cpResponse,
@@ -110,9 +110,9 @@ class RuleDefinitionUtilTest {
 
 	private final static String GLOBAL_QUERY = "GLOBAL";
 
-	private IdmService idmService = new SortingIdmService();
+	private IdmQueryService idmQueryService = new SortingIdmService();
 
-	@MockBean
+	@MockitoBean
 	private ScriptService scriptService;
 
 	@Test
@@ -204,7 +204,6 @@ class RuleDefinitionUtilTest {
 		assertNull(existingClaim);
 	}
 
-	//AC whitelist
 	@Test
 	void mergeAcWhiteListNullTest() {
 		RelyingParty claimRule = givenRuleWithNullAcWhitelist();
@@ -334,7 +333,7 @@ class RuleDefinitionUtilTest {
 		var idmLookUp = givenIdmLookup();
 		relyingParty.setIdmLookup(idmLookUp);
 		var baseLookup = givenIdmLookupWithNullQuery();
-		RelyingPartySetupUtil.mergeIdmQueries(relyingParty, baseLookup, List.of(idmService));
+		RelyingPartySetupUtil.mergeIdmQueries(relyingParty, baseLookup, List.of(idmQueryService));
 
 		var original = givenIdmQueries();
 		assertEquals(idmLookUp.getQueries(), original);
@@ -348,7 +347,7 @@ class RuleDefinitionUtilTest {
 
 		var baseLookup = givenIdmLookup();
 		var initialIdmQuerySize = idmLookUp.getQueries().size();
-		RelyingPartySetupUtil.mergeIdmQueries(relyingParty, baseLookup, List.of(idmService));
+		RelyingPartySetupUtil.mergeIdmQueries(relyingParty, baseLookup, List.of(idmQueryService));
 
 		assertNotEquals(initialIdmQuerySize, idmLookUp.getQueries().size());
 		assertEquals(baseLookup.getQueries().size(), idmLookUp.getQueries().size());
@@ -360,7 +359,7 @@ class RuleDefinitionUtilTest {
 		var idmLookUp = givenIdmLookupWithNoQueryParams();
 		relyingParty.setIdmLookup(idmLookUp);
 		var baseLookup = givenIdmLookup();
-		RelyingPartySetupUtil.mergeIdmQueries(relyingParty, baseLookup, List.of(idmService));
+		RelyingPartySetupUtil.mergeIdmQueries(relyingParty, baseLookup, List.of(idmQueryService));
 
 		assertNotSame("", idmLookUp.getQueries().get(1).getAppFilter());
 		assertNotNull(idmLookUp.getQueries().get(1).getAppFilter());
@@ -422,9 +421,9 @@ class RuleDefinitionUtilTest {
 		RelyingParty claimRule = null;
 		RelyingParty baseClaimRule = new RelyingParty();
 
-		List<IdmService> idmServices = List.of(idmService);
+		List<IdmQueryService> idmQueryServices = List.of(idmQueryService);
 		TechnicalException exception = assertThrows(TechnicalException.class, () ->
-				RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, idmServices)
+				RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, idmQueryServices)
 		);
 
 		assertEquals("RelyingParty is missing", exception.getInternalMessage());
@@ -434,7 +433,7 @@ class RuleDefinitionUtilTest {
 	void mergeClaimsBaseNullTest() {
 		RelyingParty claimRule = new RelyingParty();
 		RelyingParty baseClaimRule = null;
-		RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, List.of(idmService));
+		RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, List.of(idmQueryService));
 
 		assertNotNull(claimRule);
 	}
@@ -443,7 +442,7 @@ class RuleDefinitionUtilTest {
 	void mergeClaimsLookupNullTest() {
 		RelyingParty claimRule = new RelyingParty();
 		RelyingParty baseClaimRule = givenClaimWithLookup();
-		RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, List.of(idmService));
+		RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, List.of(idmQueryService));
 
 		assertNotNull(claimRule);
 		assertNotNull(claimRule.getIdmLookup());
@@ -454,7 +453,7 @@ class RuleDefinitionUtilTest {
 	void mergeClaimsIdmLookupMergeTest() {
 		RelyingParty claimRule = givenClaimWithLookup();
 		RelyingParty baseClaimRule = givenBaseClaimWithLookup();
-		RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, List.of(idmService));
+		RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, List.of(idmQueryService));
 
 		assertNotNull(claimRule);
 		assertNotNull(claimRule.getIdmLookup());
@@ -466,7 +465,7 @@ class RuleDefinitionUtilTest {
 	void loadBaseClaimNoBaseTest() {
 		Collection<RelyingParty> claimRules = givenClaimRulesWithoutBase();
 		RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
-				CACHE_DEFINITION_PATH,null, List.of(idmService), scriptService);
+				CACHE_DEFINITION_PATH,null, List.of(idmQueryService), scriptService);
 
 		assertNotNull(claimRules);
 	}
@@ -475,10 +474,10 @@ class RuleDefinitionUtilTest {
 	void loadBaseClaimBaseDoesNotExistTest() {
 		Collection<RelyingParty> claimRules = givenClaimRulesWithBaseNotFound();
 		assertDoesNotThrow(() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
-				CACHE_DEFINITION_PATH, null, List.of(idmService), scriptService));
+				CACHE_DEFINITION_PATH, null, List.of(idmQueryService), scriptService));
 		assertDoesNotThrow(
 				() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
-						CACHE_DEFINITION_PATH, null, List.of(idmService), scriptService));
+						CACHE_DEFINITION_PATH, null, List.of(idmQueryService), scriptService));
 		claimRules.forEach(rp -> assertEquals(FeatureEnum.INVALID, rp.getEnabled(), "RP " + rp.getId()));
 	}
 
@@ -497,7 +496,7 @@ class RuleDefinitionUtilTest {
 		String definitionPath = baseRuleFilePath();
 
 		RelyingPartySetupUtil.loadRelyingParty(claimRules, definitionPath, CACHE_PATH,
-				null, List.of(idmService), scriptService);
+				null, List.of(idmQueryService), scriptService);
 
 		assertNotNull(claimRules);
 		assertNull(claimRules.get(0).getConstAttributes());
@@ -510,7 +509,7 @@ class RuleDefinitionUtilTest {
 		List<RelyingParty> claimRules = loadRulesWithCacheFromFile();
 		String newCacheDefinition = baseCacheRuleFilePath();
 		RelyingPartySetupUtil.loadRelyingParty(claimRules, baseRuleFilePath(), newCacheDefinition, null,
-				List.of(idmService), scriptService);
+				List.of(idmQueryService), scriptService);
 
 		RelyingParty testRp = claimRules.get(0);
 
@@ -549,7 +548,7 @@ class RuleDefinitionUtilTest {
 		var properties = new TrustBrokerProperties();
 		properties.setGlobalProfilesPath("profiles");
 		RelyingPartySetupUtil.loadRelyingParty(relyingParties, baseRuleFilePath(), "cache/", properties,
-				List.of(idmService), scriptService);
+				List.of(idmQueryService), scriptService);
 		assertEquals(TestConstants.VALID_TEST_RPS, relyingParties.size());
 
 		validateTestRp(relyingParties, "urn:test:SAMPLERP");
@@ -646,7 +645,7 @@ class RuleDefinitionUtilTest {
 		var claimRules = List.of(rp);
 		var definitionPath = baseRuleFilePath();
 		assertDoesNotThrow(() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, definitionPath, CACHE_PATH,
-				null, List.of(idmService), scriptService));
+				null, List.of(idmQueryService), scriptService));
 		assertThat(rp.getEnabled(), is(expectedEnabled));
 	}
 

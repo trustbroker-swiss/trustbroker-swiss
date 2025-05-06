@@ -30,6 +30,9 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 
 import java.io.ByteArrayInputStream;
@@ -73,8 +76,8 @@ import org.opensaml.xmlsec.signature.Signature;
 import org.opensaml.xmlsec.signature.support.SignatureConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.config.RegexNameValue;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CoreAttributeInitializer;
@@ -90,10 +93,13 @@ import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.Definition;
+import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
-import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
+import swiss.trustbroker.mapping.dto.QoaConfig;
+import swiss.trustbroker.mapping.service.ClaimsMapperService;
+import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.ResponseParameters;
 import swiss.trustbroker.sessioncache.dto.StateData;
@@ -107,11 +113,14 @@ class ResponseFactoryTest extends SamlTestBase {
 
 	private static final int AUDIENCE_VALIDITY_SECONDS = 400;
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartySetupService relyingPartySetupService;
 
-	@MockBean
+	@MockitoBean
 	private TrustBrokerProperties trustBrokerProperties;
+
+	@MockitoBean
+	private QoaMappingService qoaMappingService;
 
 	@Autowired
 	private ResponseFactory responseFactory;
@@ -498,7 +507,6 @@ class ResponseFactoryTest extends SamlTestBase {
 								  .namespaceUri(CoreAttributeName.CLAIMS_NAME.getNamespaceUri())
 								  .build();
 		userDetails.put(email, List.of("user@trustbroker.swiss"));
-		Map<Definition, List<String>> properties = new LinkedHashMap<>();
 		userDetails.put(userExtId, List.of("idm98765"));
 
 		return userDetails;
@@ -574,10 +582,13 @@ class ResponseFactoryTest extends SamlTestBase {
 		// RP request
 		var rpIssuerId = "rp1";
 		var recipientId = "https://localhost:1234/acs";
+		var rpContextClasses = List.of(SamlContextClass.NOMAD_TELEPHONY);
 		var spStateData = StateData.builder()
 				.id("authnRequestId1")
 				.issuer(rpIssuerId)
 				.assertionConsumerServiceUrl(recipientId)
+				.comparisonType(QoaComparison.EXACT)
+				.contextClasses(rpContextClasses)
 				.build();
 
 		// CP response
@@ -590,26 +601,28 @@ class ResponseFactoryTest extends SamlTestBase {
 								 .spStateData(spStateData)
 								 .ssoSessionId(sessionIndex)
 								 .build();
+		doReturn(new QoaConfig(null, rpIssuerId))
+				.when(relyingPartySetupService).getQoaConfiguration(spStateData, rpIssuerId, null, trustBrokerProperties);
 
 		// manipulated CP response
-		Map<Definition, List<String>> idpAttributes = new LinkedHashMap<>();
+		Map<Definition, List<String>> cpAttributes = new LinkedHashMap<>();
 		var homeName = Definition.builder()
 								 .name(CoreAttributeName.HOME_NAME.getName())
 								 .namespaceUri(CoreAttributeName.HOME_NAME.getNamespaceUri())
 								 .build();
 		var homeNameValue = "homeName1";
-		idpAttributes.put(homeName, List.of(homeNameValue));
+		cpAttributes.put(homeName, List.of(homeNameValue));
 		var userExtId = Definition.builder()
 								  .name(CoreAttributeName.CLAIMS_NAME.getName())
 								  .namespaceUri(CoreAttributeName.CLAIMS_NAME.getNamespaceUri())
 								  .build();
-		idpAttributes.put(userExtId, List.of("idp12345"));
+		cpAttributes.put(userExtId, List.of("idp12345"));
 		var userProperty = Definition.builder()
 									 .name("userProperty1")
 									 .namespaceUri("http://trustbroker.swiss/claims/id/" +
 											 SamlFactory.CLIENT_NAME_TAG + "/unitProperty1")
 									 .build();
-		idpAttributes.put(userProperty, List.of("userProp1"));
+		cpAttributes.put(userProperty, List.of("userProp1"));
 		Map<Definition, List<String>> userDetails = new LinkedHashMap<>();
 		var email = Definition.builder()
 							  .name(CoreAttributeName.EMAIL.getName())
@@ -622,7 +635,7 @@ class ResponseFactoryTest extends SamlTestBase {
 		var cpResponse = CpResponse.builder()
 								   .issuer(cpIssuerId)
 								   .customIssuer(customFederationServiceIssuerId) // OnResponse customization
-								   .attributes(idpAttributes)
+								   .attributes(cpAttributes)
 								   .nameId(nameId)
 								   .nameIdFormat(nameIdFormat)
 								   .originalNameId(nameId)
@@ -672,6 +685,10 @@ class ResponseFactoryTest extends SamlTestBase {
 										.getSecurity();
 		doReturn(federationServiceIssuerId).when(trustBrokerProperties)
 							  .getIssuer();
+		doReturn(List.of(contextClass)).when(qoaMappingService).mapResponseQoasToOutbound(
+						any(), argThat(qc -> cpIssuerId.equals(qc.issuerId())),
+						eq(QoaComparison.EXACT), eq(rpContextClasses),
+						argThat(qc -> rpIssuerId.equals(qc.issuerId())));
 
 		// create assertion based on above sources
 		var dropDuplicates = List.of(CoreAttributeName.CLAIMS_NAME.getNamespaceUri());
@@ -689,7 +706,7 @@ class ResponseFactoryTest extends SamlTestBase {
 												   .homeNameIssuerMapping(homeNameOriginalIssuerMapping)
 												   .build();
 
-		cpResponse.setAttributes(DefinitionUtil.deduplicatedCpAttributes(cpResponse, dropDuplicates, null));
+		cpResponse.setAttributes(ClaimsMapperService.deduplicatedCpAttributes(cpResponse, dropDuplicates, null));
 		var assertion = responseFactory.createAssertion(stateData, cpResponse, responseParameters);
 
 		// verify
@@ -708,8 +725,8 @@ class ResponseFactoryTest extends SamlTestBase {
 		validateConditions(assertion.getConditions(), expectedAudience);
 		validateAuthnStatements(assertion.getAuthnStatements(), sessionIndex, contextClass);
 		List<Map.Entry<Definition, List<String>>> expectedAttributes = new ArrayList<>();
-		idpAttributes.remove(userExtId); // userExtId from idpAttributes is expected to be removed by filter
-		idpAttributes.entrySet()
+		cpAttributes.remove(userExtId); // userExtId from cpAttributes is expected to be removed by filter
+		cpAttributes.entrySet()
 					 .forEach(expectedAttributes::add);
 		userDetails.entrySet()
 				   .forEach(expectedAttributes::add);

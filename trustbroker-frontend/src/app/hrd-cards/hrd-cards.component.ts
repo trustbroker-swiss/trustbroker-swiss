@@ -13,41 +13,45 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
-import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute, Params, Router } from '@angular/router';
+import { BreakpointObserver } from '@angular/cdk/layout';
+import { HttpErrorResponse, HttpResponse } from '@angular/common/http';
+import { Component, DestroyRef, effect, input } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { environment } from '../../environments/environment';
-import { IdpObject } from '../model/idpObject';
+import { IdpObjects } from '../model/IdpObject';
 import { Theme } from '../model/Theme';
 import { ApiService } from '../services/api.service';
 import { IdpObjectService } from '../services/idp-object.service';
 import { LanguageService } from '../services/language.service';
 import { ThemeService } from '../services/theme-service';
+import { Observable, switchMap } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { map } from 'rxjs/operators';
 
 @Component({
 	selector: 'app-hrd-cards',
 	templateUrl: './hrd-cards.component.html',
 	styleUrls: ['./hrd-cards.component.scss']
 })
-export class HrdCardsComponent implements OnInit {
+export class HrdCardsComponent {
+	idpObjects = input.required<IdpObjects>();
+
 	showHrd = true;
-	idpObjects: IdpObject[];
 	baseUrl: string = environment.apiUrl;
-	authnRequestId: string;
-	isButtonSize: boolean;
+	showNormalSize$: Observable<boolean>;
 	clicked: boolean;
 	theme: Theme;
 
 	constructor(
 		private readonly apiService: ApiService,
-		private readonly route: ActivatedRoute,
-		private readonly breakpointObserver: BreakpointObserver,
+		breakpointObserver: BreakpointObserver,
 		private readonly idpObjectService: IdpObjectService,
 		public readonly languageService: LanguageService,
 		private readonly themeService: ThemeService,
-		private readonly router: Router
+		private readonly route: ActivatedRoute,
+		private readonly router: Router,
+		private readonly destroyRef: DestroyRef
 	) {
 		this.theme = this.themeService.getTheme();
 		this.themeService.subscribe({
@@ -55,36 +59,17 @@ export class HrdCardsComponent implements OnInit {
 				this.theme = theme;
 			}
 		});
-	}
 
-	ngOnInit(): void {
-		this.route.params.subscribe((params: Params) => {
-			this.authnRequestId = params.authnRequestId;
-			const issuer = params.issuer;
-			if (issuer === undefined) {
-				// NOSONAR
-				// console.debug('[HrdCardsComponent] No issuer provided');
-				this.idpObjects = [];
-				return;
-			}
-			this.apiService.getIdpObjects(issuer).subscribe(value => {
-				if (value.length === 1 && !value[0].disabled) {
-					this.showHrd = false;
-					this.onClickCard(value[0]);
-				} else {
-					this.idpObjects = value;
-					this.idpObjectService.addIdpObjects(value);
-				}
-			});
-		});
-
-		this.breakpointObserver.observe(['(min-width: 768px)']).subscribe((state: BreakpointState) => {
-			if (state.matches) {
-				this.isButtonSize = false;
-			} else {
-				this.isButtonSize = true;
+		effect(() => {
+			if (this.idpObjects().tiles?.length === 1 && !this.idpObjects().tiles[0].disabled) {
+				this.showHrd = false;
+				this.onClickCard(this.idpObjects().tiles[0]);
+			} else if (this.idpObjects().tiles?.length > 1) {
+				this.idpObjectService.addIdpObjects(this.idpObjects().tiles);
 			}
 		});
+
+		this.showNormalSize$ = breakpointObserver.observe(['(min-width: 768px)']).pipe(map(({ matches }) => matches));
 	}
 
 	getImageUrl(imageName): string {
@@ -99,39 +84,41 @@ export class HrdCardsComponent implements OnInit {
 			return;
 		}
 		this.clicked = true;
-		this.apiService.selectIDP(this.authnRequestId, idpObject.urn).subscribe({
-			next: resp => {
-				const location = resp.headers.get('location');
-				if (location) {
-					// writing the body of the redirect result to the document does not work
-					window.location.href = location;
-					return;
+		this.route.params
+			.pipe(
+				switchMap(params => this.apiService.selectIdp(params.authnRequestId, idpObject.urn)),
+				takeUntilDestroyed(this.destroyRef)
+			)
+			.subscribe({
+				next: resp => {
+					this.processSelectionResponse(resp);
+				},
+				error: (errorResponse: HttpErrorResponse) => {
+					console.error(errorResponse);
 				}
-				// document.write for error page does not work here
-				const url = resp.url.replace(/^.*(\/failure\/.*$)/, '$1');
-				if (url !== resp.url) {
-					void this.router.navigate([url]);
-					return;
-				}
-				window.document.write(resp.body);
-				if (document.forms.length > 0) {
-					document.forms.item(0).submit();
-				} else {
-					// not a SAML form, e.g. AccessRequest
-					// NOSONAR
-					// console.info('[HrdCardsComponent] Do not have a form to submit');
-				}
-			},
-			error: (errorResponse: HttpErrorResponse) => {
-				console.error(errorResponse);
-			}
-		});
+			});
 	}
 
-	isDisabled(disabled: boolean) {
-		if (disabled) {
-			return 1;
+	private processSelectionResponse(resp: HttpResponse<string>) {
+		const location = resp.headers.get('location');
+		if (location) {
+			// writing the body of the redirect result to the document does not work
+			window.location.href = location;
+			return;
 		}
-		return 0;
+		// document.write for error page does not work here
+		const url = resp.url.replace(/^.*(\/failure\/.*$)/, '$1');
+		if (url !== resp.url) {
+			void this.router.navigate([url]);
+			return;
+		}
+		window.document.write(resp.body);
+		if (document.forms.length > 0) {
+			document.forms.item(0).submit();
+		} else {
+			// not a SAML form, e.g. AccessRequest
+			// NOSONAR
+			// console.info('[HrdCardsComponent] Do not have a form to submit');
+		}
 	}
 }

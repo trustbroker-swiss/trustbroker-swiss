@@ -35,14 +35,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.audit.dto.AuditDto;
 import swiss.trustbroker.audit.dto.EventType;
 
 @SpringBootTest(classes = AuditLogFilter.class)
 class AuditLogBuilderTest {
 
-	@MockBean
+	@MockitoBean
 	private AuditLogFilter filter;
 
 	@BeforeEach

@@ -47,6 +47,9 @@ class OidcTxFilterTest {
 	@Mock
 	private TomcatSessionManager tomcatSessionManager;
 
+	@Mock
+	private ApiSupport apiSupport;
+
 	private TrustBrokerProperties properties;
 
 	private OidcTxFilter filter;
@@ -70,7 +73,7 @@ class OidcTxFilterTest {
 
 		filter.validateAndSetSecurityHeaders(
 				request,
-				new OidcTxResponseWrapper(request, response, relyingPartyDefinitions, properties, oidcFrameAncestorHandler),
+				new OidcTxResponseWrapper(request, response, relyingPartyDefinitions, properties, apiSupport, oidcFrameAncestorHandler),
 				path);
 
 		assertThat(response.getHeader(HeaderBuilder.STRICT_TRANSPORT_SECURITY), is(not(nullValue())));

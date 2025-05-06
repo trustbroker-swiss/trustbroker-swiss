@@ -22,6 +22,7 @@ package swiss.trustbroker.oidc;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Predicate;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -111,17 +112,18 @@ public class OidcExceptionHelper {
 	}
 
 	public static String buildLocationForAuthenticationException(
-			HttpServletRequest request, String errorUri, String errorBaseUri, String handler) {
+			HttpServletRequest request, String errorUri, String errorBaseUri, String handler, Predicate<String> urlValidator) {
 		var authException = (AuthenticationException) request.getAttribute(WebAttributes.AUTHENTICATION_EXCEPTION);
 		var session = request.getSession(false);
 		if (authException == null && session != null) {
 			authException = (AuthenticationException) session.getAttribute(WebAttributes.AUTHENTICATION_EXCEPTION);
 		}
-		return buildLocationForAuthenticationException(request, authException, errorUri, errorBaseUri, handler);
+		return buildLocationForAuthenticationException(request, authException, errorUri, errorBaseUri, handler, urlValidator);
 	}
 
 	public static String buildLocationForAuthenticationException(HttpServletRequest request,
-			AuthenticationException authException, String errorUri, String errorBaseUri, String handler) {
+			AuthenticationException authException, String errorUri, String errorBaseUri, String handler,
+			Predicate<String> urlValidator) {
 		var clientId = OidcSessionSupport.getOidcClientId(request);
 		if (authException == null) {
 			log.info("Missing OIDC exception - redirect to OIDC clientId={} not possible", clientId);
@@ -162,7 +164,7 @@ public class OidcExceptionHelper {
 					authException.getMessage(), authException.getClass().getName(), clientId, handler);
 			return null;
 		}
-		var redirectUri = getRedirectUrl(request, errorCode, description, errorUri, errorBaseUri);
+		var redirectUri = getRedirectUrl(request, errorCode, description, errorUri, errorBaseUri, urlValidator);
 		log.debug("OIDC exception for clientId={} errorCode={}  redirectTo={}, errorDescription='{}' ({})",
 				clientId, errorCode, redirectUri, description, handler);
 		return redirectUri;
@@ -189,7 +191,7 @@ public class OidcExceptionHelper {
 	}
 
 	private static String getRedirectUrl(HttpServletRequest request, String errorCode, String description, String errorUri,
-			String errorBaseUri) {
+			String errorBaseUri, Predicate<String> urlValidator) {
 		// from session
 		var redirectUri = getRedirectUriFromSession(request);
 		// from request because there was no session
@@ -198,6 +200,11 @@ public class OidcExceptionHelper {
 		}
 		if (redirectUri == null) {
 			return null; // direct response handling
+		}
+		// only allow redirect to validated URI
+		if (!urlValidator.test(redirectUri)) {
+			log.error("Blocking unsupported redirectUrl={}", redirectUri);
+			return null;
 		}
 		// construct redirect with error details
 		try {

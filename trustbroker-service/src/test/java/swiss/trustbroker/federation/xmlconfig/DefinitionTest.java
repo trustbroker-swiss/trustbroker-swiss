@@ -23,10 +23,12 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -141,6 +143,28 @@ class DefinitionTest {
 						CoreAttributeName.NAME.getNamespaceUri(), true },
 				{ new Definition(CoreAttributeName.NAME), CoreAttributeName.NAME.getName(), true },
 				{ new Definition(CoreAttributeName.NAME), CoreAttributeName.NAME.getNamespaceUri(), true },
+		};
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	@SuppressWarnings("deprecation")
+	void testGetMappers(String mappers, ClaimsMapper oidcMapper, List<ClaimsMapper> expectedMappers) {
+		var definition = Definition.builder()
+				.mappers(mappers)
+				.oidcMapper(oidcMapper) // oidcMapper fallback
+				.build();
+		assertThat(definition.getMappers(), is(expectedMappers));
+	}
+
+	static Object[][] testGetMappers() {
+		return new Object[][] {
+				{ null, null, Collections.emptyList() },
+				{ "", ClaimsMapper.EMAIL, List.of(ClaimsMapper.EMAIL) },
+				{ StringUtils.joinWith(Definition.LIST_ATTRIBUTE_DELIMITER,
+						ClaimsMapper.EMAIL.name(), ClaimsMapper.TIME_EPOCH.name()),
+						ClaimsMapper.BOOLEAN, // oidcMapper ignored
+						List.of(ClaimsMapper.EMAIL, ClaimsMapper.TIME_EPOCH) }
 		};
 	}
 

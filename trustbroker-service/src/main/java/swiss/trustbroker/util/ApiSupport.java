@@ -86,7 +86,7 @@ public class ApiSupport {
 
 	static final String HRD_CP_API = HRD_API + "/claimsproviders";
 
-	static final String HRD_ID_PARAM = "id";
+	static final String HRD_ID_PARAM = "session";
 
 	static final String SSO_GROUP_API = "/sso/group";
 
@@ -119,6 +119,8 @@ public class ApiSupport {
 	static final String PROFILE_API = HRD_API + "/profile";
 
 	public static final String SAML_API = API_CONTEXT + "/saml";
+
+	public static final String WSTRUST_API = API_CONTEXT + "/wstrust";
 
 	public static final String ARP_API = "/saml/arp";
 
@@ -179,17 +181,23 @@ public class ApiSupport {
 
 	public static final String SPRING_SAML_AUTHENTICATE_CTXPATH = "/saml2/authenticate/";
 
+	public static final String OIDC_API = "/oidc";
+
+	public static final String OIDC_RESPONSE_API = OIDC_API + "/response";
+
+	public static final String OIDC_RESPONSE_URL = API_CONTEXT + OIDC_RESPONSE_API;
+
 	public static final String ADFS_PATH = "/adfs";
 
-	public static final String ADFS_ENTY_PATH = "/ls";
+	public static final String ADFS_ENTRY_PATH = "/ls";
 
-	public static final String ADFS_ENTRY_URL = ADFS_PATH + ADFS_ENTY_PATH;
+	public static final String ADFS_ENTRY_URL = ADFS_PATH + ADFS_ENTRY_PATH;
 
 	public static final String ADFS_ENTRY_URL_TRAILING_SLASH = ADFS_ENTRY_URL + "/";
 
 	public static final String XTB_LEGACY_ADFS_PATH = "/trustbroker" + ADFS_PATH; // deprecated
 
-	public static final String XTB_LEGACY_ENTRY_URL = XTB_LEGACY_ADFS_PATH + ADFS_ENTY_PATH; // deprecated
+	public static final String XTB_LEGACY_ENTRY_URL = XTB_LEGACY_ADFS_PATH + ADFS_ENTRY_PATH; // deprecated
 
 	public static final String  ADFS_SERVICES_PATH = ADFS_PATH + "/services/trust/13/issuedtokensymmetricbasic256";
 
@@ -328,9 +336,9 @@ public class ApiSupport {
 		return getFrontendUrl(FRONTEND_CONTEXT, SSO_PAGE, group);
 	}
 
-	public String getAnnouncementsUrl(String issuer, String requestId, String referer) {
+	public String getAnnouncementsUrl(String issuer, String requestId, String appName) {
 		return getFrontendUrl(FRONTEND_CONTEXT, ANNOUNCEMENTS_PAGE, encodeUrlParameter(issuer), requestId,
-				encodeUrlParameter(referer));
+				encodeUrlParameter(appName));
 	}
 
 	public String getAccessRequestInitiateUrl(String sessionId) {
@@ -354,10 +362,7 @@ public class ApiSupport {
 	}
 
 	public String getAccessRequestCompleteApi(String requestId) {
-		var baseUrl = trustBrokerProperties.getFrontendBaseUrl();
-		if (StringUtils.isEmpty(baseUrl)) {
-			baseUrl = trustBrokerProperties.getPerimeterUrl();
-		}
+		var baseUrl = getBaseUrl();
 		return getFrontendUrlWithBase(baseUrl, API_CONTEXT, ACCESS_REQUEST_COMPLETE, requestId);
 	}
 
@@ -399,8 +404,9 @@ public class ApiSupport {
 		return getFrontendUrl(API_CONTEXT, DEVICE_INFO_API);
 	}
 
-	public String getHrdRpApi(String issuer) {
-		return getFrontendUrl(API_CONTEXT, HRD_RP_API, encodeUrlParameter(issuer)) + HRD_TILES_POSTFIX;
+	public String getHrdRpApi(String issuer, String authnRequestId) {
+		return getFrontendUrl(API_CONTEXT, HRD_RP_API, encodeUrlParameter(issuer)) + HRD_TILES_POSTFIX
+				+ '?' + HRD_ID_PARAM + '=' + authnRequestId;
 	}
 
 	public String getHrdRpContinueApi(String sessionId) {
@@ -447,6 +453,34 @@ public class ApiSupport {
 
 	public String getSupportInfoApi(String errorCode, String sessionId) {
 		return getFrontendUrl(API_CONTEXT, SUPPORT_API, errorCode, encodeUrlParameter(sessionId));
+	}
+
+	// realm is from config, not encoded in output
+	public String getOidcResponseApi(String realm) {
+		var baseUrl = getBaseUrl();
+		return getFrontendUrlWithBase(baseUrl, API_CONTEXT, OIDC_RESPONSE_API, realm);
+	}
+
+	public boolean isInternalUrl(String uriString) {
+		var uri = WebUtil.getValidatedUri(uriString);
+		if (uri == null) {
+			return false; // null or invalid
+		}
+		if (uri.getUserInfo() != null) { // not used internally
+			return false;
+		}
+		var uriBase = uri.getScheme() + "://" + uri.getAuthority();
+		return uriBase.equals(trustBrokerProperties.getFrontendBaseUrl())
+				|| uriBase.equals(trustBrokerProperties.getPerimeterUrl())
+				|| uriBase.equals(trustBrokerProperties.getOidc().getPerimeterUrl());
+	}
+
+	private String getBaseUrl() {
+		var baseUrl = trustBrokerProperties.getFrontendBaseUrl();
+		if (StringUtils.isEmpty(baseUrl)) {
+			baseUrl = trustBrokerProperties.getPerimeterUrl();
+		}
+		return baseUrl;
 	}
 
 	// encodedParams must be properly encoded for adding to the path of the URL

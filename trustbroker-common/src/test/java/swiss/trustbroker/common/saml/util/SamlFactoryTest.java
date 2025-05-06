@@ -17,6 +17,7 @@ package swiss.trustbroker.common.saml.util;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.not;
@@ -41,6 +42,8 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.opensaml.core.xml.schema.XSString;
 import org.opensaml.saml.common.SAMLObjectContentReference;
+import org.opensaml.saml.saml2.core.AuthnContextClassRef;
+import org.opensaml.saml.saml2.core.AuthnContextComparisonTypeEnumeration;
 import org.opensaml.saml.saml2.core.NameIDType;
 import org.opensaml.saml.saml2.core.StatusCode;
 import org.opensaml.saml.saml2.core.SubjectConfirmation;
@@ -293,6 +296,26 @@ class SamlFactoryTest extends SamlTestBase {
 		assertThat(logoutRequest.getNameID().getSPNameQualifier(), is(qualifier));
 		assertThat(logoutRequest.getDestination(), is(destination));
 		assertThat(logoutRequest.getIssuer().getValue(), is(issuerId));
+	}
+
+	@Test
+	void createRequestedAuthnContext() {
+		var contextClasses = List.of("class1", "class2");
+		var comparison = AuthnContextComparisonTypeEnumeration.MAXIMUM;
+		var result = SamlFactory.createRequestedAuthnContext(contextClasses, comparison.name());
+		assertThat(result.getComparison(), is(comparison));
+		assertThat(result.getAuthnContextClassRefs()
+				.stream()
+				.map(AuthnContextClassRef::getURI)
+				.toList(),
+				is(contextClasses));
+	}
+
+	@Test
+	void createRequestedAuthnContextEmpty() {
+		var result = SamlFactory.createRequestedAuthnContext(null, null);
+		assertThat(result.getComparison(), is(nullValue()));
+		assertThat(result.getAuthnContextClassRefs(), hasSize(0));
 	}
 
 }

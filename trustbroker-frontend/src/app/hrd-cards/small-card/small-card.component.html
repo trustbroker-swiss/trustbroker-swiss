@@ -12,24 +12,27 @@
  You should have received a copy of the GNU Affero General Public License along with this program.
  If not, see <https://www.gnu.org/licenses/>.
 -->
-<mat-card
-	appearance="outlined"
-	class="{{ theme.name }} button"
-	id="{{ id }}"
-	*ngIf="showSmallCards"
-	(click)="selectCard()"
-	tabindex="1"
-	role="button"
-	[attr.aria-label]="cardText"
-	(keydown.enter)="selectCard()"
-	(keydown.space)="selectCard()"
-	[ngClass]="{ mathover: !disabled }"
->
-	<app-disabled-card *ngIf="disabled" [cardText]="cardText" [theme]="theme"> </app-disabled-card>
-	<div id="smallCardContent">
-		<span class="smallScreenButton" style="background-color: {{ inputColor }}">{{ inputShortcut }}</span>
-		<div class="cardTitle">
-			<strong [innerHTML]="cardText"></strong>
+@if (showSmallCards) {
+	<mat-card
+		appearance="outlined"
+		class="{{ theme.name }} button"
+		id="{{ id }}"
+		(click)="selectCard()"
+		tabindex="1"
+		role="button"
+		[attr.aria-label]="cardText"
+		(keydown.enter)="selectCard()"
+		(keydown.space)="selectCard()"
+		[ngClass]="{ mathover: !disabled }"
+	>
+		@if (disabled) {
+			<app-disabled-card [cardText]="cardText" [theme]="theme"></app-disabled-card>
+		}
+		<div id="smallCardContent">
+			<span class="smallScreenButton" style="background-color: {{ inputColor }}">{{ inputShortcut }}</span>
+			<div class="cardTitle">
+				<strong [innerHTML]="cardText"></strong>
+			</div>
 		</div>
-	</div>
-</mat-card>
+	</mat-card>
+}

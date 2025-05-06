@@ -414,29 +414,23 @@ public class SamlMockMessageService {
 	}
 
 	private static void setAuthnStatement(Assertion assertion) {
-		assertion.getAuthnStatements()
-				 .get(0)
-				 .setAuthnInstant(Instant.now());
-		if (assertion.getAuthnStatements()
-					 .get(0)
-					 .getSessionNotOnOrAfter() != null) {
-			assertion.getAuthnStatements()
-					 .get(0)
+		if (assertion.getAuthnStatements().isEmpty()) {
+			return;
+		}
+		assertion.getAuthnStatements().get(0).setAuthnInstant(Instant.now());
+		if (assertion.getAuthnStatements().get(0).getSessionNotOnOrAfter() != null) {
+			assertion.getAuthnStatements().get(0)
 					 .setSessionNotOnOrAfter(Instant.now().plusSeconds(MAX_ASSERTION_VALIDITY_SEC));
 		}
 	}
 
 	private static void updateConditionTimestamps(Assertion assertion) {
 		if (assertion.getConditions() != null) {
-			if (assertion.getConditions()
-						 .getNotBefore() != null) {
-				assertion.getConditions()
-						 .setNotBefore(Instant.now());
+			if (assertion.getConditions().getNotBefore() != null) {
+				assertion.getConditions().setNotBefore(Instant.now());
 			}
-			if (assertion.getConditions()
-						 .getNotOnOrAfter() != null) {
-				assertion.getConditions()
-						 .setNotOnOrAfter(Instant.now().plusSeconds(MAX_ASSERTION_VALIDITY_SEC));
+			if (assertion.getConditions().getNotOnOrAfter() != null) {
+				assertion.getConditions().setNotOnOrAfter(Instant.now().plusSeconds(MAX_ASSERTION_VALIDITY_SEC));
 			}
 		}
 	}

@@ -22,12 +22,15 @@ import java.util.TimerTask;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import jakarta.persistence.OptimisticLockException;
 import lombok.extern.slf4j.Slf4j;
 import net.shibboleth.shared.collection.Pair;
 import net.shibboleth.shared.component.ComponentInitializationException;
 import org.opensaml.storage.AbstractStorageService;
 import org.opensaml.storage.StorageRecord;
+import org.springframework.dao.ConcurrencyFailureException;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.exception.GlobalExceptionHandler;
 import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.sessioncache.dto.ArtifactCacheEntity;
 import swiss.trustbroker.sessioncache.repo.ArtifactCacheRepository;
@@ -42,21 +45,24 @@ public class ArtifactStorageService extends AbstractStorageService {
 
 		@Override
 		public void run() {
-			var numEntries = repository.count();
-			var start = clock.instant();
-			log.debug("Start reaping artifacts");
-			var reaped = repository.deleteAllInBatchByExpirationTimestampBefore(Timestamp.from(start));
-			var duration = Duration.between(start, clock.instant()).toMillis();
-			metricsService.gauge(MetricsService.SESSION_LABEL + MetricsService.SAML_LABEL + "artifacts",
-					numEntries - reaped);
-			var msg = String.format(
-					"Completed reaping ArtifactCache in dTms=%d totalArtifacts=%s expiredArtifacts=%d after cleanupInterval=%s",
-					duration, numEntries, reaped, cleanupInterval);
-			if (reaped > 0) {
+			try {
+				var numEntries = repository.count();
+				var start = clock.instant();
+				log.info("Start reaping ArtifactCache...");
+				var reaped = repository.deleteAllInBatchByExpirationTimestampBefore(Timestamp.from(start));
+				var duration = Duration.between(start, clock.instant()).toMillis();
+				metricsService.gauge(MetricsService.SESSION_LABEL + MetricsService.SAML_LABEL + "artifacts",
+						numEntries - reaped);
+				var msg = String.format(
+						"Completed reaping ArtifactCache in dTms=%d totalArtifacts=%s expiredArtifacts=%d after "
+								+ "cleanupInterval=%s",	duration, numEntries, reaped, cleanupInterval);
 				log.info(msg);
 			}
-			else {
-				log.debug(msg);
+			catch (OptimisticLockException | ConcurrencyFailureException ex) {
+				log.info("Skipped ArtifactCache reaper cycle (entries collected by peer already). Details: {}", ex.getMessage());
+			}
+			catch (Exception ex) {
+				GlobalExceptionHandler.logException(ex, null);
 			}
 		}
 	}

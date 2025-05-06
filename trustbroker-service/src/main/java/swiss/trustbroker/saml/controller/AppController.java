@@ -184,9 +184,22 @@ public class AppController extends AbstractSamlController {
 	}, produces = MediaType.APPLICATION_XML_VALUE)
 	@ResponseBody
 	public String handleFederationMetadata(HttpServletRequest request, HttpServletResponse response) {
-		return federationMetadataService.getFederationMetadata();
+		return federationMetadataService.getFederationMetadata(true, true);
 	}
 
+	// RP side only
+	@GetMapping(path = { ApiSupport.SAML_METADATA_URL + "/sp" }, produces = MediaType.APPLICATION_XML_VALUE)
+	@ResponseBody
+	public String handleSpFederationMetadata(HttpServletRequest request, HttpServletResponse response) {
+		return federationMetadataService.getFederationMetadata(false, true);
+	}
+
+	// CP side only
+	@GetMapping(path = { ApiSupport.SAML_METADATA_URL + "/idp" }, produces = MediaType.APPLICATION_XML_VALUE)
+	@ResponseBody
+	public String handleIdpFederationMetadata(HttpServletRequest request, HttpServletResponse response) {
+		return federationMetadataService.getFederationMetadata(true, false);
+	}
 
 	// Use @Endpoint instead? Would require tweaking interceptor chain (see WsTrustEndpoint etc. via Spring EndpointMapping)
 	@PostMapping(path = ApiSupport.ARP_URL)

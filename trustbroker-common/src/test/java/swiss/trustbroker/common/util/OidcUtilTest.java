@@ -90,4 +90,9 @@ class OidcUtilTest {
 		assertThat(clId, nullValue());
 	}
 
+	@Test
+	void testGetBasicAuthorizationHeader() {
+		assertThat(OidcUtil.getBasicAuthorizationHeader("test", "secret"), is("Basic dGVzdDpzZWNyZXQ="));
+	}
+
 }

@@ -18,6 +18,8 @@ package swiss.trustbroker.homerealmdiscovery.controller;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -42,11 +44,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.RequestBuilder;
@@ -71,6 +73,7 @@ import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.DeviceInfoReq;
 import swiss.trustbroker.saml.dto.RpRequest;
 import swiss.trustbroker.saml.dto.UiObject;
+import swiss.trustbroker.saml.dto.UiObjects;
 import swiss.trustbroker.saml.service.AssertionConsumerService;
 import swiss.trustbroker.saml.service.ClaimsProviderService;
 import swiss.trustbroker.saml.service.RelyingPartyService;
@@ -85,7 +88,8 @@ import swiss.trustbroker.util.WebSupport;
 @ExtendWith(SpringExtension.class)
 @WebMvcTest
 @ContextConfiguration(classes = {
-		HrdController.class
+		HrdController.class,
+		ApiSupport.class
 })
 @AutoConfigureMockMvc
 class HrdControllerTest {
@@ -106,43 +110,45 @@ class HrdControllerTest {
 
 	private static final String PROFILE_ID = "id1";
 
-	@MockBean
+	@MockitoBean
 	TrustBrokerProperties trustBrokerProperties;
 
-	@MockBean
+	@MockitoBean
 	SamlValidator samlValidator;
 
-	@MockBean
+	@MockitoBean
 	private AssertionConsumerService assertionConsumerService;
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartyService relyingPartyService;
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartySetupService relyingPartySetupService;
 
-	@MockBean
+	@MockitoBean
 	private ClaimsProviderService claimsProviderService;
 
-	@MockBean
+	@MockitoBean
 	private SsoService ssoService;
 
-	@MockBean
+	@MockitoBean
 	private AnnouncementService announcementService;
 
-	@MockBean
+	@MockitoBean
 	private ProfileSelectionService profileSelectionService;
 
-	@MockBean
+	@MockitoBean
 	private StateCacheService stateCacheService;
 
-	@MockBean
+	@MockitoBean
 	private SamlOutputService samlOutputService;
 
 	@Autowired
 	private WebApplicationContext webApplicationContext;
 
-	@SpyBean
+	@Autowired HrdController controller;
+
+	@MockitoSpyBean
 	private ApiSupport apiSupport;
 
 	private MockMvc mockMvc;
@@ -151,15 +157,16 @@ class HrdControllerTest {
 	public void setup() {
 		SamlInitializer.initSamlSubSystem();
 		this.mockMvc = MockMvcBuilders.webAppContextSetup(this.webApplicationContext).build();
-		this.apiSupport = new ApiSupport(trustBrokerProperties);
 	}
 
 	@Test
 	void getHrdTilesForRpIssuer() throws Exception {
-		var result = RpRequest.builder().uiObjects(List.of(UiObject.builder().urn(CP_ISSUER_ID).build())).build();
+		var uiObjectList = List.of(UiObject.builder().urn(CP_ISSUER_ID).build());
+		var uiObjects = UiObjects.builder().tiles(uiObjectList).build();
+		var result = RpRequest.builder().uiObjects(uiObjects).build();
 		var expectedJson = new ObjectMapper().writeValueAsString(result.getUiObjects());
-		doReturn(result).when(assertionConsumerService).renderUI(eq(RP_ISSUER_ID), eq(URL), any(), any(), eq(null), eq(null));
-		this.mockMvc.perform(get(apiSupport.getHrdRpApi(RP_ISSUER_ID))
+		doReturn(result).when(assertionConsumerService).renderUi(eq(RP_ISSUER_ID), eq(URL), any(), any(), eq(null), eq(null));
+		this.mockMvc.perform(get(apiSupport.getHrdRpApi(RP_ISSUER_ID, AUTHN_REQUEST_ID))
 						.header(HttpHeaders.REFERER, URL))
 				.andExpect(status().isOk())
 				.andExpect(content().json(expectedJson));
@@ -171,7 +178,7 @@ class HrdControllerTest {
 		var stateDataByAuthnReq = buildStateByAuthnReq();
 		handleCheckDeviceInfo(List.of(cpRp), Optional.empty(), stateDataByAuthnReq, false, null, null);
 		verify(stateCacheService).save(stateDataByAuthnReq, HrdController.class.getSimpleName());
-		verify(claimsProviderService).sendSamlToCp(any(), any(), any(), eq(stateDataByAuthnReq), eq(CP_ISSUER_ID));
+		verify(claimsProviderService).sendAuthnRequestToCp(any(), any(), eq(stateDataByAuthnReq), any());
 	}
 
 	@Test
@@ -192,7 +199,7 @@ class HrdControllerTest {
 		// no SSO established, device info not set
 		assertThat(ssoStateData.getDeviceId(), is(nullValue()));
 		verify(stateCacheService, never()).save(ssoStateData, "Test");
-		verify(claimsProviderService).sendSamlToCp(any(), any(), any(), eq(stateDataByAuthnReq), eq(CP_ISSUER_ID));
+		verify(claimsProviderService).sendAuthnRequestToCp(any(), any(), eq(stateDataByAuthnReq), any());
 	}
 
 	@Test
@@ -211,13 +218,14 @@ class HrdControllerTest {
 	void handleCheckDeviceInfoValidSsoStateSingleAccessRequest() throws Exception {
 		var arRedirect = apiSupport.getAccessRequestInitiateApi(AUTHN_REQUEST_ID);
 		var cpRp = ClaimsProviderRelyingParty.builder().build();
+		ClaimsParty claimsParty = buildCp();
 		var ssoStateData = buildSsoState();
 		var stateDataByAuthnReq = buildStateByAuthnReq();
 		handleCheckDeviceInfo(List.of(cpRp), Optional.of(ssoStateData), stateDataByAuthnReq, true, arRedirect, null);
 		verify(stateCacheService, never()).save(stateDataByAuthnReq, "Test");
 		verifyNoInteractions(claimsProviderService);
-		verify(relyingPartyService).performAccessRequestIfRequired(any(), eq(buildRp()), eq(ssoStateData),
-				eq(stateDataByAuthnReq));
+		verify(relyingPartyService).performAccessRequestWithDataRefreshIfRequired(
+				any(), eq(buildRp()), eq(claimsParty),eq(ssoStateData), eq(stateDataByAuthnReq));
 	}
 
 	@Test
@@ -246,8 +254,8 @@ class HrdControllerTest {
 		doReturn(Optional.of(stateDataByAuthnReq)).when(stateCacheService).findBySpId(AUTHN_REQUEST_ID,
 				HrdController.class.getSimpleName());
 		if (ssoStateData.isPresent()) {
-			doReturn(accessRequestRedirect).when(relyingPartyService)
-					.performAccessRequestIfRequired(any(), eq(rp), eq(ssoStateData.get()), eq(stateDataByAuthnReq));
+			doReturn(accessRequestRedirect).when(relyingPartyService).performAccessRequestWithDataRefreshIfRequired(
+					any(), eq(rp), any(), eq(ssoStateData.get()), eq(stateDataByAuthnReq));
 			doReturn(profileSelectionRedirect).when(relyingPartyService).sendAuthnResponseToRpFromState(
 					any(), any(), any(), eq(ssoStateData.get()),
 					eq(stateDataByAuthnReq));
@@ -295,12 +303,16 @@ class HrdControllerTest {
 		this.mockMvc.perform(get(apiSupport.getHrdCpApi(CP_ISSUER_ID, AUTHN_REQUEST_ID)).cookie(cookies))
 				.andExpect(status().isOk())
 				.andExpect(header().doesNotExist(HttpHeaders.LOCATION));
-		verify(claimsProviderService).sendSamlToCpWithMandatoryIds(any(), any(), any(), eq(stateByAuthnReq), eq(CP_ISSUER_ID));
+		verify(claimsProviderService).sendSamlToCpWithMandatoryIds(any(), any(), eq(stateByAuthnReq), any());
 	}
 
 	@Test
 	void handleContinueToRp() throws Exception {
 		var stateByAuthnReq = buildStateByAuthnReq();
+		var cpResponse = CpResponse.builder().build();
+		cpResponse.abort("Responder", Flow.builder().appContinue(true).build());
+		assertTrue(cpResponse.showErrorPage());
+		stateByAuthnReq.setCpResponse(cpResponse);
 		var rp = buildRp();
 		doReturn(stateByAuthnReq).when(stateCacheService)
 				.findMandatoryValidState(AUTHN_REQUEST_ID, HrdController.class.getSimpleName());
@@ -311,6 +323,7 @@ class HrdControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(header().doesNotExist(HttpHeaders.LOCATION));
 		verify(relyingPartyService).sendResponseToRpFromSessionState(any(), any(), any(), any(), any());
+		assertFalse(cpResponse.showErrorPage());
 	}
 
 	@Test
@@ -387,9 +400,34 @@ class HrdControllerTest {
 				.andExpect(content().json(resultJson));
 	}
 
+	@Test
+	void getFlowForSessionId() {
+		var errorUrn = "test:Custom";
+		var errorCode = "custom";
+		var stateData = buildStateByAuthnReq();
+		doReturn(Optional.of(stateData)).when(stateCacheService)
+										.findOptional(SESSION_ID, HrdController.class.getSimpleName());
+		var rp = buildRp();
+		var flowCancel = Flow.builder().id("Cancel").appUrl("dummy").build();
+		var flowBlocked = Flow.builder().id("Blocked").supportPhone("test").build();
+		rp.setFlowPolicies(FlowPolicies.builder().flows(List.of(flowCancel, flowBlocked)).build());
+		doReturn(rp).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(RP_ISSUER_ID, URL, true);
+
+		assertThat(controller.getFlowForSessionId(SESSION_ID, errorCode), is(Optional.empty()));
+		assertThat(controller.getFlowForSessionId(AUTHN_REQUEST_ID, errorCode), is(Optional.empty()));
+		assertThat(controller.getFlowForSessionId(SESSION_ID, "blocked"), is(Optional.of(flowBlocked)));
+
+		var flowError = Flow.builder().id(errorUrn).appRedirectUrl("url").build();
+		var cpResponse = CpResponse.builder().build();
+		stateData.setCpResponse(cpResponse);
+		cpResponse.abort(errorUrn, flowError);
+
+		assertThat(controller.getFlowForSessionId(SESSION_ID, errorCode), is(Optional.of(flowError)));
+	}
+
 	private void mockLookups(RelyingParty rp, ClaimsParty cp, Optional<StateData> ssoState, StateData stateDataByAuthnReq,
 			boolean ssoStateValid) {
-		doReturn(Optional.of(stateDataByAuthnReq)).when(stateCacheService).findBySpId(AUTHN_REQUEST_ID,
+		doReturn(stateDataByAuthnReq).when(stateCacheService).findRequiredBySpId(AUTHN_REQUEST_ID,
 				HrdController.class.getSimpleName());
 		doReturn(rp).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(RP_ISSUER_ID, null);
 		if (cp != null) {
@@ -410,27 +448,23 @@ class HrdControllerTest {
 				.issuer(RP_ISSUER_ID)
 				.referer(URL)
 				.build();
-		var stateData = StateData.builder()
+		return StateData.builder()
 				.id(SESSION_ID)
 				.issuer(CP_ISSUER_ID)
 				.spStateData(spStateData)
 				.build();
-		return stateData;
 	}
 
 	private static StateData buildSsoState() {
-		var ssoStateData = StateData.builder().id(SSO_SESSION_ID).build();
-		return ssoStateData;
+		return StateData.builder().id(SSO_SESSION_ID).build();
 	}
 
 	private static RelyingParty buildRp() {
-		var rp = RelyingParty.builder().id(RP_ISSUER_ID).build();
-		return rp;
+		return RelyingParty.builder().id(RP_ISSUER_ID).build();
 	}
 
 	private static ClaimsParty buildCp() {
-		var cp = ClaimsParty.builder().id(CP_ISSUER_ID).build();
-		return cp;
+		return ClaimsParty.builder().id(CP_ISSUER_ID).build();
 	}
 
 	private static Cookie[] buildCookies() {
@@ -442,8 +476,7 @@ class HrdControllerTest {
 		deviceInfo.setId(AUTHN_REQUEST_ID);
 		deviceInfo.setCpUrn(ApiSupport.encodeUrlParameter(CP_ISSUER_ID));
 		deviceInfo.setRpUrn(ApiSupport.encodeUrlParameter(RP_ISSUER_ID));
-		var json = new ObjectMapper().writeValueAsString(deviceInfo);
-		return json;
+		return new ObjectMapper().writeValueAsString(deviceInfo);
 	}
 
 	private String buildProfileJsonString(String redirectUrl) throws JsonProcessingException {

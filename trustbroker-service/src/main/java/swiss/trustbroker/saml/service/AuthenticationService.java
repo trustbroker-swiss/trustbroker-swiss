@@ -85,9 +85,9 @@ public class AuthenticationService {
 		else if (isSwitchToEnterprise(responseData, trustBrokerProperties)) {
 			// Specific enterprise IdP handling
 			var stateData = assertionConsumerService.requestEnterpriseIdp(responseData);
-			stateData.initiatedViaBinding(responseData.getBinding());
+			stateData.setRequestBinding(responseData.getBinding());
 			log.debug("Switching IDP from={} to={}", stateData.getIssuer(), trustBrokerProperties.getEnterpriseIdpId());
-			claimsProviderService.sendSamlToCpWithMandatoryIds(outputService, request, response, stateData,
+			claimsProviderService.sendSamlToCpWithMandatoryIds(request, response, stateData,
 					trustBrokerProperties.getEnterpriseIdpId());
 		}
 		else {
@@ -131,8 +131,13 @@ public class AuthenticationService {
 		// validate
 		validateBinding(relyingParty, signatureContext.getBinding());
 
-		// SSO enable only if configured, and we do not have load test or urltester running
+		// single CP dispatching))
 		var directCpSelection = HrdSupport.getClaimsProviderHint(httpRequest, trustBrokerProperties);
+		if (directCpSelection == null) {
+			directCpSelection = OpenSamlUtil.extractIdpScoping(authnRequest);
+		}
+
+		// SSO enable only if configured, and we do not have load test or urltester running or a hrd_hint
 		var doSso = doSso(directCpSelection, relyingParty);
 
 		// find state
@@ -176,18 +181,19 @@ public class AuthenticationService {
 		// NOTE: In case of skinny UI or OCC monitoring we drop announcement feature, we keep that UI as minimal as possible
 		var useSkinnyUi = OperationalUtil.useSkinnyUiForLegacyClients(rpRequest, httpRequest, trustBrokerProperties);
 		var skipForMonitoring = OperationalUtil.skipUiFeaturesForAdminAndMonitoringClients(httpRequest, trustBrokerProperties);
-		if (announcementService.showAnnouncements(relyingParty.getAnnouncement()) && useSkinnyUi == null && !skipForMonitoring) {
-			return apiSupport.getAnnouncementsUrl(rpIssuer, authnRequest.getID(), referer);
+		var providerName = authnRequest.getProviderName();
+		if (showAnnouncements(relyingParty, providerName, useSkinnyUi, skipForMonitoring)) {
+			return apiSupport.getAnnouncementsUrl(rpIssuer, authnRequest.getID(), providerName);
 		}
 
 		// get HRD CP dispatching data to display HRD screen or forward to CP
 		if (rpRequest.hasSingleClaimsProvider()) {
-			var claimsProviderUrn = getSingleClaimsProviderUrn(rpRequest);
+			var claimsProviderUrn = rpRequest.getClaimsProviders().get(0).getId();
 			if (doSso) {
 				return handleSingleClaimsProviderSsoRedirect(authnRequest, httpRequest, referer, rpIssuer,
 						relyingParty, stateDataByAuthnReq, claimsProviderUrn);
 			}
-			return handleSingleClaimsProvider(outputService, httpRequest, httpResponse, relyingParty, directCpSelection,
+			return handleSingleClaimsProvider(httpRequest, httpResponse, relyingParty, directCpSelection,
 					stateDataByAuthnReq, claimsProviderUrn);
 		}
 
@@ -196,6 +202,12 @@ public class AuthenticationService {
 		}
 		// see angular routing on home/HRD handling
 		return apiSupport.getHrdUrl(rpIssuer, authnRequest.getID());
+	}
+
+	private boolean showAnnouncements(RelyingParty relyingParty, String providerName,
+			String useSkinnyUi, boolean skipForMonitoring) {
+		return announcementService.showAnnouncements(relyingParty.getAnnouncement(), providerName)
+				&& useSkinnyUi == null && !skipForMonitoring;
 	}
 
 	private static boolean doSso(String directCpSelection, RelyingParty relyingParty) {
@@ -209,18 +221,13 @@ public class AuthenticationService {
 		}
 	}
 
-	private static String getSingleClaimsProviderUrn(RpRequest rpRequest) {
-		var uiObject = rpRequest.getUiObjects().get(0);
-		return uiObject.getUrn();
-	}
-
 	private String skipHrdWithSsoSession(AuthnRequest authnRequest, HttpServletRequest httpRequest, String referer,
 			String rpIssuer, RelyingParty relyingParty, StateData stateData, RpRequest rpRequest) {
 		if (!relyingParty.getSso().skipHrdWithSsoSession()) {
 			log.debug("SSO: For RP rpIssuerId={} not skipping HRD because skipHrdWithSsoSession=false", rpIssuer);
 			return null;
 		}
-		for (var uiObject : rpRequest.getUiObjects()) {
+		for (var uiObject : rpRequest.getUiObjects().getTiles()) {
 			var cpUrn = uiObject.getUrn();
 			var redirectUrl = handleClaimsProviderSso(authnRequest, httpRequest, referer, rpIssuer, relyingParty,
 					cpUrn, stateData);
@@ -248,13 +255,13 @@ public class AuthenticationService {
 		return apiSupport.getHrdUrl(rpIssuer, authnRequest.getID());
 	}
 
-	private String handleSingleClaimsProvider(OutputService outputService,
+	private String handleSingleClaimsProvider(
 			HttpServletRequest httpRequest, HttpServletResponse httpResponse,
 			RelyingParty relyingParty, String directUrlSelection,
 			StateData stateDataByAuthnReq, String claimsProviderUrn) {
 		log.debug("Direct homeRealm='{}' selection for relyingParty='{}' with ssoEnabled={} urltester='{}'",
 				claimsProviderUrn, relyingParty.getId(), relyingParty.isSsoEnabled(), directUrlSelection);
-		claimsProviderService.sendSamlToCpWithMandatoryIds(outputService, httpRequest, httpResponse, stateDataByAuthnReq,
+		claimsProviderService.sendSamlToCpWithMandatoryIds(httpRequest, httpResponse, stateDataByAuthnReq,
 				claimsProviderUrn);
 		return null;
 	}
@@ -286,7 +293,7 @@ public class AuthenticationService {
 
 	private String redirectToSkinnyHRD(RpRequest rpRequest, String skinnyHtml) {
 		var uiObjects = rpRequest.getUiObjects();
-		var pageContent = SkinnyHrd.buildSkinnyHrdPage(uiObjects, skinnyHtml);
+		var pageContent = SkinnyHrd.buildSkinnyHrdPage(uiObjects.getTiles(), skinnyHtml);
 		return apiSupport.getSkinnyHrd(pageContent, rpRequest.getRequestId(), skinnyHtml);
 	}
 

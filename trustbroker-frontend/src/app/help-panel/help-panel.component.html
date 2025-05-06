@@ -12,7 +12,7 @@
  You should have received a copy of the GNU Affero General Public License along with this program.
  If not, see <https://www.gnu.org/licenses/>.
 -->
-<div class="{{ theme.name }}" role="tablist">
+<div class="{{ theme.name }}">
 	<div class="helperSidebarHeadCard">
 		<h2 class="helperSidebarTitleContainer w-100">
 			<span class="helperSidebarTitle"> {{ "trustbroker.help.title" | translate }}</span>
@@ -29,7 +29,7 @@
 		</button>
 	</div>
 	<div class="helperSidebarContent">
-		<mat-expansion-panel togglePosition="before" role="tab">
+		<mat-expansion-panel togglePosition="before">
 			<mat-expansion-panel-header>
 				<mat-panel-title>
 					{{ "trustbroker.help.generic.title" | translate }}
@@ -38,14 +38,16 @@
 			<p role="tabpanel" [innerHTML]="'trustbroker.help.generic.text' | translate | safeMarkup"></p>
 		</mat-expansion-panel>
 	</div>
-	<div *ngFor="let idpObject of idpObjects" class="helperSidebarContent">
-		<mat-expansion-panel togglePosition="before" role="tab">
-			<mat-expansion-panel-header>
-				<mat-panel-title>
-					<p [innerHTML]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title } | safeMarkup"></p>
-				</mat-panel-title>
-			</mat-expansion-panel-header>
-			<p role="tabpanel" [innerHTML]="'trustbroker.help.' + idpObject.name + '.text' | translate | safeMarkup"></p>
-		</mat-expansion-panel>
-	</div>
+	@for (idpObject of idpObjects; track idpObject) {
+		<div class="helperSidebarContent">
+			<mat-expansion-panel togglePosition="before">
+				<mat-expansion-panel-header>
+					<mat-panel-title>
+						<p [innerHTML]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title } | safeMarkup"></p>
+					</mat-panel-title>
+				</mat-expansion-panel-header>
+				<p role="tabpanel" [innerHTML]="'trustbroker.help.' + idpObject.name + '.text' | translate | safeMarkup"></p>
+			</mat-expansion-panel>
+		</div>
+	}
 </div>

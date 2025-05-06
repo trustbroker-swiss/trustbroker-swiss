@@ -29,9 +29,11 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.apache.commons.collections.CollectionUtils;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import swiss.trustbroker.common.util.UrlAcceptor;
 import swiss.trustbroker.common.util.WebUtil;
+import swiss.trustbroker.mapping.dto.QoaConfig;
 import swiss.trustbroker.oidc.OidcSecurityConfiguration;
 
 /**
@@ -71,9 +73,18 @@ public class OidcClient implements Serializable {
 	 * Legacy Policy Enforcement Point (PEP) QOA mapping policy.
 	 * <br/>
 	 * Fallback: Global defaultUsePepQoaPolicy
- 	 */
+	 */
 	@XmlAttribute(name = "usePepQoa")
 	private String usePepQoa;
+
+
+	/**
+	 * OpenID endpoints a single CP side OIDC client uses for federated login.
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlElement(name = "ProtocolEndpoints")
+	private ProtocolEndpoints protocolEndpoints;
 
 	/**
 	 * Permitted redirect URLs for this client.
@@ -163,4 +174,11 @@ public class OidcClient implements Serializable {
 				|| (realm != null && realm.equals(incomingRealm)); // site working with realms
 	}
 
+	public QoaConfig getQoaConfig() {
+		return new QoaConfig(getQoa(), getId());
+	}
+
+	public boolean hasScopes() {
+		return scopes != null && CollectionUtils.isNotEmpty(scopes.getScopeList());
+	}
 }

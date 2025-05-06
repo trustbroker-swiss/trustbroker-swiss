@@ -24,7 +24,6 @@ import lombok.extern.slf4j.Slf4j;
 import net.shibboleth.shared.xml.SerializeSupport;
 import org.opensaml.messaging.encoder.MessageEncodingException;
 import org.opensaml.saml.common.xml.SAMLConstants;
-import org.opensaml.saml.saml2.core.NameIDType;
 import org.opensaml.saml.saml2.metadata.ArtifactResolutionService;
 import org.opensaml.saml.saml2.metadata.AssertionConsumerService;
 import org.opensaml.saml.saml2.metadata.AuthnAuthorityDescriptor;
@@ -39,8 +38,9 @@ import org.opensaml.saml.saml2.metadata.SingleSignOnService;
 import org.opensaml.security.credential.Credential;
 import org.opensaml.security.credential.UsageType;
 import org.opensaml.xmlsec.signature.KeyInfo;
-import org.opensaml.xmlsec.signature.Signature;
 import org.opensaml.xmlsec.signature.support.SignatureConstants;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Element;
 import swiss.trustbroker.common.config.KeystoreProperties;
@@ -57,32 +57,36 @@ import swiss.trustbroker.util.ApiSupport;
 @Slf4j
 public class FederationMetadataService {
 
-	static final List<String> SUPPORTED_SAML_BINDINGS = List.of(
-			SAMLConstants.SAML2_POST_BINDING_URI,
-			SAMLConstants.SAML2_REDIRECT_BINDING_URI,
-			SAMLConstants.SAML2_ARTIFACT_BINDING_URI);
-
-	static final List<String> SUPPORTED_NAMEID_FORMATS = List.of(NameIDType.PERSISTENT, NameIDType.TRANSIENT);
-
-	static final String SUPPORTED_PROTOCOL = SAMLConstants.SAML20P_NS;
-
 	private final TrustBrokerProperties trustBrokerProperties;
 
-	private final Credential signer;
+	private final RelyingPartySetupService relyingPartySetupService;
 
-	private final List<Credential> allSigners;
+	private Credential signer;
 
-	private final List<Credential> cpEncryptionCreds;
+	private List<Credential> allSigners;
 
-	private final List<Credential> rpEncryptionCreds;
+	private List<Credential> cpEncryptionCreds;
+
+	private List<Credential> rpEncryptionCreds;
 
 	FederationMetadataService(TrustBrokerProperties trustBrokerProperties, RelyingPartySetupService relyingPartySetupService) {
 		this.trustBrokerProperties = trustBrokerProperties;
+		this.relyingPartySetupService = relyingPartySetupService;
+		// initialized onApplicationEvent
+		this.signer = null;
+		this.allSigners = null;
+		this.cpEncryptionCreds = null;
+		this.rpEncryptionCreds = null;
+	}
 
-		// signer
+	@EventListener(ContextRefreshedEvent.class)
+	public void onApplicationEvent() {
+		// signing
 		signer = CredentialReader.createCredential(trustBrokerProperties.getSigner()); // sign
 		log.info("Loaded active metaDataSignerTrust={}", trustBrokerProperties.getSigner().getSignerCert());
 		allSigners = loadTrustableCerts(trustBrokerProperties.getRolloverSigner()); // trust
+
+		// encryption
 		cpEncryptionCreds = relyingPartySetupService.getCpsEncryptionTrustCredentials(); // cp credentials
 		rpEncryptionCreds = relyingPartySetupService.getRpsEncryptionCredentials(); // rp credentials
 	}
@@ -113,9 +117,9 @@ public class FederationMetadataService {
 		return ret;
 	}
 
-	public String getFederationMetadata() {
+	public String getFederationMetadata(boolean idpSide, boolean spSide) {
 		try {
-			EntityDescriptor entityDescriptor = generateMetadata();
+			EntityDescriptor entityDescriptor = generateMetadata(idpSide, spSide);
 			Element domDescriptor = SamlUtil.marshallMessage(entityDescriptor);
 			SamlUtil.removeNewLinesFromCertificates(domDescriptor);
 			return SerializeSupport.prettyPrintXML(domDescriptor);
@@ -125,45 +129,59 @@ public class FederationMetadataService {
 		}
 	}
 
-	public EntityDescriptor generateMetadata() {
+	public EntityDescriptor generateMetadata(boolean idpSide, boolean spSide) {
 		EntityDescriptor descriptor = OpenSamlUtil.buildSamlObject(EntityDescriptor.class);
 		UUID uuid = UUID.randomUUID();
 		descriptor.setID("_" + uuid);
 		descriptor.setEntityID(trustBrokerProperties.getIssuer());
 
-		IDPSSODescriptor ssoDescriptor = buildIdpSsoDescriptor();
-		if (ssoDescriptor != null) {
-			descriptor.getRoleDescriptors().add(ssoDescriptor);
+		var idpDescriptor = buildIdpSsoDescriptor();
+		if (idpDescriptor != null && idpSide) {
+			descriptor.getRoleDescriptors().add(idpDescriptor);
 		}
 
-		SPSSODescriptor spssoDescriptor = buildSpSsoDescriptor();
-		if (spssoDescriptor != null) {
-			descriptor.getRoleDescriptors().add(spssoDescriptor);
+		var spDescriptor = buildSpSsoDescriptor();
+		if (spDescriptor != null && spSide) {
+			descriptor.getRoleDescriptors().add(spDescriptor);
 		}
 
 		var authnAuthorityDescriptor = buildAuthnAuthorityDescriptor();
-		descriptor.getRoleDescriptors().add(authnAuthorityDescriptor);
+		if (authnAuthorityDescriptor != null) {
+			descriptor.getRoleDescriptors().add(authnAuthorityDescriptor);
+		}
 
 		// NOTE: Currently all signers use the same cert so the following is not really an issue but with multiple signers
 		// We use sha256 default signing here to not worsen the problem by just picking an RYP setup for key material and config
-		Signature signature = SamlFactory.prepareSignableObject(
+		var signature = SamlFactory.prepareSignableObject(
 				descriptor, signer, SignatureConstants.ALGO_ID_SIGNATURE_RSA_SHA256, null, null);
 		SamlUtil.signSamlObject(descriptor, signature);
 		return descriptor;
 	}
 
 	protected IDPSSODescriptor buildIdpSsoDescriptor() {
-		var consumerUrl = trustBrokerProperties.getSamlConsumerUrl();
+		var samlConfig = trustBrokerProperties.getSaml();
+		if (samlConfig == null || !samlConfig.isIdpMetadataEnabled()) {
+			return null;
+		}
+		var consumerUrl = samlConfig.getConsumerUrl();
 		var idpDescriptor = OpenSamlUtil.buildSamlObject(IDPSSODescriptor.class);
 		idpDescriptor.setWantAuthnRequestsSigned(true);
-		idpDescriptor.addSupportedProtocol(SUPPORTED_PROTOCOL);
-		for (String binding : SUPPORTED_SAML_BINDINGS) {
-			idpDescriptor.getSingleLogoutServices().add(getSingleLogoutService(consumerUrl, binding));
-			idpDescriptor.getSingleSignOnServices().add(getSingleSignOnService(consumerUrl, binding));
+		idpDescriptor.addSupportedProtocol(SAMLConstants.SAML20P_NS);
+		for (String binding : samlConfig.getBindings()) {
+			idpDescriptor.getSingleSignOnServices()
+						 .add(getSingleSignOnService(consumerUrl, binding));
+			if (samlConfig.isIdpLogoutMetadataEnabled()) {
+				idpDescriptor.getSingleLogoutServices()
+							 .add(getSingleLogoutService(consumerUrl, binding));
+			}
 		}
-		idpDescriptor.getArtifactResolutionServices().add(getArtifactResolutionService());
-		for (String nameIdFormat : SUPPORTED_NAMEID_FORMATS) {
-			idpDescriptor.getNameIDFormats().add(getNameIdFormat(nameIdFormat));
+		if (samlConfig.getArtifactResolution() != null) {
+			idpDescriptor.getArtifactResolutionServices()
+						 .add(getArtifactResolutionService());
+		}
+		for (String nameIdFormat : samlConfig.getIdpNameFormats()) {
+			idpDescriptor.getNameIDFormats()
+						 .add(getNameIdFormat(nameIdFormat));
 		}
 		allSigners.forEach(cred -> idpDescriptor.getKeyDescriptors().add(getKeyDescriptor(cred, UsageType.SIGNING)));
 		if (!cpEncryptionCreds.isEmpty()) {
@@ -187,25 +205,32 @@ public class FederationMetadataService {
 	}
 
 	protected SPSSODescriptor buildSpSsoDescriptor() {
-		var consumerURL = trustBrokerProperties.getSamlConsumerUrl();
-		var spssoDescriptor = OpenSamlUtil.buildSamlObject(SPSSODescriptor.class);
-		spssoDescriptor.setAuthnRequestsSigned(true);
-		spssoDescriptor.setWantAssertionsSigned(true);
-		spssoDescriptor.addSupportedProtocol(SUPPORTED_PROTOCOL);
-		for (String binding : SUPPORTED_SAML_BINDINGS) {
-			spssoDescriptor.getSingleLogoutServices().add(getSingleLogoutService(consumerURL, binding));
-			var index = spssoDescriptor.getAssertionConsumerServices().size();
-			spssoDescriptor.getAssertionConsumerServices().add(getAssertionConsumerService(consumerURL, binding, index));
+		var samlConfig = trustBrokerProperties.getSaml();
+		if (samlConfig == null || !samlConfig.isSpMetadataEnabled()) {
+			return null;
 		}
-		spssoDescriptor.getArtifactResolutionServices().add(getArtifactResolutionService());
-		for (String nameIdFormat : SUPPORTED_NAMEID_FORMATS) {
-			spssoDescriptor.getNameIDFormats().add(getNameIdFormat(nameIdFormat));
+		var consumerUrl = samlConfig.getConsumerUrl();
+		var spDescriptor = OpenSamlUtil.buildSamlObject(SPSSODescriptor.class);
+		spDescriptor.setAuthnRequestsSigned(true);
+		spDescriptor.setWantAssertionsSigned(true);
+		spDescriptor.addSupportedProtocol(SAMLConstants.SAML20P_NS);
+		for (String binding : samlConfig.getBindings()) {
+			var index = spDescriptor.getAssertionConsumerServices().size();
+			spDescriptor.getAssertionConsumerServices().add(getAssertionConsumerService(consumerUrl, binding, index));
+			if (samlConfig.isSpLogoutMetadataEnabled()) {
+				spDescriptor.getSingleLogoutServices()
+							.add(getSingleLogoutService(consumerUrl, binding));
+			}
 		}
-		allSigners.forEach(cred -> spssoDescriptor.getKeyDescriptors().add(getKeyDescriptor(cred, UsageType.SIGNING)));
+		spDescriptor.getArtifactResolutionServices().add(getArtifactResolutionService());
+		for (String nameIdFormat : samlConfig.getSpNameFormats()) {
+			spDescriptor.getNameIDFormats().add(getNameIdFormat(nameIdFormat));
+		}
+		allSigners.forEach(cred -> spDescriptor.getKeyDescriptors().add(getKeyDescriptor(cred, UsageType.SIGNING)));
 		if (!rpEncryptionCreds.isEmpty()) {
-			rpEncryptionCreds.forEach(cred -> spssoDescriptor.getKeyDescriptors().add(getKeyDescriptor(cred, UsageType.ENCRYPTION)));
+			rpEncryptionCreds.forEach(cred -> spDescriptor.getKeyDescriptors().add(getKeyDescriptor(cred, UsageType.ENCRYPTION)));
 		}
-		return spssoDescriptor;
+		return spDescriptor;
 	}
 
 	private static KeyDescriptor getKeyDescriptor(Credential credential, UsageType usageType) {
@@ -239,8 +264,11 @@ public class FederationMetadataService {
 	}
 
 	private AuthnAuthorityDescriptor buildAuthnAuthorityDescriptor() {
+		if (trustBrokerProperties.getWstrust() == null || !trustBrokerProperties.getWstrust().isEnabled()) {
+			return null;
+		}
 		AuthnAuthorityDescriptor authnAuthorityDescriptor = OpenSamlUtil.buildSamlObject(AuthnAuthorityDescriptor.class);
-		authnAuthorityDescriptor.addSupportedProtocol(SUPPORTED_PROTOCOL);
+		authnAuthorityDescriptor.addSupportedProtocol(SAMLConstants.SAML20P_NS);
 		authnAuthorityDescriptor.getAuthnQueryServices().add(getAuthnQueryService());
 		return authnAuthorityDescriptor;
 	}

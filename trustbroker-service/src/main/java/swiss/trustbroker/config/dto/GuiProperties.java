@@ -17,6 +17,8 @@ package swiss.trustbroker.config.dto;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -67,6 +69,24 @@ public class GuiProperties {
 	private List<GuiFeatures> features = new ArrayList<>();
 
 	/**
+	 * Banners.
+	 *
+	 * @since 1.9.0
+	 */
+	@Builder.Default
+	private List<Banner> banners = new ArrayList<>();
+
+	/**
+	 * Limit the number of banners shown on HRD.
+	 * <br/>
+	 * For usability reasons, the area consumed by banners should be limited, so the number should be very small.
+	 *
+	 * @since 1.9.0
+	 * @see Banner#getOrder()
+	 */
+	private Integer maxBanners;
+
+	/**
 	 * Attributes for the cookie that stores the user's theme (if there is a theme selector).
 	 */
 	@Builder.Default
@@ -77,5 +97,35 @@ public class GuiProperties {
 	 */
 	@Builder.Default
 	private CookieProperties languageCookie = new CookieProperties();
+
+	/**
+	 * @param name
+	 * @return Banner with name if defined.
+	 */
+	public Optional<Banner> getBanner(String name) {
+		if (name == null) {
+			return Optional.empty();
+		}
+		return banners.stream()
+				.filter(banner -> Objects.equals(banner.getName(), name))
+				.findFirst();
+	}
+
+	/**
+	 * @return all global banners
+	 */
+	public List<Banner> getGlobalBanners() {
+		return banners.stream()
+				.filter(Banner::isGlobal)
+				.toList();
+	}
+
+	/**
+	 * @return true if the feature is enabled.
+	 */
+	@SuppressWarnings("java:S2250") // small List of enum values, linear search is no issue
+	public boolean hasFeature(GuiFeatures feature) {
+		return features.contains(feature);
+	}
 
 }

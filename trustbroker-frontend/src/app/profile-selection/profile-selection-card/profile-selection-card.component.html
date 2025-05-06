@@ -30,7 +30,9 @@
 			{{ "trustbroker.profile.applications" | translate }}: <span>{{ applications }}</span>
 		</p>
 	</div>
-	<button *ngIf="showButton" mat-flat-button color="primary" (click)="onClick(id)" (touchend)="onClick(id)">
-		<span>{{ "trustbroker.profile.button" | translate }}</span>
-	</button>
+	@if (showButton) {
+		<button mat-flat-button color="primary" (click)="onClick(id)" (touchend)="onClick(id)">
+			<span>{{ "trustbroker.profile.button" | translate }}</span>
+		</button>
+	}
 </div>

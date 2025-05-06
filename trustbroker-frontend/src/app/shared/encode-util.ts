@@ -26,9 +26,9 @@ export class EncodeUtil {
 			// NOSONAR
 			// console.debug('[EncodeUtil] Encoded fingerprint:', result);
 			return result;
-		} catch (ex) {
+		} catch (_ex) {
 			// NOSONAR
-			// console.debug('[EncodeUtil] Could not encode fingerprint', ex);
+			// console.debug('[EncodeUtil] Could not encode fingerprint', _ex);
 			return '';
 		}
 	}

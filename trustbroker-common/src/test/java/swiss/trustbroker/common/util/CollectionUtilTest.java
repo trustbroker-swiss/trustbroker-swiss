@@ -17,14 +17,20 @@ package swiss.trustbroker.common.util;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.sameInstance;
 
+import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class CollectionUtilTest {
 
@@ -48,7 +54,6 @@ class CollectionUtilTest {
 		assertThat(CollectionUtil.asList(list), is(sameInstance(list)));
 	}
 
-
 	@Test
 	void asMap() {
 		var key = "key";
@@ -58,6 +63,89 @@ class CollectionUtilTest {
 		assertThat(CollectionUtil.asMap(null, null, map), is(sameInstance(map)));
 		assertThat(CollectionUtil.asMap(key, value, map), is(sameInstance(map)));
 		assertThat(CollectionUtil.asMap(key, value, oldValue), is(Map.of(key, value)));
+	}
+
+	@Test
+	void addToListIfNotExist() {
+		assertThat(CollectionUtil.addToListIfNotExist(List.of(1, 2, 4, 6), List.of(3, 4, 5, 6)), is(List.of(1, 2, 4, 6, 3, 5)));
+	}
+
+	@Test
+	void toStringList() {
+		assertThat(CollectionUtil.toStringList(null, Object::toString), is(nullValue()));
+
+		List<Boolean> list = new ArrayList<>(List.of(Boolean.TRUE, Boolean.FALSE));
+		list.add(null);
+
+		var result = CollectionUtil.toStringList(list, Object::toString);
+
+		List<String> expected = new ArrayList<>(List.of("true", "false"));
+		expected.add(null);
+		assertThat(result, is(expected));
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void findListByPredicate(List<String> values, List<String> expected, Optional<String> expectedSingle) {
+		var result = CollectionUtil.findListByPredicate(values, CollectionUtilTest::isMatching);
+		assertThat(result, is(expected));
+		var single = CollectionUtil.findSingleValueByPredicate(values, CollectionUtilTest::isMatching);
+		assertThat(single, is(expectedSingle));
+	}
+
+	static Object[][] findListByPredicate() {
+		return new Object[][] {
+				{ null, Collections.emptyList(), Optional.empty() },
+				{
+					List.of("drop1", "keep1", "drop2", "keep2", "drop3"),
+					List.of("keep1", "keep2"), Optional.of("keep1")
+				}
+		};
+	}
+
+	private static boolean isMatching(String value) {
+		return value.startsWith("keep");
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void getSingleValue(List<String> values, String expected) {
+		assertThat(CollectionUtil.getSingleValue(values, "test"), is(expected));
+	}
+
+	static Object[][] getSingleValue() {
+		return new Object[][] {
+				{ null, null },
+				{ Collections.emptyList(), null },
+				{ List.of("Test"), "Test" }
+		};
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void getSingleValueFromMap(Optional<Map.Entry<String, List<String>>> entry, String expected) {
+		assertThat(CollectionUtil.getSingleValue(entry), is(expected));
+	}
+
+	static Object[][] getSingleValueFromMap() {
+		return new Object[][] {
+				{ Optional.empty(), null },
+				{ Optional.of(new AbstractMap.SimpleEntry<>("key", Collections.emptyList())), null },
+				{ Optional.of(new AbstractMap.SimpleEntry<>("key", List.of("value1", "value2"))), "value1" }
+		};
+	}
+
+	@Test
+	void getKey() {
+		assertThat(CollectionUtil.getKey(Optional.empty()), is(nullValue()));
+		assertThat(CollectionUtil.getKey(Optional.of(new AbstractMap.SimpleEntry<>("key", "value"))), is("key"));
+	}
+
+	@Test
+	void getList() {
+		assertThat(CollectionUtil.getList(Optional.empty()), is(Collections.emptyList()));
+		List<String> value = List.of("value");
+		assertThat(CollectionUtil.getList(Optional.of(new AbstractMap.SimpleEntry<>("key", value))), is(value));
 	}
 
 }

@@ -102,6 +102,32 @@ Broken configurations are ignored for resilience.
 include::../../../../xtb-gitops-demo/trustbroker-inventories/DEMO/definition/SetupRP_SAML-Demo.xml[]
 ----
 
+== Qoa Setup
+
+XTB can do Qoa (acr) checking and enforcement mapping authentication context classes on CP and RP side.
+
+The Qoa model is configured in 3 areas:
+- A global model can be defined in the trustbroker.config.qoa section so the SetupRP/SetupCP Qoa sections do not need to define
+the order number (specifying which ACClass is stronger than another).
+- SetupRP defines defaults an RP requires (assuming default comparison type exact). This list is used when the RP does not send
+any requirements or it's used to validate incoming requirements.
+- SetupCP defines what the federated IdP supports and is used for outbound mapping (using the internal order numbers) and also
+to validate, what the CP returns.
+
+RP Qoa example (validating/mapping inbound acr value and mapping back outbound values):
+[source,xml]
+----
+include::../../../../xtb-gitops-demo/trustbroker-inventories/DEMO/definition/SetupRP_QOA-Demo.xml[]
+----
+
+CP Qoa example (mapping inbound acr values and validating/mapping outbound values):
+[source,xml]
+----
+include::../../../../xtb-gitops-demo/trustbroker-inventories/DEMO/definition/SetupCP_SAML-Mock-2.xml[]
+----
+
+
+
 == PKI Setup
 
 === OIDC

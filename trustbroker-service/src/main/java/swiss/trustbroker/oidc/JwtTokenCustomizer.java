@@ -17,12 +17,13 @@ package swiss.trustbroker.oidc;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import com.nimbusds.jose.HeaderParameterNames;
@@ -45,7 +46,7 @@ import org.springframework.security.oauth2.server.authorization.token.OAuth2Toke
 import org.springframework.security.saml2.provider.service.authentication.Saml2Authentication;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
-import swiss.trustbroker.api.qoa.service.QualityOfAuthenticationService;
+import swiss.trustbroker.api.saml.dto.DestinationType;
 import swiss.trustbroker.audit.dto.AuditDto;
 import swiss.trustbroker.audit.dto.EventType;
 import swiss.trustbroker.audit.service.AuditService;
@@ -59,6 +60,9 @@ import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
+import swiss.trustbroker.mapping.dto.QoaConfig;
+import swiss.trustbroker.mapping.service.ClaimsMapperService;
+import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.oidc.session.HttpExchangeSupport;
 import swiss.trustbroker.oidc.session.OidcSessionSupport;
 import swiss.trustbroker.saml.dto.CpResponse;
@@ -76,9 +80,11 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 
 	private final ScriptService scriptService;
 
+	private final ClaimsMapperService claimsMapperService;
+
 	private final AuditService auditService;
 
-	private final QualityOfAuthenticationService qoaService;
+	private final QoaMappingService qoaService;
 
 	private final JWKSource<SecurityContext> jwkSource;
 
@@ -96,7 +102,8 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		var relyingParty = relyingPartyDefinitions.getRelyingPartyByOidcClientId(
 				authorization.getRegisteredClientId(), null, properties, false);
 		var cpResponse = setCpResponseAttributes(context, authorization, relyingParty);
-		var client = relyingPartyDefinitions.getOidcClientConfigById(authorization.getRegisteredClientId(), properties);
+		var clientId = authorization.getRegisteredClientId();
+		var client = relyingPartyDefinitions.getOidcClientConfigById(clientId, properties);
 
 		addTokenClaims(cpResponse, context);
 
@@ -106,7 +113,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 			var response = getResponse(saml2Response);
 			conversationId = response.getInResponseTo();
 			addAuthTimeClaim(cpResponse, response); // from original SAML Response Assertion
-			addAcrClaim(cpResponse, response, client); // from original SAML Response Assertion
+			addAcrClaim(cpResponse, response, client, relyingParty); // from original SAML Response Assertion
 			addSidClaim(context.getPrincipal(), cpResponse);
 		}
 
@@ -136,8 +143,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		scriptService.processRpOnToken(cpResponse, relyingParty.getId(), null);
 
 		// computed expiration
-		if (OidcParameterNames.ID_TOKEN.equals(context.getTokenType()
-													  .getValue())) {
+		if (OidcParameterNames.ID_TOKEN.equals(context.getTokenType().getValue())) {
 			addExpiresClaim(cpResponse, client);
 		}
 
@@ -152,7 +158,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		setTypeHeader(context);
 
 		// audit
-		auditTokenClaims(context, kid, cpResponse, conversationId);
+		auditTokenClaims(clientId, context, kid, cpResponse, conversationId);
 	}
 
 	private void addExpiresClaim(CpResponse cpResponse, Optional<OidcClient> client) {
@@ -170,11 +176,9 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 	}
 
 	private static void addScopeClaim(CpResponse cpResponse) {
-		var scope = cpResponse.getClaims()
-							  .get(OidcUtil.OIDC_SCOPE);
+		var scope = cpResponse.getClaims().get(OidcUtil.OIDC_SCOPE);
 		if (scope instanceof Collection<?> scopes) {
-			var scopeList = Arrays.stream(scopes.toArray())
-					.toList();
+			var scopeList = Arrays.stream(scopes.toArray()).toList();
 			var scopeClaim = OidcConfigurationUtil.getStringValueOfOidcClaim(scopeList);
 			if (scopeClaim != null) {
 				cpResponse.setClaim(OidcUtil.OIDC_SCOPE, scopeClaim);
@@ -207,7 +211,8 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 			   });
 	}
 
-	private void auditTokenClaims(JwtEncodingContext context, String kid, CpResponse cpResponse, String conversationId) {
+	private void auditTokenClaims(String clientId, JwtEncodingContext context, String kid,
+			CpResponse cpResponse, String conversationId) {
 		// OIDC claims in data section
 		var auditDtoBuilder = new OutboundAuditMapper(properties);
 		context.getClaims()
@@ -242,8 +247,9 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 							   .equals(OAuth2TokenType.ACCESS_TOKEN) ?
 				EventType.OIDC_TOKEN : EventType.OIDC_IDTOKEN;
 		auditDto.setEventType(tokenType);
+		auditDto.setSide(DestinationType.RP.getLabel());
 
-		auditDto.setOidcClientId(cpResponse.getOidcClientId());
+		auditDto.setOidcClientId(clientId);
 
 		auditService.logOutboundFlow(auditDto);
 	}
@@ -389,7 +395,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		return response;
 	}
 
-	private void addAcrClaim(CpResponse cpResponse, Response response, Optional<OidcClient> oidcClient) {
+	private void addAcrClaim(CpResponse cpResponse, Response response, Optional<OidcClient> oidcClient, RelyingParty relyingParty) {
 		if (!isEnabledTokenClaim(IdTokenClaimNames.ACR)) {
 			return;
 		}
@@ -398,19 +404,28 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		}
 
 		var useLegacyQoa = getLegacyQoaFlag(oidcClient);
+		var qoaConfig = getClientQoaConfig(oidcClient, relyingParty);
 
-		var authnContextClassRefs = new ArrayList<String>();
+		var authnContextClassRefs = new HashSet<String>();
 		for (var assertion : response.getAssertions()) {
 			for (var authnStatement : assertion.getAuthnStatements()) {
-				addContextClassRef(useLegacyQoa, authnContextClassRefs, authnStatement);
+				addContextClassRef(useLegacyQoa, authnContextClassRefs, authnStatement, qoaConfig);
 			}
 		}
 		if (authnContextClassRefs.size() == 1) {
-			cpResponse.setClaim(IdTokenClaimNames.ACR, authnContextClassRefs.get(0)); // STRING
+			cpResponse.setClaim(IdTokenClaimNames.ACR, authnContextClassRefs.iterator().next()); // STRING
 		}
 		else if (authnContextClassRefs.size() > 1) {
 			cpResponse.setClaim(IdTokenClaimNames.ACR, authnContextClassRefs); // LIST
 		}
+	}
+
+	private static QoaConfig getClientQoaConfig(Optional<OidcClient> oidcClient, RelyingParty relyingParty) {
+		if (oidcClient.isPresent() && oidcClient.get().getQoa() != null) {
+			return oidcClient.get().getQoaConfig();
+		}
+
+		return relyingParty.getQoaConfig();
 	}
 
 	private String getLegacyQoaFlag(Optional<OidcClient> oidcClient) {
@@ -424,21 +439,23 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		return useLegacyQoa;
 	}
 
-	private void addContextClassRef(String legacyQoaPolicy, List<String> authnContextClassRefs,
-			AuthnStatement authnStatement) {
+	private void addContextClassRef(String legacyQoaPolicy, Set<String> authnContextClassRefs,
+			AuthnStatement authnStatement, QoaConfig qoaConfig) {
 		var authContext = authnStatement.getAuthnContext();
 		if (authContext == null || authContext.getAuthnContextClassRef() == null ||
-				authContext.getAuthnContextClassRef()
-						   .getURI() == null) {
+				authContext.getAuthnContextClassRef().getURI() == null) {
 			return;
 		}
-		var contextQoa = authContext.getAuthnContextClassRef()
-									.getURI();
+
+		String contextQoa = authContext.getAuthnContextClassRef().getURI();
+		var contextQoas = List.of(contextQoa);
+
 		if (legacyQoaPolicy != null) {
-			contextQoa = qoaService.extractPepQoaFromAuthLevel(contextQoa, legacyQoaPolicy)
-								   .getName();
+			contextQoas = qoaService.extractPepQoaFromAuthLevel(contextQoa, qoaConfig, legacyQoaPolicy);
+
 		}
-		authnContextClassRefs.add(contextQoa);
+
+		authnContextClassRefs.addAll(contextQoas);
 	}
 
 	// Spring JwtGenerator sets it for ID_TOKEN only
@@ -520,8 +537,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		// transform SAML to OIDC based on required definition (includes oidcMapper execution)
 		// Uses a Definition/Object map, so we can invoke script hooks to compute derived OIDC claims
 		var preComputedClaims = OidcConfigurationUtil.computeOidcClaims(samlAttributesFromSpring, definitionsFromConfig,
-				scriptService, properties.getOidc()
-										 .isAddEidStandardClaims(), oidcClient.orElse(null));
+				claimsMapperService, properties.getOidc().isAddEidStandardClaims(), oidcClient.orElse(null));
 
 		// allow manipulations before this goes out to clients, scripts can:
 		// - manipulate, add or remove claims

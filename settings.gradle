@@ -35,6 +35,7 @@ include 'trustbroker-wstrust-service'
 include 'trustbroker-frontend'
 include 'trustbroker-application'
 include 'trustbroker-samlmock'
+include 'trustbroker-oidcmock'
 include 'trustbroker-docs'
 // plus 'trustbroker-install'
 

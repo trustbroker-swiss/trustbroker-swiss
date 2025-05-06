@@ -33,6 +33,7 @@ import org.springframework.security.web.header.writers.frameoptions.XFrameOption
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.oidc.OidcFrameAncestorHandler;
+import swiss.trustbroker.util.ApiSupport;
 
 class OidcTxResponseWrapperTest {
 
@@ -48,6 +49,9 @@ class OidcTxResponseWrapperTest {
 	private OidcFrameAncestorHandler oidcFrameAncestorHandler;
 
 	@Mock
+	private ApiSupport apiSupport;
+
+	@Mock
 	private RelyingPartyDefinitions definitions;
 
 	private OidcTxResponseWrapper oidcTxResponseWrapper;
@@ -58,7 +62,8 @@ class OidcTxResponseWrapperTest {
 		properties = new TrustBrokerProperties();
 		request = new MockHttpServletRequest();
 		response = new MockHttpServletResponse();
-		oidcTxResponseWrapper = new OidcTxResponseWrapper(request, response, definitions, properties, oidcFrameAncestorHandler);
+		oidcTxResponseWrapper = new OidcTxResponseWrapper(request, response, definitions, properties, apiSupport,
+				oidcFrameAncestorHandler);
 	}
 
 	@Test

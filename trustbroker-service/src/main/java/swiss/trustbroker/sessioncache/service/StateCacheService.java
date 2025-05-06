@@ -33,6 +33,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import swiss.trustbroker.common.exception.ErrorCode;
+import swiss.trustbroker.common.exception.ErrorMarker;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.tracing.TraceSupport;
@@ -183,6 +185,10 @@ public class StateCacheService {
 			return ret;
 		}
 		catch (JsonProcessingException ex) {
+			// possible cause: serialization compatibility issues (removed fields etc.)
+			log.error("State stateId={} could not be extracted, invalidating: actor={} cause={}",
+					stateEntity.getId(), actor, ex.getMessage());
+			tryInvalidate(stateEntity, actor);
 			throw new TechnicalException(String.format(
 					"Unable to convert JSON to stateData in call from actor=%s - Details: stateId=%s exceptionMsg=%s",
 					actor, stateEntity.getId(), ex.getMessage()), ex);
@@ -221,12 +227,32 @@ public class StateCacheService {
 			}
 
 			// persist
-			stateCacheRepository.save(stateEntity);
+			resilientSave(stateEntity, true, actor, event);
 		}
 		catch (JsonProcessingException ex) {
 			throw new TechnicalException(String.format(
 					"Unable to convert stateData to JSON in call from actor=%s - Details: stateId=%s exceptionMsg=%s",
 					actor, stateData.getId(), ex.getMessage()), ex);
+		}
+	}
+
+	private void resilientSave(StateEntity stateEntity, boolean retry, String actor, String event) {
+		try {
+			stateCacheRepository.save(stateEntity);
+		}
+		catch (ConcurrencyFailureException ex) { // base class of Optimistic/PessimisticLockingFailureException and subclasses
+			var delayMs = trustBrokerProperties.getStateCache().getTxRetryDelayMs();
+			if (retry && delayMs >= 0) {
+				log.warn("Concurrent DB access, retrying after {}ms : Could not {} session={} actor={} ex={}",
+						delayMs, event, stateEntity.getId(), actor, ex.getMessage(), ex);
+				ProcessUtil.sleep(delayMs);
+				resilientSave(stateEntity, false, actor, event);
+			}
+			else {
+				throw new TechnicalException(String.format(
+						"Concurrent DB access, not retrying: Could not %s session=%s actor=%s ex=%s",
+						event, stateEntity.getId(), actor, ex.getMessage()), ex);
+			}
 		}
 	}
 
@@ -243,7 +269,8 @@ public class StateCacheService {
 		}
 		var stateEntity = stateCacheRepository.findById(id);
 		if (stateEntity.isEmpty()) {
-			throw new RequestDeniedException(String.format("State not found. Details: stateId=%s", StringUtil.clean(id)));
+			throw new RequestDeniedException(ErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
+					String.format("State not found. Details: stateId=%s", StringUtil.clean(id)), null);
 		}
 		return stateEntity.get();
 	}
@@ -263,6 +290,15 @@ public class StateCacheService {
 			return Optional.empty();
 		}
 		return findBySecondaryId(stateCacheRepository.findBySpSessionId(id).stream(), "spSessionId", id, actor);
+	}
+
+	public StateData findRequiredBySpId(String id, String actor) {
+		Optional<StateData> stateDataOpt = findBySpId(id, actor);
+		if (stateDataOpt.isEmpty()) {
+			throw new RequestDeniedException(ErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
+					String.format("State not found. Details: spStateId=%s", StringUtil.clean(id)), null);
+		}
+		return stateDataOpt.get();
 	}
 
 	// oidcSessionId required to track JESSIONID in spring-authorization-server
@@ -308,7 +344,7 @@ public class StateCacheService {
 		return ret;
 	}
 
-	// leave some trace if session is gone (un)expectatly
+	// leave some trace if session is gone (un)expectantly
 	private static void logSessionLoss(StateData stateData, String id) {
 		if (stateData == null || !stateData.isValid()) {
 			var msg = String.format("State invalidated already. Details: sessionId=%s lifecycle=%s",
@@ -389,8 +425,8 @@ public class StateCacheService {
 	// Exception if not found so no parameter required to back-track to session actor
 	public StateData findMandatoryValidState(String id, String actor) {
 		return findValidState(id, actor)
-				.orElseThrow(() -> new RequestDeniedException(
-						String.format("State not valid in call from actor=%s - Details: stateId=%s", actor, id)));
+				.orElseThrow(() -> new RequestDeniedException(ErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
+						String.format("State not valid in call from actor=%s - Details: stateId=%s", actor, id), null));
 	}
 
 	public void tryInvalidate(StateData stateData, String actor) {
@@ -427,6 +463,21 @@ public class StateCacheService {
 			return;
 		}
 		encodeAndSaveStateData(stateEntity.get(), stateData, actor, "INVALIDATE");
+	}
+
+	public void tryInvalidate(StateEntity stateEntity, String actor) {
+		try {
+			invalidate(stateEntity, actor);
+		}
+		catch (Exception ex) {
+			log.warn("Try invalidating stateEntity={} failed: {}", stateEntity.getId(), ex.getMessage(), ex);
+		}
+	}
+
+	private void invalidate(StateEntity stateEntity, String actor) {
+		log.debug("Invalidating stateEntity={} for actor={}", stateEntity.getId(), actor);
+		stateEntity.setExpirationTimestamp(Timestamp.from(clock.instant()));
+		resilientSave(stateEntity, true, actor, "INVALIDATE");
 	}
 
 	public void ssoEstablished(StateData stateData, String actor) {
@@ -476,7 +527,7 @@ public class StateCacheService {
 			metricsService.gauge(MetricsService.SESSION_LABEL + "active", numEntries-expired);
 
 			// result with tuning recommendations when reaper needs to collect too many sessions
-			if (log.isErrorEnabled()) {
+			if (log.isWarnEnabled()) {
 				var end = clock.instant();
 				var diff = Duration.between(start, end).toMillis();
 				var msg = String.format(
@@ -490,12 +541,11 @@ public class StateCacheService {
 				}
 			}
 		}
-		// these ones should be gone with using batched delete
 		catch (OptimisticLockException | ConcurrencyFailureException ex) {
-			log.info("Skipped reaper cycle (sessions collected by peer already). Details: {}", ex.getMessage());
+			log.info("Skipped StateCache reaper cycle (entries collected by peer already). Details: {}", ex.getMessage());
 		}
 		catch (InterruptedException ex) {
-			log.info("Skipped reaper cycle");
+			log.info("Skipped StateCache reaper cycle");
 			Thread.currentThread().interrupt(); // restore interrupt state
 		}
 		catch (Exception ex) {

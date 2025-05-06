@@ -15,7 +15,9 @@
 
 package swiss.trustbroker.config;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import lombok.Data;
 import org.apache.commons.lang3.ArrayUtils;
@@ -362,39 +364,51 @@ public class TrustBrokerProperties {
 	private boolean handleResponderErrors;
 
 	/**
-	 * User request switch to Enterprise IDP feature flag. If enabled XTB will redirect the user to the Enterprise IDP when
+	 * User request switch to Enterprise IDP feature flag. If enabled XTB will redirect the user to the intranet IDP when
 	 * requested.
 	 * <br/>
 	 * Default: false
+	 *
+	 * @deprecated XTB does not support CP/IDP switching based on CP error responses anymore with v1.10.
 	 */
+	@Deprecated(since = "v1.9.0")
 	private boolean handleEnterpriseSwitch;
 
 	/**
-	 * Enterprise IDP ID.
+	 * Intranet IDP ID that can be used for CP filtering in HRD.
+	 *
+	 * @deprecated Replaced by the 'first' marker on the network, e.g. INTRANET-first.
 	 */
+	@Deprecated(since = "v1.9.0")
 	private String enterpriseIdpId;
 
 	/**
 	 * Broker IDP ID that can be used for CP filtering in HRD.
 	 *
 	 * @see swiss.trustbroker.api.homerealmdiscovery.service.HrdService
+	 * @deprecated Replaced by the 'first' marker on the network, e.g. INTERNET-first.
 	 */
+	@Deprecated(since = "v1.9.0")
 	private String brokerIdpId;
 
 	/**
-	 * Mobile IDP ID that can be used for CP filtering in HRD.
+	 * Public IDP ID that can be used for CP filtering in HRD.
+	 *
+	 * @deprecated Replaced by the 'first' marker on the network, e.g. INTERNET-first.
 	 */
+	@Deprecated(since = "v1.9.0")
 	private String publicIdpId;
+
+	/**
+	 * Mobile IDP ID that is used for CP filtering in HRD when XTB is accessed via configured IP addresses (mobileGatewayIpRegex).
+	 * Special case: A single IDP that can be identified by its IP address and then automatically dispatched to the that CP.
+	 */
+	private String mobileIdpId;
 
 	/**
 	 * Autologin cookie that can be used for CP filtering in HRD.
 	 */
 	private String publicAutoLoginCookie;
-
-	/**
-	 * Mobile IDP ID that can be used for CP filtering in HRD.
-	 */
-	private String mobileIdpId;
 
 	/**
 	 * Network configuration.
@@ -480,6 +494,13 @@ public class TrustBrokerProperties {
 
 	public String getSamlConsumerUrl() {
 		return saml != null ? saml.getConsumerUrl() : null;
+	}
+
+	public Map<String, Integer> getQoaMap() {
+		if (this.qoa == null || this.qoa.getMapping() == null) {
+			return Collections.emptyMap();
+		}
+		return this.qoa.getMapping();
 	}
 
 }

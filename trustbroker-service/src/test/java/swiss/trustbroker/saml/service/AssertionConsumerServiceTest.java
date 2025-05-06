@@ -21,19 +21,17 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -49,22 +47,21 @@ import org.opensaml.saml.saml2.core.NameID;
 import org.opensaml.saml.saml2.core.Response;
 import org.opensaml.saml.saml2.core.StatusCode;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.api.announcements.service.AnnouncementService;
+import swiss.trustbroker.api.homerealmdiscovery.service.HrdService;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.saml.dto.SignatureContext;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
-import swiss.trustbroker.common.saml.util.SamlContextClass;
 import swiss.trustbroker.common.saml.util.SamlFactory;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.Banner;
 import swiss.trustbroker.config.dto.NetworkConfig;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.config.dto.SamlNamespace;
@@ -77,13 +74,13 @@ import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
 import swiss.trustbroker.federation.xmlconfig.Flow;
 import swiss.trustbroker.federation.xmlconfig.FlowPolicies;
-import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.RelyingPartySetup;
 import swiss.trustbroker.federation.xmlconfig.Saml;
-import swiss.trustbroker.homerealmdiscovery.service.NoOpHrdService;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.saml.dto.ResponseData;
+import swiss.trustbroker.saml.dto.UiBanner;
 import swiss.trustbroker.saml.test.util.ServiceSamlTestUtil;
 import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.sessioncache.dto.StateData;
@@ -114,33 +111,35 @@ class AssertionConsumerServiceTest {
 	@Autowired
 	private AssertionConsumerService assertionConsumerService;
 
-	@MockBean
+	@MockitoBean
 	private TrustBrokerProperties trustBrokerProperties;
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartyDefinitions relyingPartyDefinitions;
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartySetupService relyingPartySetupService;
 
-	@MockBean
+	@MockitoBean
 	private ScriptService scriptService;
 
-	@MockBean
-	@Qualifier("stateCache")
-	private StateCacheService cacheService;
+	@MockitoBean
+	private QoaMappingService qoaMappingService;
 
-	@MockBean
+	@MockitoBean
+	private StateCacheService stateCacheService;
+
+	@MockitoBean
 	private SsoService ssoService;
 
-	@MockBean
+	@MockitoBean
 	private AuditService auditService;
 
-	@MockBean
+	@MockitoBean
 	private AnnouncementService announcementService;
 
-	@SpyBean
-	private NoOpHrdService hrdService;
+	@MockitoBean
+	private HrdService hrdService;
 
 	@BeforeAll
 	static void setup() {
@@ -151,6 +150,7 @@ class AssertionConsumerServiceTest {
 	void setupTest() {
 		var network = new NetworkConfig();
 		doReturn(network).when(trustBrokerProperties).getNetwork();
+		doAnswer(invocation -> invocation.getArgument(1)).when(hrdService).adaptClaimsProviderMappings(any(), any());
 	}
 
 	@Test
@@ -198,13 +198,25 @@ class AssertionConsumerServiceTest {
 		assertEquals(TEST_RP_ALIAS, rpRequest.getRpIssuer());
 	}
 
-	@Test
-	void testRelyingPartyToSelectedCpByUrlTester() {
+	@ParameterizedTest
+	@MethodSource
+	void testRelyingPartyToSelectedCpByUrlTester(boolean intranet, String[] expected) {
 		mockRequestConfiguration(TEST_RP);
 		var request = new MockHttpServletRequest();
-		request.setCookies(new Cookie(HrdSupport.HTTP_URLTESTER_CP, TEST_CP_MOCK));
+		request.setCookies(new Cookie(HrdSupport.HTTP_HRD_HINT_HEADER, TEST_CP_MOCK));
+		var network = trustBrokerProperties.getNetwork();
+		request.addHeader(network.getNetworkHeader(),
+				intranet ? network.getIntranetNetworkName() : network.getInternetNetworkName());
 		var rpRequest = assertionConsumerService.getRpRequestDetails(TEST_RP,"REF", null, request, "TEST", null);
-		assertEquals(List.of(TEST_CP_MOCK), rpRequest.getClaimsProviders().stream().map(ClaimsProviderRelyingParty::getId).toList());
+		assertThat(rpRequest.getClaimsProviders().stream().map(ClaimsProviderRelyingParty::getId).toList(),
+				containsInAnyOrder(expected));
+	}
+
+	static Object[][] testRelyingPartyToSelectedCpByUrlTester() {
+		return new Object[][] {
+				{ true, new String[] { TEST_CP_MOCK } }, // mock selected due to HRD hint
+				{ false, new String[] { TEST_CP_ID }} // mock filtered out due to network
+		};
 	}
 
 	@Test
@@ -336,7 +348,7 @@ class AssertionConsumerServiceTest {
 		var rp = RelyingParty.builder().id(TEST_RP).flowPolicies(policies).build();
 		doReturn(rp).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(TEST_RP, REFERRER);
 
-		var responseData = ResponseData.of(response, RELAY_STATE, null);
+		var responseData = ResponseData.of(response, RELAY_STATE, SignatureContext.forPostBinding());
 		var result = assertionConsumerService.handleFailedCpResponse(responseData);
 
 		assertThat(result.isAborted(), is(aborted));
@@ -345,7 +357,7 @@ class AssertionConsumerServiceTest {
 			assertThat(result.nestedStatusCode(saml), is(StatusCode.UNKNOWN_PRINCIPAL));
 			assertThat(result.statusMessage(saml), is(StatusCode.UNKNOWN_PRINCIPAL));
 		}
-		verify(cacheService, times(invalidate ? 1 : 0)).invalidate(state, AssertionConsumerService.class.getSimpleName());
+		verify(stateCacheService, times(invalidate ? 1 : 0)).invalidate(state, AssertionConsumerService.class.getSimpleName());
 	}
 
 	@ParameterizedTest
@@ -407,31 +419,6 @@ class AssertionConsumerServiceTest {
 				() -> assertionConsumerService.getAssertionConsumerServiceUrl(url2other, url2other, url2other, relyingParty));
 	}
 
-	@Test
-	void getContextClassesTest() {
-		List<String> requestContextClasses = givenRequestContextClasses();
-		Qoa qoa = givenQoa();
-
-		List<String> contextClasses = assertionConsumerService.getContextClasses(requestContextClasses, null);
-		assertNotNull(contextClasses);
-		assertEquals(requestContextClasses.size(), contextClasses.size());
-
-
-		List<String> contextClasses2 = assertionConsumerService.getContextClasses(requestContextClasses, qoa);
-		assertNotNull(contextClasses2);
-		assertEquals(requestContextClasses.size(), contextClasses2.size());
-		assertNotEquals(qoa.getClasses().size(), contextClasses2.size());
-
-		List<String> contextClasses3 = assertionConsumerService.getContextClasses(new ArrayList<>(), qoa);
-		assertNotNull(contextClasses3);
-		assertEquals(qoa.getClasses().size(), contextClasses3.size());
-		assertNotEquals(0, contextClasses2.size());
-
-		List<String> contextClasses4 = assertionConsumerService.getContextClasses(new ArrayList<>(), null);
-		assertNotNull(contextClasses4);
-		assertEquals(0, contextClasses4.size());
-	}
-
 	@ParameterizedTest
 	@CsvSource(value = {
 			"false," + StatusCode.RESPONDER + ',' + StatusCode.UNKNOWN_PRINCIPAL + ",message," + StatusCode.RESPONDER + ',' +
@@ -458,6 +445,27 @@ class AssertionConsumerServiceTest {
 				requiredNestedStatus, trustBrokerProperties), is(expected));
 	}
 
+	@Test
+	void orderAndLimitBanners() {
+		var banner1 = givenBanner("Banner3", 300, 200, false);
+		var banner2 = givenBanner("Banner1", 150, null, true);
+		var banner3 = givenBanner("Banner2", null, 100, false);
+		List<UiBanner> banners = List.of(banner1, banner2, banner3);
+		var unlimitedBanners = assertionConsumerService.orderAndLimitBanners(banners, null);
+		assertThat(unlimitedBanners, is(List.of(banner3, banner2, banner1)));
+		var limitedBanners = assertionConsumerService.orderAndLimitBanners(banners, 2);
+		assertThat(limitedBanners, is(List.of(banner3, banner2)));
+	}
+
+	private static UiBanner givenBanner(String name, Integer order, Integer orderOverride, Boolean global) {
+		var bannerConfig = Banner.builder()
+								  .name(name)
+								  .order(order)
+								  .global(global)
+								  .build();
+		return AssertionConsumerService.createBannerFromConfig(bannerConfig, orderOverride);
+	}
+
 	private ClaimsParty mockCp(String cpId, ArtifactBindingMode mode) {
 		var cp = ClaimsParty.builder()
 				.id(cpId)
@@ -475,28 +483,12 @@ class AssertionConsumerServiceTest {
 				.id("sessionId")
 				.spStateData(StateData.builder().id("spSessionId").build())
 				.build();
-		doReturn(stateData).when(cacheService).find(relayState, AssertionConsumerService.class.getSimpleName());
+		doReturn(stateData).when(stateCacheService).find(relayState, AssertionConsumerService.class.getSimpleName());
 		return stateData;
 	}
 
-	private List<String> givenRequestContextClasses() {
-		List<String> contextClasses = new ArrayList<>();
-		contextClasses.add(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED);
-		return contextClasses;
-	}
-
-	private Qoa givenQoa() {
-		List<String> contextClasses = new ArrayList<>();
-		contextClasses.add(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED);
-		contextClasses.add(SamlContextClass.PASSWORD_PROTECTED_TRANSPORT);
-
-		Qoa qoa = new Qoa();
-		qoa.setClasses(contextClasses);
-		return qoa;
-	}
-
 	private void mockRequestConfiguration(String rpId) {
-		RelyingPartySetup relyingPartySetup = ServiceSamlTestUtil.loadRelyingPartySetup();
+		var relyingPartySetup = ServiceSamlTestUtil.loadRelyingPartySetup();
 		when(relyingPartyDefinitions.getRelyingPartySetup())
 				.thenReturn(relyingPartySetup);
 		when(relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(eq(rpId), any()))

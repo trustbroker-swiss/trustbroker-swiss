@@ -5,7 +5,7 @@
 		<Certificates/>
 		<ClaimsProviderMappings>
 			<ClaimsProvider id="urn:test:TESTCP" clientNetworks="PRIVATE,INTRANET" />
-			<ClaimsProvider id="urn:test:ENTERPRISE" clientNetworks="PRIVAT,BUSINESS" />
+			<ClaimsProvider id="urn:test:ENTERPRISE" clientNetworks="PRIVATE,BUSINESS" />
 			<ClaimsProvider id="urn:test:KERBEROS" clientNetworks="PRIVATE,INTRANET,BUSINESS" />
 		</ClaimsProviderMappings>
 		<ConstAttributes>
@@ -30,7 +30,7 @@
 		<Certificates/>
 		<ClaimsProviderMappings>
 			<ClaimsProvider id="urn:test:MOCK" clientNetworks="INTRANET" relyingPartyAlias="urn:test:TESTRP-MOCK"/>
-			<ClaimsProvider id="urn:test:TESTRP" clientNetworks="INTERNET,INTRANET" relyingPartyAlias="urn:test:TESTRP-PRIVATE"/>
+			<ClaimsProvider id="urn:test:TESTCP" clientNetworks="INTERNET,INTRANET" relyingPartyAlias="urn:test:TESTRP-PRIVATE"/>
 		</ClaimsProviderMappings>
 		<ConstAttributes>
 			<Definition name='IssuedClientExtId' namespaceUri='http://trustbroker.swiss/claims/issuedClientExtId'
@@ -64,7 +64,7 @@
 			</IDMQuery>
 		</IDMLookup>
 	</RelyingParty>
-	
+
 	<!-- RPs to test ACS matching -->
 
 	<RelyingParty id='https://referring-party.localdomain' base="ProfileRP_Standard.xml">
@@ -74,6 +74,9 @@
 			<ACUrl>https://referring-party-top.localdomain/</ACUrl>
 		</ACWhitelist>
 		<Certificates/>
+		<ClaimsProviderMappings>
+			<ClaimsProvider id="urn:test:TESTCP" clientNetworks="PRIVATE,INTRANET" />
+		</ClaimsProviderMappings>
 		<ConstAttributes>
 		    <Definition name='IssuedClientExtId'
 				namespaceUri='http://trustbroker.swiss/claims/issuedClientExtId' value="501" />
@@ -91,6 +94,9 @@
 		    <ACUrl>https://referring-party-acs.localdomain:43443/auth/saml2/idp/acs</ACUrl>
 		</ACWhitelist>
 		<Certificates/>
+		<ClaimsProviderMappings>
+			<ClaimsProvider id="urn:test:TESTCP" clientNetworks="PRIVATE,INTRANET" />
+		</ClaimsProviderMappings>
 		<ConstAttributes>
 		    <Definition name='IssuedClientExtId'
 				namespaceUri='http://trustbroker.swiss/claims/issuedClientExtId' value="501" />
@@ -105,6 +111,9 @@
 	<RelyingParty id='urn:test:MOCKRP-REMOVE-DEVINT' base="ProfileRP_Standard.xml">
 		<ClientName>SAMPLERP</ClientName>
 		<Certificates/>
+		<ClaimsProviderMappings>
+			<ClaimsProvider id="urn:test:TESTCP" clientNetworks="PRIVATE,INTRANET" />
+		</ClaimsProviderMappings>
 		<ConstAttributes>
 		    <Definition name='IssuedClientExtId'
 				namespaceUri='http://trustbroker.swiss/claims/issuedClientExtId' value="503" />
@@ -119,6 +128,9 @@
 	<RelyingParty id='urn:test:MOCKRP-DROP-DEVINT' base="ProfileRP_Standard.xml">
 		<ClientName>SAMPLERP</ClientName>
 		<Certificates/>
+		<ClaimsProviderMappings>
+			<ClaimsProvider id="urn:test:TESTCP" clientNetworks="PRIVATE,INTRANET" />
+		</ClaimsProviderMappings>
 		<ConstAttributes>
 		    <Definition name='IssuedClientExtId'
 				namespaceUri='http://trustbroker.swiss/claims/issuedClientExtId' value="503" />
@@ -132,6 +144,9 @@
 	<RelyingParty id='urn:test:DROP-pep:SAMPLE' base="ProfileRP_Standard.xml">
 		<ClientName>SAMPLERP</ClientName>
 		<Certificates/>
+		<ClaimsProviderMappings>
+			<ClaimsProvider id="urn:test:TESTCP" clientNetworks="PRIVATE,INTRANET" />
+		</ClaimsProviderMappings>
 		<ConstAttributes>
 		    <Definition name='IssuedClientExtId'
 				namespaceUri='http://trustbroker.swiss/claims/issuedClientExtId' value="503" />
@@ -142,17 +157,20 @@
 		    </IDMQuery>
 		</IDMLookup>
 	  </RelyingParty>
-	  
+
 
 	<RelyingParty id='urn:test:NOIDM' base="ProfileRP_Standard.xml">
 		<ClientName>SAMPLERP</ClientName>
 		<Certificates/>
+		<ClaimsProviderMappings>
+			<ClaimsProvider id="urn:test:TESTCP" clientNetworks="PRIVATE,INTRANET" />
+		</ClaimsProviderMappings>
 		<ConstAttributes>
 		    <Definition name='IssuedClientExtId'
 				namespaceUri='http://trustbroker.swiss/claims/issuedClientExtId' value="503" />
 		</ConstAttributes>
 	  </RelyingParty>
-	  
+
 	<RelyingParty id='urn:test:SSO-GROUP2-PART1-TEST' base="ProfileRP_Standard_SM.xml">
 		<ACWhitelist>
 		    <ACUrl>https://saml-test.localdomain</ACUrl>
@@ -162,10 +180,9 @@
 		<ClaimsProviderMappings>
 			<ClaimsProvider id="urn:test:TESTCP" clientNetworks="PRIVATE,INTRANET"/>
 			<ClaimsProvider id="urn:test:MOCK" clientNetworks="PRIVATE,INTRANET"/>
-			</ClaimsProviderMappings>
+		</ClaimsProviderMappings>
 		<ConstAttributes>
-		    <Definition name='IssuedClientExtId'
-				namespaceUri='http://trustbroker.swiss/claims/issuedClientExtId' value="501" />
+		    <Definition name='IssuedClientExtId' namespaceUri='http://trustbroker.swiss/claims/issuedClientExtId' value="501" />
 		</ConstAttributes>
 		<IDMLookup >
 			<IDMQuery name='TENANT'>
@@ -173,7 +190,7 @@
 			</IDMQuery>
 		</IDMLookup>
 	</RelyingParty>
-	
+
 	<RelyingParty id='urn:test:SSO-GROUP1-SINGLE-CP-TEST' base="ProfileRP_Standard.xml">
 		<ACWhitelist>
 		    <ACUrl>https://saml-test.localdomain</ACUrl>
@@ -210,4 +227,21 @@
 		    </IDMQuery>
 		</IDMLookup>
 	</RelyingParty>
+
+	<RelyingParty id='urn:test:MOCKRP-QOA' base="ProfileRP_Standard.xml">
+		<ClientName>SAMPLERP</ClientName>
+		<Certificates/>
+		<Qoa>
+			<ACClass>urn:anyQoa</ACClass>
+		</Qoa>
+		<ConstAttributes>
+			<Definition name='IssuedClientExtId' namespaceUri='http://trustbroker.swiss/claims/issuedClientExtId' value="503" />
+		</ConstAttributes>
+		<IDMLookup >
+			<IDMQuery name='TENANT'>
+				<ClientExtId>503</ClientExtId>
+			</IDMQuery>
+		</IDMLookup>
+	</RelyingParty>
+
 </RelyingPartySetup>

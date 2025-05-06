@@ -52,7 +52,7 @@ public class ClientConfigInMemoryRepository implements RegisteredClientRepositor
 			if (registeredClient == null) {
 				log.debug("Found clientId={} in definitions, creating RegisteredClient", clientId);
 				registeredClient = OidcConfigurationUtil.createRegisteredClient(oidcClient.get(),
-						properties.getSecurity().getTokenLifetimeSec());
+						properties.getSecurity().getTokenLifetimeSec(), properties.getOidc().getCodeLifetimeSec());
 			}
 		}
 		else {

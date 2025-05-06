@@ -17,11 +17,15 @@ package swiss.trustbroker.saml.service;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
@@ -31,31 +35,30 @@ import swiss.trustbroker.saml.dto.CpResponse;
 
 class SubjectNameMapperTest {
 
-	@Test
-	void adjustSubjectNameId() {
-		var expectedSubjectNameIdFrom = CoreAttributeName.EMAIL.getNamespaceUri();
+	@ParameterizedTest
+	@CsvSource(value = {
+			"null,null,from-idp,initial",
+			"IDM,null,from-idp,initial",
+			"null,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,from-config-0,cpAttributeValue",
+			"IDM,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,from-config-0,idmAttributeValue",
+			"IDM:query,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,from-config-0,idmAttributeValue",
+			"null,source-without-value,from-idp,initial",
+			"CP,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,from-config-0,cpAttributeValue",
+			"CP:cpIssuer1,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,from-config-0,cpAttributeValue",
+			"PROPS,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,from-config-0,propertyAttribute",
+	}, nullValues = "null")
+	void adjustSubjectNameId(String source, String claim, String format, String expectedNameId) {
+		var expectedSubjectNameIdClaim = CoreAttributeName.EMAIL.getNamespaceUri();
 		var cpIssuer = "cpIssuer1";
 		var subjectNameMappings =
 				SubjectNameMappings.builder()
 								   .preserve(true)
 								   .subjects(List.of(
 										   SubjectName.builder()
-													  .issuer(cpIssuer) // mapped if from this CP
-													  .source(expectedSubjectNameIdFrom)
-													  .format("from-config-0")
-													  .build(),
-										   SubjectName.builder()
-													  .issuer(null) // mapped from any CP
-													  .source("source-without-value")
-													  .format("from-config-1")
-													  .build(),
-										   SubjectName.builder()
-													  .issuer("cpIssuer2")
-													  .issuer(null)
-													  .source(expectedSubjectNameIdFrom)
-													  .format("from-config-2")
-													  .build())
-								   )
+													  .source(source)
+													  .claim(claim)
+													  .format(format)
+													  .build()))
 								   .build();
 		var relyingParty = RelyingParty.builder()
 									   .id("rpIssuer1")
@@ -63,31 +66,99 @@ class SubjectNameMapperTest {
 									   .build();
 		var userDetails = Map.of(Definition.builder()
 										   .name("anyAuditName")
-										   .namespaceUri(expectedSubjectNameIdFrom)
-										   .build(), List.of("me@trustbroker.swiss"));
+										   .namespaceUri(expectedSubjectNameIdClaim)
+										   .source("IDM:query")
+										   .build(), List.of("idmAttributeValue"));
+		var cpAttributes = Map.of(Definition.builder()
+										   .name("anyAuditName")
+										   .namespaceUri(expectedSubjectNameIdClaim)
+										   .build(), List.of("cpAttributeValue"));
+		var properties = Map.of(Definition.builder()
+											.name("anyAuditName")
+											.namespaceUri(expectedSubjectNameIdClaim)
+											.build(), List.of("propertyAttribute"));
 		// modified and logged
 		var cpResponse0 = CpResponse.builder()
-									.issuer("cpIssuer1")
+									.issuer(cpIssuer)
+									.originalNameId("initial")
+									.nameId("initial")
+									.nameIdFormat("from-idp")
+									.userDetails(userDetails)
+									.attributes(cpAttributes)
+									.properties(properties)
+									.build();
+		SubjectNameMapper.adjustSubjectNameId(cpResponse0, relyingParty);
+		assertThat(cpResponse0.getNameId(), is(expectedNameId));
+		assertThat(cpResponse0.getNameIdFormat(), is(format));
+	}
+
+	@Test
+	void adjustSubjectNameIdMultipleMatch() {
+		var expectedSubjectNameIdClaim = CoreAttributeName.EMAIL.getNamespaceUri();
+		var cpIssuer = "cpIssuer1";
+		var subjectNameMappings =
+				SubjectNameMappings.builder()
+								   .preserve(true)
+								   .subjects(List.of(
+										   SubjectName.builder()
+													  .source("PROPS")
+													  .claim(expectedSubjectNameIdClaim)
+													  .format("from-config-prop")
+													  .build(),
+										   SubjectName.builder()
+													  .source("IDM")
+													  .claim(expectedSubjectNameIdClaim)
+													  .format("from-config-idm")
+													  .build()
+								   			))
+								   .build();
+		var relyingParty = RelyingParty.builder()
+									   .id("rpIssuer1")
+									   .subjectNameMappings(subjectNameMappings)
+									   .build();
+		var userDetails = Map.of(Definition.builder()
+										   .name("anyAuditName")
+										   .namespaceUri(expectedSubjectNameIdClaim)
+										   .source("IDMQuery")
+										   .build(), List.of("idmAttributeValue"));
+		var properties = Map.of(Definition.builder()
+										  .name("anyAuditName")
+										  .namespaceUri(expectedSubjectNameIdClaim)
+										  .build(), List.of("propertyAttribute"));
+
+		var cpResponse0 = CpResponse.builder()
+									.issuer(cpIssuer)
+									.originalNameId("initial")
+									.nameId("initial")
+									.nameIdFormat("from-idp")
+									.userDetails(userDetails)
+									.properties(properties)
+									.build();
+		SubjectNameMapper.adjustSubjectNameId(cpResponse0, relyingParty);
+		assertThat(cpResponse0.getNameId(), is("propertyAttribute"));
+		assertThat(cpResponse0.getNameIdFormat(), is("from-config-prop"));
+	}
+
+	@Test
+	void getNameIdFromUserDetailsTest() {
+		String namespaceUri = CoreAttributeName.EMAIL.getNamespaceUri();
+		String idmAttributeValue = "idmAttributeValue";
+		var userDetails = Map.of(Definition.builder()
+										   .name("anyAuditName")
+										   .namespaceUri(namespaceUri)
+										   .source("IDMQuery")
+										   .build(), List.of(idmAttributeValue));
+		var cpResponse = CpResponse.builder()
 									.originalNameId("initial")
 									.nameId("initial")
 									.nameIdFormat("from-idp")
 									.userDetails(userDetails)
 									.build();
-		SubjectNameMapper.adjustSubjectNameId(cpResponse0, relyingParty);
-		assertThat(cpResponse0.getNameId(), is("me@trustbroker.swiss"));
-		assertThat(cpResponse0.getNameIdFormat(), is("from-config-0"));
+		assertEquals(idmAttributeValue, SubjectNameMapper.getNameIdFromUserDetails(cpResponse, "IDM", namespaceUri));
+		assertEquals(idmAttributeValue, SubjectNameMapper.getNameIdFromUserDetails(cpResponse, "IDMQuery", namespaceUri));
+		assertNull(SubjectNameMapper.getNameIdFromUserDetails(cpResponse, "IDMQuery", "unknown"));
+		assertEquals(idmAttributeValue, SubjectNameMapper.getNameIdFromUserDetails(cpResponse, null, namespaceUri));
+		assertNull(SubjectNameMapper.getNameIdFromUserDetails(cpResponse, "PROPS", namespaceUri));
 
-		// not modified as already manipulated but preserving message is logged
-		var cpResponse1 = CpResponse.builder()
-									.issuer("cpIssuer2")
-									.originalNameId("initial")
-									.nameId("modified-by-groovy-hook")
-									.nameIdFormat("from-idp")
-									.userDetails(userDetails)
-									.build();
-		SubjectNameMapper.adjustSubjectNameId(cpResponse1, relyingParty);
-		assertThat(cpResponse1.getNameId(), is("modified-by-groovy-hook"));
-		assertThat(cpResponse1.getNameIdFormat(), is("from-idp"));
 	}
-
 }

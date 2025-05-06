@@ -105,7 +105,8 @@ public class CustomLogoutSuccessHandler extends SimpleUrlLogoutSuccessHandler {
 
 	private void renderResponse(String clientId, String redirectUrl, String ssoSessionId, String oidcSessionId,
 			HttpServletRequest request, HttpServletResponse response) throws IOException {
-		var relyingParty = relyingPartyDefinitions.getRelyingPartyByOidcClientId(clientId, null, properties, false);
+		var realmName = OidcUtil.getRealmFromRequestUrl(request.getRequestURI());
+		var relyingParty = relyingPartyDefinitions.getRelyingPartyByOidcClientId(clientId, realmName, properties, false);
 		var stateData = OidcSessionSupport.getSsoStateDataForClient(ssoService, request, relyingParty, clientId);
 		if (stateData != null && stateData.hasSsoState()) {
 			discardSsoCookie(response, stateData);
@@ -113,17 +114,17 @@ public class CustomLogoutSuccessHandler extends SimpleUrlLogoutSuccessHandler {
 			var nameId = ResponseFactory.createNameId(stateData.getCpResponse());
 			var ssoSessionParticipants = stateData.getSsoState().getSsoParticipants();
 			var referer = WebUtil.getOriginOrReferer(request);
-			log.debug("Rendering OIDC SLO response page for clientId={} ssoSessionId={} oidcSessionId={} redirectUrl={}"
+			log.debug("Rendering OIDC SLO response page for clientId={} realm={} ssoSessionId={} oidcSessionId={} redirectUrl={}"
 							+ " referer={}  cpNameId={} ssoSessionParticipants={}",
-					clientId, ssoSessionId, oidcSessionId, redirectUrl, referer, nameId, ssoSessionParticipants);
+					clientId, realmName, ssoSessionId, oidcSessionId, redirectUrl, referer, nameId, ssoSessionParticipants);
 			redirectUrl = ssoService.computeOidcSingleLogoutUrl(redirectUrl, referer, relyingParty);
 			var params = ssoService.buildSloVelocityParameters(
 					relyingParty, referer, ssoSessionParticipants, nameId, oidcSessionId, redirectUrl);
 			VelocityUtil.renderTemplate(velocityEngine, response, VelocityUtil.VELOCITY_SLO_TEMPLATE_ID, params);
 		}
 		else {
-			log.debug("Sending OIDC logout redirect for clientId={} ssoSessionId={} oidcSessionId={} redirectUrl={}",
-					clientId, ssoSessionId, oidcSessionId, redirectUrl);
+			log.debug("Sending OIDC logout redirect for clientId={} realm={} ssoSessionId={} oidcSessionId={} redirectUrl={}",
+					clientId, realmName, ssoSessionId, oidcSessionId, redirectUrl);
 			handleRedirectResponse(redirectUrl, response);
 		}
 

@@ -12,34 +12,31 @@
  You should have received a copy of the GNU Affero General Public License along with this program.
  If not, see <https://www.gnu.org/licenses/>.
 -->
-<main class="announcementsContainer" *ngIf="showAnnouncements">
-	<div class="title-container">
-		<h1 class="high-emphasis mb-2">{{ "trustbroker.announcements.title" | translate }}</h1>
-	</div>
-	<div id="announcementsBody" class="body-1 medium-emphasis mb-2">
-		<div *ngFor="let announcement of announcements">
-			<app-announcement
-				[announcementType]="announcement.type"
-				[announcementTitle]="announcement.title"
-				[announcementMessage]="announcement.message"
-				[announcementUrl]="announcement.url"
-				[announcementPhoneNumber]="announcement.phoneNumber"
-				[announcementEmailAddress]="announcement.emailAddress"
-				[theme]="theme"
-			>
-			</app-announcement>
+@if (showAnnouncements) {
+	<main class="announcementsContainer">
+		<div class="title-container">
+			<h1 class="high-emphasis mb-2">{{ "trustbroker.announcements.title" | translate }}</h1>
 		</div>
-		<button
-			id="continueButton"
-			mat-flat-button
-			color="primary"
-			*ngIf="appVisible"
-			(click)="continueToApp()"
-			tabindex="1"
-			type="submit"
-			class="{{ theme.name }} button-text"
-		>
-			<span>{{ "trustbroker.announcements.button" | translate }}</span>
-		</button>
-	</div>
-</main>
+		<div id="announcementsBody" class="body-1 medium-emphasis mb-2">
+			@for (announcement of announcements; track announcement) {
+				<div>
+					<app-announcement
+						[announcementType]="announcement.type"
+						[announcementTitle]="announcement.title"
+						[announcementMessage]="announcement.message"
+						[announcementUrl]="announcement.url"
+						[announcementPhoneNumber]="announcement.phoneNumber"
+						[announcementEmailAddress]="announcement.emailAddress"
+						[theme]="theme"
+					>
+					</app-announcement>
+				</div>
+			}
+			@if (appVisible) {
+				<button id="continueButton" mat-flat-button color="primary" (click)="continueToApp()" tabindex="1" type="submit" class="{{ theme.name }} button-text">
+					<span>{{ "trustbroker.announcements.button" | translate }}</span>
+				</button>
+			}
+		</div>
+	</main>
+}

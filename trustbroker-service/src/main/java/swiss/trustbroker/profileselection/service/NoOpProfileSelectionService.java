@@ -59,7 +59,11 @@ public class NoOpProfileSelectionService implements ProfileSelectionService {
 
 	@Override
 	public ProfileResponse buildProfileResponse(ProfileSelectionData profileSelectionData, CpResponseData cpResponseData) {
-		return ProfileResponse.builder()
-							  .build();
+		return ProfileResponse.builder().build();
+	}
+
+	@Override
+	public boolean isValidSelectedProfile(ProfileSelectionData profileSelectionData, CpResponseData cpResponseData) {
+		return false;
 	}
 }

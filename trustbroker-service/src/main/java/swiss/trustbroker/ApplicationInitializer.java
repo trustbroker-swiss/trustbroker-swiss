@@ -27,7 +27,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
-import swiss.trustbroker.api.idm.service.IdmService;
+import swiss.trustbroker.api.idm.service.IdmQueryService;
 import swiss.trustbroker.api.sessioncache.service.AttributeInitializer;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.AttributeRegistry;
@@ -65,7 +65,7 @@ public class ApplicationInitializer {
 
 	private final List<AttributeInitializer> attributeInitializers;
 
-	private final List<IdmService> idmServices;
+	private final List<IdmQueryService> idmQueryServices;
 
 	private final GlobalExceptionHandler globalExceptionHandler;
 
@@ -181,7 +181,7 @@ public class ApplicationInitializer {
 		RelyingPartySetupUtil.loadRelyingParty(
 				relyingParties, trustBrokerProperties.getConfigurationPath() +
 						GitService.CONFIGURATION_PATH_SUB_DIR_LATEST + RelyingPartySetupUtil.DEFINITION_PATH, newConfigPath,
-				trustBrokerProperties, idmServices, scriptService);
+				trustBrokerProperties, idmQueryServices, scriptService);
 	}
 
 }

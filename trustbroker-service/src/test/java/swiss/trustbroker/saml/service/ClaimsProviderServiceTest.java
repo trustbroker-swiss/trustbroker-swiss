@@ -22,13 +22,17 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.apache.velocity.app.VelocityEngine;
@@ -37,20 +41,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
-import org.opensaml.saml.saml2.core.AuthnContextComparisonTypeEnumeration;
 import org.opensaml.saml.saml2.core.AuthnRequest;
 import org.opensaml.saml.saml2.core.NameIDType;
 import org.opensaml.saml.saml2.core.RequestedAuthnContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.api.saml.dto.DestinationType;
 import swiss.trustbroker.api.saml.dto.EncodingParameters;
-import swiss.trustbroker.api.saml.service.OutputService;
 import swiss.trustbroker.audit.dto.AuditDto;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.common.saml.dto.SamlBinding;
@@ -58,13 +60,19 @@ import swiss.trustbroker.common.saml.service.ArtifactCacheService;
 import swiss.trustbroker.common.saml.util.SamlContextClass;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.QualityOfAuthenticationConfig;
 import swiss.trustbroker.config.dto.SamlProperties;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBindingMode;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
+import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 import swiss.trustbroker.federation.xmlconfig.Saml;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.mapping.dto.QoaConfig;
+import swiss.trustbroker.mapping.dto.QoaSpec;
+import swiss.trustbroker.mapping.service.QoaMappingService;
+import swiss.trustbroker.oidc.client.service.AuthorizationCodeFlowService;
 import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.sessioncache.service.StateCacheService;
@@ -77,29 +85,35 @@ class ClaimsProviderServiceTest {
 	@Autowired
 	ClaimsProviderService claimsProviderService;
 
-	@MockBean
+	@MockitoBean
 	StateCacheService stateCacheService;
 
-	@MockBean
+	@MockitoBean
 	TrustBrokerProperties trustBrokerProperties;
 
-	@MockBean
+	@MockitoBean
 	ArtifactCacheService artifactCacheService;
 
-	@MockBean
+	@MockitoBean
 	RelyingPartySetupService relyingPartySetupService;
 
-	@MockBean
+	@MockitoBean
 	ScriptService scriptService;
 
-	@MockBean
+	@MockitoBean
 	VelocityEngine velocityEngine;
 
-	@MockBean
+	@MockitoBean
 	AuditService auditService;
 
-	@MockBean
-	OutputService outputService;
+	@MockitoBean
+	private QoaMappingService qoaMappingService;
+
+	@MockitoBean
+	private SamlOutputService samlOutputService;
+
+	@MockitoBean
+	private AuthorizationCodeFlowService authorizationCodeFlowService;
 
 	@BeforeAll
 	static void setup() {
@@ -108,14 +122,15 @@ class ClaimsProviderServiceTest {
 
 	@Test
 	void createAuthnContextTest() {
-		StateData stateData = givenStateWithQoa();
+		var stateData = givenStateWithQoa();
 
-		RequestedAuthnContext authnContext = ClaimsProviderService.createAuthnContext(stateData);
+		RequestedAuthnContext authnContext = claimsProviderService.createAuthnContext(stateData,
+				new QoaSpec(QoaComparison.MINIMUM, stateData.getRpContextClasses()));
 
 		assertNotNull(authnContext);
 		assertNotNull(authnContext.getAuthnContextClassRefs());
 		assertEquals(givenRpQoas().size(), authnContext.getAuthnContextClassRefs().size());
-		assertEquals(AuthnContextComparisonTypeEnumeration.MINIMUM, authnContext.getComparison());
+		assertEquals(QoaComparison.MINIMUM.getValue(), authnContext.getComparison().toString());
 	}
 
 	@ParameterizedTest
@@ -131,8 +146,9 @@ class ClaimsProviderServiceTest {
 		}
 		var stateData = (rpSessionInit != null || cpSessionInit != null) ? givenState() : null;
 		if (stateData != null) {
-			stateData.getSpStateData().setInitiatedViaArtifactBinding(rpSessionInit);
-			stateData.setInitiatedViaArtifactBinding(cpSessionInit);
+			stateData.getSpStateData().setRequestBinding(
+					Boolean.TRUE.equals(rpSessionInit) ? SamlBinding.ARTIFACT : SamlBinding.POST);
+			stateData.setRequestBinding(Boolean.TRUE.equals(cpSessionInit) ? SamlBinding.ARTIFACT : SamlBinding.POST);
 		}
 		assertThat(ClaimsProviderService.useArtifactBinding(claimsParty, stateData), is(result));
 	}
@@ -158,12 +174,12 @@ class ClaimsProviderServiceTest {
 	}
 
 	@Test
-	void sendSamlToCp() {
+	void sendAuthnRequestToCp() {
 		var stateData = givenState();
 		var relayState = "relay1";
 		stateData.setRelayState(relayState);
 		var spstateData = stateData.getSpStateData();
-		spstateData.initiatedViaBinding(SamlBinding.ARTIFACT);
+		spstateData.setRequestBinding(SamlBinding.ARTIFACT);
 		var rpIssuer = "rpIssuer1";
 		var referrer = "https://localhost:2222/sp";
 		spstateData.setIssuer(rpIssuer);
@@ -204,13 +220,19 @@ class ClaimsProviderServiceTest {
 		// mock
 		var requestCaptor = ArgumentCaptor.forClass(AuthnRequest.class);
 		doReturn(credential).when(relyingPartySetupService).getRelyingPartySigner(rpIssuer, referrer);
-		doNothing().when(outputService).sendRequest(requestCaptor.capture(),
+		doReturn(new QoaConfig(null, rpIssuer))
+				.when(relyingPartySetupService).getQoaConfiguration(spstateData, rpIssuer, referrer, trustBrokerProperties);
+		doNothing().when(samlOutputService).sendRequest(requestCaptor.capture(),
 				eq(credential), eq(relayState), eq(ssoUrl), eq(response), eq(encodingParams), eq(DestinationType.CP));
 		var auditCaptor = ArgumentCaptor.forClass(AuditDto.class);
 		doNothing().when(auditService).logOutboundFlow(auditCaptor.capture());
+		doReturn(new QoaSpec(QoaComparison.EXACT, List.of(contextClass)))
+				.when(qoaMappingService).mapRequestQoasToOutbound(any(), any(),
+						argThat(qc -> rpIssuer.equals(qc.issuerId())),
+						argThat(qc -> cpIssuer.equals(qc.issuerId())));
 
 		// run
-		claimsProviderService.sendSamlToCp(outputService, request, response, stateData, cpIssuer);
+		claimsProviderService.sendAuthnRequestToCp(request, response, stateData, cp);
 
 		// verify request
 		var authnRequest = requestCaptor.getValue();
@@ -242,15 +264,16 @@ class ClaimsProviderServiceTest {
 		assertThat(auditDto.getReferrer(), is(referrer));
 
 		// script hook
-		verify(scriptService).processRequestToCp(cpIssuer, authnRequest);
+		verify(scriptService).processCpOnRequest(cpIssuer, authnRequest);
 	}
 
 	private StateData givenStateWithQoa() {
-		StateData stateData = new StateData();
-		StateData spStateData = new StateData();
+		var stateData = new StateData();
+		var spStateData = new StateData();
+		spStateData.setComparisonType(QoaComparison.MINIMUM);
 		spStateData.setContextClasses(givenRpQoas());
 		stateData.setSpStateData(spStateData);
-		stateData.setComparisonType(AuthnContextComparisonTypeEnumeration.MINIMUM.toString());
+		stateData.setComparisonType(QoaComparison.MINIMUM);
 		return stateData;
 	}
 
@@ -269,6 +292,21 @@ class ClaimsProviderServiceTest {
 	private StateData givenState() {
 		var spStateData = StateData.builder().id("spSessionId").build();
 		return StateData.builder().id("sessionId").spStateData(spStateData).build();
+	}
+
+	private QualityOfAuthenticationConfig givenQoaConfig() {
+		Map<String, Integer> qoaMap = givenQoaMap();
+		var qoa = new QualityOfAuthenticationConfig();
+		qoa.setMapping(qoaMap);
+		return qoa;
+	}
+
+	private static Map<String, Integer> givenQoaMap() {
+		Map<String, Integer> qoaMap = new HashMap<>();
+		qoaMap.put("urn:qoa:names:tc:ac:classes:10", 10);
+		qoaMap.put("urn:qoa:names:tc:ac:classes:20", 20);
+		qoaMap.put("urn:qoa:names:tc:ac:classes:30", 30);
+		return qoaMap;
 	}
 
 }

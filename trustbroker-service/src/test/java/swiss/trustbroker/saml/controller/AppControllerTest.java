@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -38,7 +39,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.net.URI;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import javax.xml.validation.Validator;
 
@@ -62,11 +65,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -74,6 +76,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.context.WebApplicationContext;
 import swiss.trustbroker.api.announcements.service.AnnouncementService;
+import swiss.trustbroker.api.homerealmdiscovery.service.HrdService;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.common.config.RegexNameValue;
 import swiss.trustbroker.common.exception.RequestDeniedException;
@@ -86,6 +89,8 @@ import swiss.trustbroker.common.saml.util.SamlIoUtil;
 import swiss.trustbroker.common.saml.util.SamlUtil;
 import swiss.trustbroker.common.setup.config.BootstrapProperties;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.GuiProperties;
+import swiss.trustbroker.config.dto.QualityOfAuthenticationConfig;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.service.FederationMetadataService;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
@@ -94,8 +99,8 @@ import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.Saml;
 import swiss.trustbroker.homerealmdiscovery.controller.HrdController;
-import swiss.trustbroker.homerealmdiscovery.service.NoOpHrdService;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.saml.service.ArtifactResolutionService;
 import swiss.trustbroker.saml.service.AssertionConsumerService;
 import swiss.trustbroker.saml.service.AuthenticationService;
@@ -138,42 +143,42 @@ class AppControllerTest {
 
 	private static final String VERSION_INFO = "XTB/9.8.7.654321@TEST";
 
-	@MockBean
+	@MockitoBean
 	private HrdController hrdController;
 
-	@MockBean
+	@MockitoBean
 	@Qualifier("samlSchemaValidator")
 	private Validator validator;
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartyDefinitions relyingPartyDefinitions;
 
-	@MockBean
+	@MockitoBean
 	@Qualifier("stateCache")
 	private StateCacheService stateCacheService;
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartyService relyingPartyService;
 
-	@MockBean
+	@MockitoBean
 	private TrustBrokerProperties trustBrokerProperties;
 
-	@MockBean
+	@MockitoBean
 	private ClaimsProviderService claimsProviderService;
 
-	@MockBean
+	@MockitoBean
 	private FederationMetadataService federationMetadataService;
 
-	@MockBean
+	@MockitoBean
 	private ScriptService scriptService;
 
-	@MockBean
+	@MockitoBean
 	private AnnouncementService announcementService;
 
-	@MockBean
+	@MockitoBean
 	private ArtifactResolutionService artifactResolutionService;
 
-	@MockBean
+	@MockitoBean
 	private SamlOutputService outputService;
 
 	@Autowired
@@ -185,14 +190,17 @@ class AppControllerTest {
 	@Autowired
 	private AppController appController;
 
-	@MockBean
+	@MockitoBean
 	private SsoService ssoService;
 
-	@MockBean
+	@MockitoBean
 	private AuditService auditService;
 
-	@SpyBean
-	private NoOpHrdService hrdService;
+	@MockitoBean
+	private QoaMappingService qoaMappingService;
+
+	@MockitoBean
+	private HrdService hrdService;
 
 	private MockMvc mockMvc;
 
@@ -210,6 +218,8 @@ class AppControllerTest {
 	@BeforeEach
 	void setup() {
 		this.mockMvc = MockMvcBuilders.webAppContextSetup(this.webApplicationContext).build();
+		doReturn(new GuiProperties()).when(trustBrokerProperties).getGui();
+		doAnswer(invocation -> invocation.getArgument(1)).when(hrdService).adaptClaimsProviderMappings(any(), any());
 	}
 
 	@Test
@@ -428,7 +438,7 @@ class AppControllerTest {
 
 	@Test
 	void handleIncomingMessagesValidPostAuthnRequestAnnouncementsTest() throws Exception {
-		doReturn(true).when(announcementService).showAnnouncements(any());
+		doReturn(true).when(announcementService).showAnnouncements(any(), nullable(String.class));
 		var authnRequest = prepareValidIncomingAuthnRequest();
 		var encodedMessage = SamlUtil.encode(authnRequest);
 		var referer = "https://localhost/caller";
@@ -438,8 +448,8 @@ class AppControllerTest {
 						.header(HttpHeaders.REFERER, referer)
 				)
 				.andExpect(status().isFound())
-				.andExpect(header().string(HttpHeaders.LOCATION,
-						apiSupport.getAnnouncementsUrl(ServiceSamlTestUtil.AUTHN_REQUEST_ISSUER_ID, authnRequest.getID(), referer)));
+				.andExpect(header().string(HttpHeaders.LOCATION, apiSupport.getAnnouncementsUrl(
+						ServiceSamlTestUtil.AUTHN_REQUEST_ISSUER_ID, authnRequest.getID(), null)));
 	}
 
 	private AuthnRequest prepareValidIncomingAuthnRequest() {
@@ -972,6 +982,17 @@ class AppControllerTest {
 	private void mockProperties() {
 		when(trustBrokerProperties.getSecurity()).thenReturn(ServiceSamlTestUtil.givenEnabledSecurity());
 		when(trustBrokerProperties.getIssuer()).thenReturn("http://test.trustbroker.swiss");
+		when(trustBrokerProperties.getQoa()).thenReturn(givenQoaConfig());
+	}
+
+	private QualityOfAuthenticationConfig givenQoaConfig() {
+		Map<String, Integer> qoaMap = new HashMap<>();
+		qoaMap.put("urn:qoa:names:tc:ac:classes:10", 10);
+		qoaMap.put("urn:qoa:names:tc:ac:classes:20", 20);
+		qoaMap.put("urn:qoa:names:tc:ac:classes:30", 30);
+		QualityOfAuthenticationConfig qoa = new QualityOfAuthenticationConfig();
+		qoa.setMapping(qoaMap);
+		return qoa;
 	}
 
 	private void mockPropertiesWithWrongIssuer() {
@@ -1002,7 +1023,6 @@ class AppControllerTest {
 			return cpDefinitions.getClaimsProviders().stream().filter(cpId -> cpId.equals(id)).findFirst().orElse(
 					ClaimsProvider.builder().id(id).build());
 		}).when(relyingPartyDefinitions).getClaimsProviderById(any());
-
 	}
 
 
@@ -1054,7 +1074,7 @@ class AppControllerTest {
 	@Test
 	void federationMetadata() throws Exception {
 		var content = "test";
-		doReturn(content).when(federationMetadataService).getFederationMetadata();
+		doReturn(content).when(federationMetadataService).getFederationMetadata(true, true);
 		this.mockMvc
 				.perform(get(ApiSupport.METADATA_URL))
 				.andExpect(status().isOk())

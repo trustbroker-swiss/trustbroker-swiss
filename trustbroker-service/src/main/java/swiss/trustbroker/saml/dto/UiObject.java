@@ -27,15 +27,16 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UiObject implements Serializable {
-	String urn;
-	String title;
-	String image;
-	String button;
-	String name;
-	String shortcut;
-	String color;
-	String tileTitle;
+	private String urn;
+	private String title;
+	private String image;
+	private String button;
+	private String name;
+	private String shortcut;
+	private String color;
+	private String tileTitle;
+	private Integer order;
 
 	@Builder.Default
-	boolean disabled = false;
+	private boolean disabled = false;
 }

@@ -31,6 +31,7 @@ import swiss.trustbroker.oidc.OidcExceptionHelper;
 import swiss.trustbroker.oidc.OidcFrameAncestorHandler;
 import swiss.trustbroker.util.ApiSupport;
 import swiss.trustbroker.util.HeaderBuilder;
+import swiss.trustbroker.util.HrdSupport;
 
 @Slf4j
 public class OidcTxResponseWrapper extends HttpServletResponseWrapper {
@@ -41,6 +42,8 @@ public class OidcTxResponseWrapper extends HttpServletResponseWrapper {
 
 	private final TrustBrokerProperties trustBrokerProperties;
 
+	private final ApiSupport apiSupport;
+
 	private InMemoryServletOutputStream output = null;
 
 	private final OidcFrameAncestorHandler frameAncestorHandler;
@@ -50,11 +53,13 @@ public class OidcTxResponseWrapper extends HttpServletResponseWrapper {
 	public OidcTxResponseWrapper(HttpServletRequest httpRequest, HttpServletResponse originResponse,
 			RelyingPartyDefinitions relyingPartyDefinitions,
 			TrustBrokerProperties trustBrokerProperties,
+			ApiSupport apiSupport,
 			OidcFrameAncestorHandler oidcFrameAncestorHandler) {
 		super(originResponse);
 		this.relyingPartyDefinitions = relyingPartyDefinitions;
 		this.request = httpRequest;
 		this.trustBrokerProperties = trustBrokerProperties;
+		this.apiSupport = apiSupport;
 		this.frameAncestorHandler = oidcFrameAncestorHandler;
 		this.headerBuilder = HeaderBuilder.of(request, this, trustBrokerProperties, frameAncestorHandler);
 	}
@@ -121,7 +126,7 @@ public class OidcTxResponseWrapper extends HttpServletResponseWrapper {
 		// error forwarding to XTB error screen
 		if (!OidcExceptionHelper.hasAuthenticationException(request) && OidcExceptionHelper.isSpringErrorPage(location)) {
 			var oidcLocation = OidcExceptionHelper.buildLocationForAuthenticationException(
-					request, location, trustBrokerProperties.getOidc().getIssuer(), "servlet-filter");
+					request, location, trustBrokerProperties.getOidc().getIssuer(), "servlet-filter", apiSupport::isInternalUrl);
 			if (oidcLocation != null) {
 				log.debug("servlet redirect URL location={} mapped to oidcLocation={}", location, oidcLocation);
 				location = oidcLocation;
@@ -156,6 +161,7 @@ public class OidcTxResponseWrapper extends HttpServletResponseWrapper {
 			var clientId = request.getParameter(OidcUtil.OIDC_CLIENT_ID);
 			var acrValues = request.getParameter(OidcUtil.OIDC_ACR_VALUES);
 			var promptLogin = request.getParameter(OidcUtil.OIDC_PROMPT);
+			var hrdHint = request.getParameter(HrdSupport.HTTP_HRD_HINT_PARAMETER);
 			var uriComponentsBuilder = UriComponentsBuilder.fromUriString(location);
 			if (acrValues != null) {
 				uriComponentsBuilder.queryParam(OidcUtil.OIDC_ACR_VALUES, acrValues);
@@ -165,6 +171,9 @@ public class OidcTxResponseWrapper extends HttpServletResponseWrapper {
 			}
 			if (promptLogin != null) {
 				uriComponentsBuilder.queryParam(OidcUtil.OIDC_PROMPT, promptLogin);
+			}
+			if (hrdHint != null) {
+				uriComponentsBuilder.queryParam(HrdSupport.HTTP_HRD_HINT_PARAMETER, hrdHint);
 			}
 			ret = uriComponentsBuilder.build().toUriString();
 		}

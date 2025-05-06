@@ -56,12 +56,12 @@ class AccessFilterTest {
 			"/profile/id,404",
 			// APIs (/adfs/ls included below)
 			"/api/v1/hrd/translations/de,200",
-			// DEV only legacy API
-			"/trustbroker/adfs/ls,200",
 			"/adfs/ls,200",
 			"/adfs/services/trust,200",
 			"/api/v1/metadata,200",
 			"/api/v1/saml/metadata,200",
+			"/api/v1/saml/metadata/idp,200",
+			"/api/v1/saml/metadata/sp,200",
 			"/FederationMetadata/2007-06/FederationMetadata.xml,200", // XTB and ADFS
 			"/federationmetadata/2007-06/federationmetadata.xml,200", // XTB and ADFS
 			"/FederationMetadata/2007-06/federationmetadata.xml,200", // ADFS only - filter allows it, but not mapped

@@ -14,24 +14,32 @@
 -->
 <mat-sidenav-container>
 	<mat-sidenav #sidenav [(opened)]="opened" mode="side" position="end">
-		<app-help-panel *ngIf="theme.hasHelpPanel" [theme]="theme" (helpPanel)="closeHelpPanel()"></app-help-panel>
+		@if (theme.hasHelpPanel) {
+			<app-help-panel [theme]="theme" (helpPanel)="closeHelpPanel()"></app-help-panel>
+		}
 	</mat-sidenav>
 	<div class="portal-frame {{ theme.name }}" aria-hidden="false">
 		<ob-master-layout class="portal-master-layout" masterLayout>
-			<ng-container obHeader *ngIf="theme.hasHeader">
-				<app-mat-header
-					[appName]="'trustbroker.app.title' | translate"
-					[environment]="'trustbroker.footer.info.right' | translate | environmentDisplay"
-					[theme]="theme"
-					[helpPanelState]="helpPanel"
-					(helpPanel)="toggleHelpPanel()"
-					class="w-100"
-				></app-mat-header>
-			</ng-container>
-			<ng-container obFooter *ngIf="theme.hasFooter">
-				<app-mat-footer class="d-block w-100" [detailedFooter]="detailedFooter"></app-mat-footer>
-			</ng-container>
+			@if (theme.hasHeader) {
+				<ng-container obHeader>
+					<app-mat-header
+						[appName]="'trustbroker.app.title' | translate"
+						[environment]="'trustbroker.footer.info.right' | translate | environmentDisplay"
+						[theme]="theme"
+						[helpPanelState]="helpPanel"
+						(helpPanel)="toggleHelpPanel()"
+						class="w-100"
+					></app-mat-header>
+				</ng-container>
+			}
+			@if (theme.hasFooter) {
+				<ng-container obFooter>
+					<app-mat-footer class="d-block w-100" [detailedFooter]="detailedFooter"></app-mat-footer>
+				</ng-container>
+			}
 		</ob-master-layout>
-		<app-backdrop *ngIf="theme.hasBackdrop" [theme]="theme"></app-backdrop>
+		@if (theme.hasBackdrop) {
+			<app-backdrop [theme]="theme"></app-backdrop>
+		}
 	</div>
 </mat-sidenav-container>

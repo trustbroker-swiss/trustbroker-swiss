@@ -16,3 +16,8 @@
 @import "/src/styles/variables";
 @import "/src/styles/spacing";
 @import "/src/styles/tile-layout";
+
+// fix design issue in oblique 11.3
+[mat-card-image] {
+	position: static;
+}

@@ -23,8 +23,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
+import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 
 /**
  * Class is used to implement the contract towards ScriptService on RP request processing side.
@@ -32,52 +34,106 @@ import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
  */
 @Data
 @EqualsAndHashCode(callSuper=false)
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @SuppressWarnings("java:S2250") // all the lists in here are small
 @Slf4j
 public class RpRequest extends ResponseStatus {
 
-	private String referer; // from the incoming HTTP request
+	/**
+	 * Referer header from the incoming HTTP request.
+	 */
+	private String referer;
 
-	private String rpIssuer;// from the incoming SAML request
+	/**
+	 * Issuer of the incoming SAML request
+	 */
+	private String rpIssuer;
 
-	private String requestId; // ID of the incoming message (e.g. AuthnRequest)
+	/**
+	 * ID of the incoming message (e.g. AuthnRequest).
+	 */
+	private String requestId;
 
-	private String applicationName; // e.g. from AuthnRequest.ProviderName
+	/**
+	 * Application name e.g. from AuthnRequest.ProviderName.
+	 */
+	private String applicationName;
 
+	/**
+	 * AuthnRequest RequestedAuthnContext.ContextClassRefs.
+	 */
 	@Builder.Default
 	private List<String> contextClasses = new ArrayList<>();
 
- 	@Builder.Default
-	private boolean useSkinnyHrdScreen = false; // allow to use a non-angular version of the HRD screen
+	/**
+	 * AuthnRequest RequestedAuthnContext.comparisonType.
+	 *
+	 * @since 1.9.0
+	 */
+	private QoaComparison comparisonType;
 
+	/**
+	 * Allow to use a non-angular version of the HRD screen
+	 * <br/>
+	 * Default: false
+	 */
+ 	@Builder.Default
+	private boolean useSkinnyHrdScreen = false;
+
+	/**
+	 * ClaimsProvider mappings for RelyingParty.
+	 */
 	@Builder.Default
 	private List<ClaimsProviderRelyingParty> claimsProviders = new ArrayList<>();
 
+	/**
+	 * UI objects for the HRD screen.
+	 */
 	@Builder.Default
-	private List<UiObject> uiObjects = new ArrayList<>();
+	private UiObjects uiObjects = new UiObjects();
 
+	/**
+	 * @param id
+	 * @return ClaimsProvider with that ID or null
+	 */
 	public ClaimsProviderRelyingParty getClaimsProvider(String id) {
 		return claimsProviders.stream().filter(cp -> cp.getId().equals(id)).findFirst().orElse(null);
 	}
 
-	// HRD: Federation to single CP possible
+	/**
+	 * @return HRD: Federation to single CP possible
+	 */
 	public boolean hasSingleClaimsProvider() {
 		return 	claimsProviders.size() == 1; // uiObjects might still be empty because rendering phase was skipped
 	}
 
+	/**
+	 * @return Number of ClaimsProviders in the mapping.
+	 */
 	public int getClaimsProvidersCount() {
 		return claimsProviders.size();
 	}
 
-	// HRD: Manually construct a HRD tile
-	public void  addUiElement(UiObject uiObject) {
-		uiObjects.add(uiObject);
+	/**
+	 * @param uiObject HRD: Manually construct a HRD tile - script hook
+	 */
+	public void addUiElement(UiObject uiObject) {
+		uiObjects.addTile(uiObject);
 	}
 
-	// HRD: Remove a specific one
+	/**
+	 * @param uiBanner HRD: Manually construct a HRD banner - script hook
+	 */
+	public void addBanner(UiBanner uiBanner) {
+		uiObjects.addBanner(uiBanner);
+	}
+
+	/**
+	 * @param id HRD: Remove a specific ClaimsProvider
+	 * @return removed ClaimsProvider
+	 */
 	public ClaimsProviderRelyingParty dropClaimsProvider(String id) {
 		var ret = getClaimsProvider(id);
 		if (ret != null) {
@@ -86,21 +142,30 @@ public class RpRequest extends ResponseStatus {
 		return ret;
 	}
 
-	// HRD: Retain a specific one to automatically dispatch
+	/**
+	 * @param id HRD: Retain a specific one if present, to automatically dispatch
+	 * @return retained ClaimsProvider
+	 */
 	public ClaimsProviderRelyingParty retainClaimsProvider(String id) {
 		var ret = getClaimsProvider(id);
 		if (ret != null) {
-			claimsProviders.clear();
-			claimsProviders.add(ret);
+			claimsProviders.retainAll(List.of(ret));
 		}
 		return ret;
 	}
 
-	// QoA handling
+	/**
+	 * @param contextClass
+	 * @return If context class was set in request.
+	 */
 	public boolean hasContextClass(String contextClass) {
 		return contextClasses.contains(contextClass);
 	}
 
+	/**
+	 * @param contextClass Add context class if not yet present.
+	 * @return true if added
+	 */
 	public boolean addContextClass(String contextClass) {
 		if (!hasContextClass(contextClass)) {
 			contextClasses.add(contextClass);
@@ -109,8 +174,23 @@ public class RpRequest extends ResponseStatus {
 		return false;
 	}
 
+	/**
+	 * @param contextClass Remove context class.
+	 * @return true if removed
+	 */
 	public boolean removeContextClass(String contextClass) {
 		return contextClasses.remove(contextClass);
 	}
 
+	/**
+	 * @param contextClass Retain a single context class if present.
+	 * @return true if modified
+	 * @since 1.9.0
+	 */
+	public boolean retainContextClass(String contextClass) {
+		if (contextClasses.contains(contextClass)) {
+			return contextClasses.retainAll(List.of(contextClass));
+		}
+		return false;
+	}
 }

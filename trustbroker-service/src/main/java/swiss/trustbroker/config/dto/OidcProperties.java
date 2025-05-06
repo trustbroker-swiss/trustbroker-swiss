@@ -20,6 +20,7 @@ import java.util.List;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
+import swiss.trustbroker.common.config.KeystoreProperties;
 import swiss.trustbroker.common.config.RegexNameValue;
 
 /**
@@ -64,6 +65,13 @@ public class OidcProperties {
 	 * OIDC session lifetime in seconds.
 	 */
 	private int sessionLifetimeSec;
+
+	/**
+	 * OIDC code lifetime in seconds.
+	 *
+	 * @since 1.9.0
+	 */
+	private int codeLifetimeSec;
 
 	/**
 	 * Mode for Tomcat sessions.
@@ -218,4 +226,18 @@ public class OidcProperties {
 	 * Default: true
 	 */
 	private boolean tokenInRequestBodyEnabled = true;
+
+	/**
+	 * Default truststore for direct connections to OIDC CPs.
+	 *
+	 * @since 1.9.0
+	 */
+	private KeystoreProperties truststore;
+
+	/**
+	 * Schedule for fetching current metadata configurations from all CPs. Cron expression.
+	 *
+	 * @since 1.9.0
+	 */
+	private String syncSchedule;
 }

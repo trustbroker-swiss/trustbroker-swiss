@@ -21,6 +21,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import swiss.trustbroker.util.ApiSupport;
 
 /**
  * WS-Trust protocol configuration.
@@ -36,6 +37,14 @@ public class WsTrustConfig {
 		SOAP_1_2,
 		SOAP_1_X
 	}
+
+	/**
+	 * Feature toggle allowing to disable the WSTrust endpoint
+	 *
+	 * @since 1.9.0
+	 */
+	@Builder.Default
+	private boolean enabled = true;
 
 	/**
 	 * Keystore path.
@@ -55,7 +64,8 @@ public class WsTrustConfig {
 	/**
 	 * Allow base path differing from SAML API.
 	 */
-	private String wsBasePath;
+	@Builder.Default
+	private String wsBasePath = ApiSupport.WSTRUST_API;
 
 	/**
 	 * SOAP version.
@@ -66,4 +76,5 @@ public class WsTrustConfig {
 	private SoapVersionConfig soapVersion = SoapVersionConfig.SOAP_1_X;
 
 	private List<String> soapHeadersToConsider;
+
 }

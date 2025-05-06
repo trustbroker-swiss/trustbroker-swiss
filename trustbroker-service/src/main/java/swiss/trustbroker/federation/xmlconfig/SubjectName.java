@@ -41,6 +41,12 @@ import lombok.NoArgsConstructor;
  *     and an INFO log states the mapping/</li>
  *     <li>is not found: An INFO log states what has been preserved.</li>
  * </ul>
+ *
+ * Breaking changes:
+ * <ul>
+ *     <li>With 1.9.0 change attribute <code>source</code> to <code>claim</code>. The semantics of the former was changed
+ *     to align it with the source concept used elsewhere.</li>
+ * </ul>
  */
 @XmlRootElement(name = "SubjectName")
 @XmlAccessorType(XmlAccessType.FIELD)
@@ -51,27 +57,22 @@ import lombok.NoArgsConstructor;
 public class SubjectName implements Serializable {
 
 	/**
-	 * Matched against the CP issuer.
-	 * <br/>
-	 * Only makes sense in an RP configuration, thus for a CP you only configure a single <code>SubjectName</code> without issuer.
-	 */
-	@XmlAttribute(name = "issuer")
-	private String issuer;
-
-	/**
-	 * Subject Name ID attribute name.
+	 * Matched against the CP/CP:issuer/IDM/IDM:IDMQuery.name/PROPS
 	 */
 	@XmlAttribute(name = "source")
 	private String source;
+
+	/**
+	 * Subject Name ID claim name.
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlAttribute(name = "claim")
+	private String claim;
 
 	/**
 	 * Subject Name ID format.
 	 */
 	@XmlAttribute(name = "format")
 	private String format;
-
-	public boolean isIssuerMatching(String cpIssuerId) {
-		return issuer == null || issuer.equals(cpIssuerId);
-	}
-
 }

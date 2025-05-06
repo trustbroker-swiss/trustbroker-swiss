@@ -15,7 +15,7 @@
 
 import { Component, EventEmitter, Input, OnInit, Output, ViewEncapsulation } from '@angular/core';
 
-import { IdpObject } from '../model/idpObject';
+import { IdpObject } from '../model/IdpObject';
 import { Theme } from '../model/Theme';
 import { IdpObjectService } from '../services/idp-object.service';
 import { ThemeService } from '../services/theme-service';

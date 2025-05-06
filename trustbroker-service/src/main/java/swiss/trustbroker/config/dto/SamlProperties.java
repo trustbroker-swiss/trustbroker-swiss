@@ -21,6 +21,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.opensaml.saml.common.xml.SAMLConstants;
+import org.opensaml.saml.saml2.core.NameIDType;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -50,4 +52,62 @@ public class SamlProperties {
 	 */
 	private ArtifactResolution artifactResolution;
 
+	/**
+	 * List of exposed SAML protocols.
+	 *
+	 * @since 1.9.0
+	 */
+	@Builder.Default
+	private List<String> bindings = List.of(
+			SAMLConstants.SAML2_POST_BINDING_URI,
+			SAMLConstants.SAML2_REDIRECT_BINDING_URI,
+			SAMLConstants.SAML2_ARTIFACT_BINDING_URI);
+
+	/**
+	 * SAML SP-side metadata can be hidden setting this feature flag to false.
+	 *
+	 * @since 1.9.0
+	 */
+	@Builder.Default
+	private boolean spMetadataEnabled = true;
+
+	/**
+	 * RP-side supported name formats
+	 *
+	 * @since 1.9.0
+	 */
+	@Builder.Default
+	private List<String> spNameFormats = List.of(NameIDType.UNSPECIFIED);
+
+	/**
+	 * SAML CP-side logout support could be enabled but CPs need to be added as RPs.
+	 *
+	 * @since 1.9.0
+	 */
+	@Builder.Default
+	private boolean spLogoutMetadataEnabled = false;
+
+	/**
+	 * SAML CP-side metadata can be hidden setting this feature flag to false.
+	 *
+	 * @since 1.9.0
+	 */
+	@Builder.Default
+	private boolean idpMetadataEnabled = true;
+
+	/**
+	 * CP-side supported name formats
+	 *
+	 * @since 1.9.0
+	 */
+	@Builder.Default
+	private List<String> idpNameFormats = List.of(NameIDType.UNSPECIFIED);
+
+	/**
+	 * SAML RP-side logout support can be hidden setting this feature flag to false.
+	 *
+	 * @since 1.9.0
+	 */
+	@Builder.Default
+	private boolean idpLogoutMetadataEnabled = true;
 }

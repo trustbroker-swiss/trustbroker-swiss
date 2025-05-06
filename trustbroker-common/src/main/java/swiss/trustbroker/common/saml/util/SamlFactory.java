@@ -45,6 +45,7 @@ import org.opensaml.saml.saml2.core.Audience;
 import org.opensaml.saml.saml2.core.AudienceRestriction;
 import org.opensaml.saml.saml2.core.AuthnContext;
 import org.opensaml.saml.saml2.core.AuthnContextClassRef;
+import org.opensaml.saml.saml2.core.AuthnContextComparisonTypeEnumeration;
 import org.opensaml.saml.saml2.core.AuthnStatement;
 import org.opensaml.saml.saml2.core.Conditions;
 import org.opensaml.saml.saml2.core.Issuer;
@@ -52,6 +53,7 @@ import org.opensaml.saml.saml2.core.LogoutRequest;
 import org.opensaml.saml.saml2.core.NameID;
 import org.opensaml.saml.saml2.core.NameIDPolicy;
 import org.opensaml.saml.saml2.core.RequestAbstractType;
+import org.opensaml.saml.saml2.core.RequestedAuthnContext;
 import org.opensaml.saml.saml2.core.RequesterID;
 import org.opensaml.saml.saml2.core.Scoping;
 import org.opensaml.saml.saml2.core.Status;
@@ -157,6 +159,19 @@ public class SamlFactory {
 		return OpenSamlUtil.samlObjectToString(xmlObject, true, false);
 	}
 
+	public static RequestedAuthnContext createRequestedAuthnContext(Collection<String> contextClasses, String comparison) {
+		var requestedAuthnContext = OpenSamlUtil.buildSamlObject(RequestedAuthnContext.class);
+		if (contextClasses != null) {
+			for (var contextClass : contextClasses) {
+				requestedAuthnContext.getAuthnContextClassRefs().add(createAuthnClassRef(contextClass));
+			}
+		}
+		if (comparison != null) {
+			requestedAuthnContext.setComparison(AuthnContextComparisonTypeEnumeration.valueOf(comparison));
+		}
+		return requestedAuthnContext;
+	}
+
 	// Some recipients care about what we send here, others don't.
 	// We also should not pass on what we receive from an IDP but declare our own session state here.
 	public static List<AuthnStatement> createAuthnState(List<String> classRefs, String sessionIndex, Instant authnInstant) {
@@ -164,7 +179,7 @@ public class SamlFactory {
 		if (classRefs == null) {
 			return authnStatements;
 		}
-		for (String classRef : classRefs) {
+		for (var classRef : classRefs) {
 			var authnStatement = OpenSamlUtil.buildSamlObject(AuthnStatement.class);
 			if (sessionIndex != null) {
 				authnStatement.setSessionIndex(sessionIndex);

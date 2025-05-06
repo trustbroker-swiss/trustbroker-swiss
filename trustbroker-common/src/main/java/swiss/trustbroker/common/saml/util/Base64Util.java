@@ -41,6 +41,10 @@ public class Base64Util {
 		}
 	}
 
+	public static String encode(String stringData, boolean unchunked) {
+		return encode(stringData.getBytes(StandardCharsets.UTF_8), unchunked);
+	}
+
 	public static String encode(byte[] bytes, boolean unchunked) {
 		try {
 			return Base64Support.encode(bytes, unchunked);

@@ -103,8 +103,8 @@ public class UrlAcceptor {
 	// port must match if not default or not 0 signaling any port on localhost
 	private static boolean isPortMatching(URI check, URI accept, boolean isLocalHost) {
 		return check.getPort() == accept.getPort()
-				|| check.getPort() == HttpUtil.getDefaultPort(accept)
-				|| accept.getPort() == HttpUtil.getDefaultPort(check)
+				|| (accept.getPort() == -1 && check.getPort() == HttpUtil.getDefaultPort(accept))
+				|| (check.getPort() == -1 && accept.getPort() == HttpUtil.getDefaultPort(check))
 				|| (isLocalHost && accept.getPort() == 0);
 	}
 

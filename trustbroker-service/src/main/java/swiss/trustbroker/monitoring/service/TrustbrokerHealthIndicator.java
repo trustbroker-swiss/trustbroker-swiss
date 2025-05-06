@@ -18,9 +18,11 @@ package swiss.trustbroker.monitoring.service;
 import java.util.concurrent.TimeUnit;
 
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.event.Level;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
+import swiss.trustbroker.common.exception.TrustBrokerException;
 
 // Health check is executed on readiness probes at startup and after that only every minute with 60 acceptable failures.
 // This means that we need at least 1 hour until an unavailable backend marks XTB as DOWN.
@@ -30,9 +32,9 @@ import org.springframework.boot.actuate.health.HealthIndicator;
 @Slf4j
 public abstract class TrustbrokerHealthIndicator implements HealthIndicator {
 
-	private static final long HEALTHCKECK_PERIOD_MSEC = TimeUnit.MINUTES.toMillis(1);
+	private static final long HEALTHCHECK_PERIOD_MSEC = TimeUnit.MINUTES.toMillis(1);
 
-	private static final long HEALTHCKECK_DOWN_RETRIES = 60;
+	private static final long HEALTHCHECK_DOWN_RETRIES = 60;
 
 	@Value("0")
 	private long lastHealthCheck = 0;
@@ -51,20 +53,36 @@ public abstract class TrustbrokerHealthIndicator implements HealthIndicator {
 			return currentBackendStatus();
 		}
 
+		var start = System.currentTimeMillis();
+		String error = null;
 		try {
 			if (pingBackend()) {
 				markBackendUp();
 				return currentBackendStatus();
 			}
-			log.warn("{} health FAILED with failCount={}", getBackendName(), failCount);
+			error = "returned NOK";
+		}
+		catch (TrustBrokerException ex) {
+			error = ex.getInternalMessage();
 		}
 		catch (Exception ex) {
-			log.warn("{} health FAILED with failCount={} ({})", getBackendName(), failCount, ex.getMessage());
+			error = ex.toString();
+		}
+		finally {
+			var dTms = System.currentTimeMillis() - start;
+			if (error != null) {
+				log.warn("{} health FAILED with failCount={} in dTms={} ({})", getBackendName(), failCount, dTms, error);
+			}
+			else {
+				// slow response reported at INFO (POD check might time out)
+				log.atLevel(dTms >= HEALTHCHECK_PERIOD_MSEC ? Level.INFO : Level.DEBUG)
+				   .log("{} health SUCCEEDED in dTms={}", getBackendName(), dTms);
+			}
 		}
 
 		if (markBackendFailed()) {
 			// when going down LB might also retry a few time, but we do not want to stop pods unnecessarily anyway
-			log.error("{} DOWN on readyness and liveness probes signaling POD restart", getBackendName());
+			log.error("{} DOWN on readiness or liveness probes may signal POD restart", getBackendName());
 		}
 
 		return currentBackendStatus();
@@ -72,7 +90,7 @@ public abstract class TrustbrokerHealthIndicator implements HealthIndicator {
 
 	private synchronized boolean skipBackendPing() {
 		var nextHealthCheck = System.currentTimeMillis();
-		var skipPing = (nextHealthCheck - lastHealthCheck < HEALTHCKECK_PERIOD_MSEC);
+		var skipPing = (nextHealthCheck - lastHealthCheck < HEALTHCHECK_PERIOD_MSEC);
 		if (!skipPing) {
 			lastHealthCheck = nextHealthCheck;
 		}
@@ -88,11 +106,11 @@ public abstract class TrustbrokerHealthIndicator implements HealthIndicator {
 
 	private synchronized boolean markBackendFailed() {
 		failCount += 1;
-		return failCount >= HEALTHCKECK_DOWN_RETRIES;
+		return failCount >= HEALTHCHECK_DOWN_RETRIES;
 	}
 
 	private synchronized Health currentBackendStatus() {
-		if (failCount < HEALTHCKECK_DOWN_RETRIES) {
+		if (failCount < HEALTHCHECK_DOWN_RETRIES) {
 			return Health.up().build();
 		}
 		return Health.down().build();

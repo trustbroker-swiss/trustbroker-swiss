@@ -42,13 +42,13 @@ public class TestConstants {
 
 	public static final String TEST_SETUP_RP = TestConstants.LATEST_DEFINITION_PATH + "SetupRP.xml";
 
-	public static final int VALID_TEST_RPS = 23;
+	public static final int VALID_TEST_RPS = 24;
 
 	public static final int INVALID_TEST_RPS = 1;
 
 	public static final String TEST_SETUP_CP = TestConstants.LATEST_DEFINITION_PATH + "SetupCP.xml";
 
-	public static final int VALID_TEST_CPS = 3;
+	public static final int VALID_TEST_CPS = 4;
 
 	public static final String TEST_CP_DEFINITIONS = TestConstants.LATEST_DEFINITION_PATH + "ClaimsProviderDefinitions.xml";
 

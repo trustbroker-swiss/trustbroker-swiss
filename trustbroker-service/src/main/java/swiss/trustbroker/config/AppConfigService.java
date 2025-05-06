@@ -34,7 +34,7 @@ import org.opensaml.security.credential.Credential;
 import org.springframework.cloud.endpoint.event.RefreshEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
-import swiss.trustbroker.api.idm.service.IdmService;
+import swiss.trustbroker.api.idm.service.IdmQueryService;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CredentialReader;
 import swiss.trustbroker.common.setup.config.BootstrapProperties;
@@ -55,6 +55,7 @@ import swiss.trustbroker.homerealmdiscovery.util.ClaimsProviderUtil;
 import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
 import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.oidc.ClientConfigInMemoryRepository;
+import swiss.trustbroker.oidc.client.service.AuthorizationCodeFlowService;
 import swiss.trustbroker.script.service.ScriptService;
 
 @Service
@@ -82,12 +83,13 @@ public class AppConfigService {
 
 	private final ClientConfigInMemoryRepository clientConfigInMemoryRepository;
 
-	private final List<IdmService> idmServices;
+	private final List<IdmQueryService> idmQueryServices;
 
 	private final MetricsService metricsService;
 
 	private final XmlConfigStatusService xmlConfigStatusService;
 
+	private final AuthorizationCodeFlowService authorizationCodeFlowService;
 
 	public int checkAndUpdate() {
 		var changed = mustUpdateFiles();
@@ -102,7 +104,6 @@ public class AppConfigService {
 			// load scripts, this MUST be last as the refresh will swap the script registry, and we are not transactional here
 			scriptService.activateRefresh();
 			updateMetrics();
-
 		}
 		return changed;
 	}
@@ -214,7 +215,7 @@ public class AppConfigService {
 		if (relyingPartySetup != null) {
 			Collection<RelyingParty> claimRules = relyingPartySetup.getRelyingParties();
 			RelyingPartySetupUtil.loadRelyingParty(claimRules, trustBrokerProperties.getConfigurationPath()
-							+ CONFIG_CACHE_DEFINITION_SUBPATH, newConfigPath, trustBrokerProperties, idmServices, scriptService);
+							+ CONFIG_CACHE_DEFINITION_SUBPATH, newConfigPath, trustBrokerProperties, idmQueryServices, scriptService);
 			checkAndLoadRelyingPartyCertificates(relyingPartySetup);
 			checkRpSsoIntegrity(relyingPartySetup, ssoGroupSetup);
 			filterInvalidRelyingParties(relyingPartySetup);
@@ -225,7 +226,7 @@ public class AppConfigService {
 	}
 
 	public void checkAndUpdateOidcRegistry(RelyingPartySetup relyingPartySetup) {
-		log.info("OIDC registry update for relyingPartyCount={} items", relyingPartySetup.getRelyingParties().size());
+		log.info("OIDC provider registry update for relyingPartyCount={} items", relyingPartySetup.getRelyingParties().size());
 		var oidcClientCount = 0;
 		for (var relyingParty : relyingPartySetup.getRelyingParties()) {
 			for (var oidcClient : relyingParty.getOidcClients()) {
@@ -240,7 +241,7 @@ public class AppConfigService {
 				}
 			}
 		}
-		log.info("OIDC registry update done for oidcClientCount={} items", oidcClientCount);
+		log.info("OIDC provider registry update done for oidcClientCount={} items", oidcClientCount);
 	}
 
 	public void checkAndLoadCpCertificates(ClaimsProviderSetup claimsProviderSetup) {
@@ -286,6 +287,17 @@ public class AppConfigService {
 		}
 
 		claimsParty.setCpEncryptionTrustCredentials(encryptionTrustCreds);
+
+		if (claimsParty.getCertificates().getArtifactResolutionKeystore() != null) {
+			log.warn("cpIssuerId={} is using deprecated Certificates.ArtifactResolutionKeystore={}"
+							+ " - change to BackendKTruststore",
+					claimsParty.getId(), claimsParty.getCertificates().getArtifactResolutionKeystore().getCertPath());
+		}
+		if (claimsParty.getCertificates().getArtifactResolutionTruststore() != null) {
+			log.warn("cpIssuerId={} is using deprecated Certificates.ArtifactResolutionTruststore={}"
+							+ " - change to BackendKTruststore",
+					claimsParty.getId(), claimsParty.getCertificates().getArtifactResolutionTruststore().getCertPath());
+		}
 	}
 
 	public void checkAndLoadRelyingPartyCertificates(RelyingPartySetup relyingParties) {

@@ -47,4 +47,6 @@ public interface ProfileSelectionService {
 			RelyingPartyConfig relyingPartyConfig, CpResponseData cpResponseData, SessionState sessionState);
 
 	ProfileResponse buildProfileResponse(ProfileSelectionData profileSelectionData, CpResponseData cpResponseData);
+
+	boolean isValidSelectedProfile(ProfileSelectionData profileSelectionData, CpResponseData cpResponseData);
 }

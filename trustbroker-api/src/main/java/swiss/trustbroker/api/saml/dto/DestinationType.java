@@ -28,4 +28,8 @@ public enum DestinationType {
 
 	private final String alias;
 
+	public String getLabel() {
+		return alias.toLowerCase();
+	}
+
 }

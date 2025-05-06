@@ -85,12 +85,18 @@ import org.opensaml.saml.saml2.binding.encoding.impl.HttpClientRequestSOAP11Enco
 import org.opensaml.saml.saml2.core.ArtifactResolve;
 import org.opensaml.saml.saml2.core.ArtifactResponse;
 import org.opensaml.saml.saml2.core.Assertion;
+import org.opensaml.saml.saml2.core.AuthnContext;
 import org.opensaml.saml.saml2.core.AuthnContextClassRef;
+import org.opensaml.saml.saml2.core.AuthnContextComparisonTypeEnumeration;
 import org.opensaml.saml.saml2.core.AuthnRequest;
+import org.opensaml.saml.saml2.core.AuthnStatement;
 import org.opensaml.saml.saml2.core.EncryptedAssertion;
 import org.opensaml.saml.saml2.core.Evidentiary;
+import org.opensaml.saml.saml2.core.IDPEntry;
+import org.opensaml.saml.saml2.core.IDPList;
 import org.opensaml.saml.saml2.core.RequestAbstractType;
 import org.opensaml.saml.saml2.core.Response;
+import org.opensaml.saml.saml2.core.Scoping;
 import org.opensaml.saml.saml2.core.StatusResponseType;
 import org.opensaml.saml.saml2.metadata.ArtifactResolutionService;
 import org.opensaml.saml.saml2.metadata.Endpoint;
@@ -626,7 +632,7 @@ public class OpenSamlUtil {
 				return decodeSamlArtifactMessage(request, httpClientOpt.get(), issuerId, peer,
 						signatureParameters, signatureValidationParameters);
 			}
-			try (var httpClient = HttpUtil.createApacheHttpClient(getPeerArtifactUri(peer),
+			try (var httpClient = HttpUtil.createApacheHttpClient(getPeerArtifactUri(peer).getScheme(),
 					peer.getArtifactResolutionTruststore(), peer.getArtifactResolutionKeystore(), peer.getKeystoreBasePath(),
 					peer.getProxyUrl())) {
 				return decodeSamlArtifactMessage(request, httpClient, issuerId, peer,
@@ -985,6 +991,23 @@ public class OpenSamlUtil {
 				.toList();
 	}
 
+	public static AuthnContextComparisonTypeEnumeration extractAuthnRequestComparison(AuthnRequest authnRequest) {
+		var requestedAuthnContext = authnRequest.getRequestedAuthnContext();
+		if (requestedAuthnContext == null || requestedAuthnContext.getComparison() == null) {
+			return null;
+		}
+		return requestedAuthnContext.getComparison();
+	}
+
+	public static String extractAuthnStatementContextClass(AuthnStatement authnStatement) {
+		AuthnContext authnContext = authnStatement.getAuthnContext();
+		if (authnContext == null || authnContext.getAuthnContextClassRef() == null ||
+				authnContext.getAuthnContextClassRef().getURI() == null) {
+			return null;
+		}
+		return authnContext.getAuthnContextClassRef().getURI();
+	}
+
 	// forceAuthn=true triggers CP AuthnRequest in any case
 	public static boolean isForceAuthnRequest(AuthnRequest authnRequest) {
 		var forceAuthnXSBoolean = authnRequest.isForceAuthnXSBoolean();
@@ -1122,5 +1145,24 @@ public class OpenSamlUtil {
 						.getStatusCode()
 						.getValue() : null;
 	}
+
+	public static Scoping constructIdpScoping(String idpId) {
+		var idpEntry = OpenSamlUtil.buildSamlObject(IDPEntry.class);
+		idpEntry.setProviderID(idpId);
+		var idpList = OpenSamlUtil.buildSamlObject(IDPList.class);
+		idpList.getIDPEntrys().add(idpEntry);
+		var scoping = OpenSamlUtil.buildSamlObject(Scoping.class);
+		scoping.setIDPList(idpList);
+		return scoping;
+	}
+
+	public static String extractIdpScoping(AuthnRequest authnRequest) {
+		var scoping = authnRequest.getScoping();
+		if (scoping == null || scoping.getIDPList() == null || scoping.getIDPList().getIDPEntrys().isEmpty()) {
+			return null;
+		}
+		return scoping.getIDPList().getIDPEntrys().get(0).getProviderID();
+	}
+
 
 }

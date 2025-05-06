@@ -81,7 +81,7 @@ public class SilenceRules {
 		var path = request.getRequestURI();
 		return !infoEnabled // everything is silenced in the op and access logging department
 				|| isSilencedClientStuff(path)
-				|| isSilencedIntranetStuff(path, WebSupport.isIntranet(request, networkConfig))
+				|| isSilencedIntranetStuff(path, WebSupport.isClientOnIntranet(request, networkConfig))
 				|| isSilencedLoadbalancer(request, networkConfig);
 	}
 

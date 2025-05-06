@@ -25,8 +25,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.dto.ConfigElementStatus;
@@ -42,7 +42,7 @@ import swiss.trustbroker.federation.xmlconfig.RelyingPartySetup;
 @ContextConfiguration(classes = XmlConfigStatusService.class)
 class XmlConfigStatusServiceTest {
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartyDefinitions relyingPartyDefinitions;
 
 	@Autowired

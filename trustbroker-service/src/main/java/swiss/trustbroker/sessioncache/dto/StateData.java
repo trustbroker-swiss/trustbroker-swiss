@@ -34,6 +34,7 @@ import lombok.ToString;
 import org.springframework.data.annotation.Id;
 import swiss.trustbroker.api.sessioncache.dto.SessionState;
 import swiss.trustbroker.common.saml.dto.SamlBinding;
+import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 import swiss.trustbroker.saml.dto.CpResponse;
 
 @Data
@@ -68,7 +69,7 @@ public class StateData implements Serializable, SessionState {
 
 	private List<String> contextClasses;
 
-	private String comparisonType;
+	private QoaComparison comparisonType;
 
 	private String assertionConsumerServiceUrl;
 
@@ -89,7 +90,9 @@ public class StateData implements Serializable, SessionState {
 	// SAML session identification (always 0 in our case, correlates with ssoSessionId
 	private String sessionIndex;
 
-	private Boolean initiatedViaArtifactBinding;
+	private SamlBinding requestBinding;
+
+	private SamlBinding requestedResponseBinding; // AuthnRequest.ProtocolBinding
 
 	// external context tracking only so we do not have to expose out own ID
 	private String ssoSessionId;
@@ -98,17 +101,21 @@ public class StateData implements Serializable, SessionState {
 
 	private String oidcClientId;
 
-	private String oidcSessionId; // 2nd key: Track code and sid of access_token, id_token claim)
+	private String oidcSessionId; // 2nd key: Track code and sid of access_token, id_token claim
 
 	private String oidcRefreshToken; // 3d key: opaque refresh_token when on /token endpoint clients want a new one
 
 	private String oidcSessionData; // OIDC sub-system web session tracking on OIDC side sessions only
 
-	private String oidcTokenData; // OIDC sub-system token tracking (OAuth2Authorization))
+	private String oidcTokenData; // OIDC sub-system token tracking (OAuth2Authorization)
 
 	private int oidcTokenCount;
 
+	private String oidcNonce; // client side nonce
+
 	private AccessRequestSessionState accessRequest;
+
+	private String hrdHint;
 
 	@Builder.Default
 	private Map<String, String> rpContext = new HashMap<>();
@@ -132,6 +139,11 @@ public class StateData implements Serializable, SessionState {
 	}
 
 	@JsonIgnore
+	public String getRpRelayState() {
+		return (spStateData != null) ? spStateData.relayState : relayState;
+	}
+
+	@JsonIgnore
 	public String getRpOidcClientId() {
 		return (spStateData != null) ? spStateData.oidcClientId : oidcClientId;
 	}
@@ -139,6 +151,11 @@ public class StateData implements Serializable, SessionState {
 	@JsonIgnore
 	public List<String> getRpContextClasses() {
 		return (spStateData != null) ? spStateData.contextClasses : contextClasses;
+	}
+
+	@JsonIgnore
+	public String getRpHrdHint() {
+		return (spStateData != null) ? spStateData.hrdHint : hrdHint;
 	}
 
 	@JsonIgnore
@@ -208,10 +225,6 @@ public class StateData implements Serializable, SessionState {
 			accessRequest = new AccessRequestSessionState();
 		}
 		return accessRequest;
-	}
-
-	public void initiatedViaBinding(SamlBinding samlBinding) {
-		initiatedViaArtifactBinding = (samlBinding == SamlBinding.ARTIFACT);
 	}
 
 }

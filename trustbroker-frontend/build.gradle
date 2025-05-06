@@ -5,8 +5,8 @@ plugins {
 }
 
 node {
-	version = '20.14.0'
-	npmVersion = '10.7.0'
+	version = '20.18.1'
+	npmVersion = '10.9.2'
 	// If true, it will download node using above parameters.
 	// If false, it will try to use globally installed node.
 	download = true
@@ -27,7 +27,13 @@ tasks.register('npmLint', NpxTask) {
 	args = ['run', 'lint']
 }
 
-check.dependsOn('npmLint')
+tasks.register('npmTest', NpxTask) {
+	dependsOn 'npmInstall'
+	command = 'npm'
+	args = ['run', 'test']
+}
+
+check.dependsOn('npmTest', 'npmLint')
 
 task npmClean(type: Delete) {
 	delete "dist"

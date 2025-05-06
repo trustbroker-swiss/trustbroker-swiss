@@ -33,8 +33,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.sessioncache.dto.ArtifactCacheEntity;
@@ -51,13 +51,13 @@ class ArtifactStorageServiceTest {
 
 	private static final String VALUE = "value1";
 
-	@MockBean
+	@MockitoBean
 	ArtifactCacheRepository artifactCacheRepository;
 
-	@MockBean
+	@MockitoBean
 	Clock clock;
 
-	@MockBean
+	@MockitoBean
 	private MetricsService metricsService;
 
 	ArtifactStorageService cacheService;

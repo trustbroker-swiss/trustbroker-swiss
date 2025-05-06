@@ -7,6 +7,7 @@
       ],
       "parser": "@typescript-eslint/parser",
       "parserOptions": {
+        "projectService": true,
         "project": [
           "tsconfig.json"
         ],
@@ -76,6 +77,14 @@
         "@typescript-eslint/prefer-regexp-exec": "error",
         "@typescript-eslint/prefer-string-starts-ends-with": "error",
         "@typescript-eslint/unified-signatures": "error",
+        "@typescript-eslint/no-unused-vars": [
+          "error",
+          {
+            "argsIgnorePattern": "^_",
+            "varsIgnorePattern": "^_",
+            "caughtErrorsIgnorePattern": "^_"
+          }
+        ],
         "dot-notation": "error",
         "eqeqeq": [
           "error",

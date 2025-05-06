@@ -18,7 +18,7 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../environments/environment';
-import { IdpObject } from '../model/idpObject';
+import { IdpObjects } from '../model/IdpObject';
 import { Configuration } from '../model/Configuration';
 import { SsoParticipants } from '../model/SsoParticipants';
 import { SupportInfo } from '../model/SupportInfo';
@@ -33,14 +33,14 @@ export class ApiService {
 
 	constructor(private readonly http: HttpClient) {}
 
-	getIdpObjects(issuer: string): Observable<IdpObject[]> {
-		return this.http.get<IdpObject[]>(`${this.baseUrl}hrd/relyingparties/${issuer}/tiles`);
+	getIdpObjects(issuer: string, authnRequestId: string): Observable<IdpObjects> {
+		return this.http.get<IdpObjects>(`${this.baseUrl}hrd/relyingparties/${issuer}/tiles?session=${authnRequestId}`);
 	}
 
 	// btoa support just from IE10
-	selectIDP(id: string, urn: string): Observable<HttpResponse<string>> {
+	selectIdp(authnRequestId: string, urn: string): Observable<HttpResponse<string>> {
 		urn = btoa(urn).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-		return this.http.get<string>(`${this.baseUrl}hrd/claimsproviders/${urn}?id=${id}`, {
+		return this.http.get<string>(`${this.baseUrl}hrd/claimsproviders/${urn}?session=${authnRequestId}`, {
 			headers: new HttpHeaders().set('Accept', 'text/html'),
 			observe: 'response',
 			responseType: 'text' as 'json'

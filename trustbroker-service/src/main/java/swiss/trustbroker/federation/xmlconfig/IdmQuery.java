@@ -31,12 +31,13 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import swiss.trustbroker.api.idm.dto.IdmRequest;
+import swiss.trustbroker.api.idm.service.IdmQueryService;
 import swiss.trustbroker.api.sessioncache.dto.AttributeName;
 
 /**
  * Configures an IDM query to be executed.
  *
- * @see swiss.trustbroker.api.idm.service.IdmService
+ * @see IdmQueryService
  */
 @XmlRootElement(name = "IDMQuery")
 @XmlAccessorType(XmlAccessType.FIELD)

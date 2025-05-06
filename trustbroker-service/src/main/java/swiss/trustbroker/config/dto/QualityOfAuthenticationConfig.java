@@ -23,9 +23,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Quality of Authentication (QoA) coniguration.
+ * Quality of Authentication (QoA) configuration.
+ * <br/>
+ * A QoA value has a name (e.g. a URN) and a numerical level for ordering and mapping inbound/outbound.
  *
- * @see swiss.trustbroker.api.qoa.service.QualityOfAuthenticationService
+ * @since 1.9.0
  */
 @Data
 @Builder
@@ -34,8 +36,25 @@ import lombok.NoArgsConstructor;
 public class QualityOfAuthenticationConfig {
 
 	/**
-	 * Custom attributes that might be needed by the implementation.
- 	 */
-	private Map<String, String> attributes;
+	 * Default Qoa value.
+	 */
+	private String defaultQoa;
+
+	/**
+	 * QoA value for <strong>strongest possible</strong> authentication level.
+	 */
+	private String strongestPossible;
+
+	/**
+	 * Global mapping of QoA values to QoaLevel.
+	 */
+	private Map<String, Integer> mapping;
+
+	/**
+	 * Mapping of legacy QoA values to QoaLevel.
+	 * <br/>
+	 * Used for <code>OidcClient.usePepQoa=true</code>.
+	 */
+	private Map<String, Integer> legacy;
 
 }

@@ -66,6 +66,7 @@ $font-weight-light: 100;
 $high-emphasis-color: rgba(0, 0, 0, 0.87);
 $medium-emphasis-color: rgba(0, 0, 0, 0.6);
 $disabled-color: rgba(0, 0, 0, 0.38);
+$page-background-color: white;
 
 // missing in Oblique 8/9 - inserted value used in Oblique 7:
 $ob-layout-collapse: 992px !default; // Breakpoint at which the layout becomes expanded.
@@ -83,7 +84,6 @@ $focus-dropdown-background-color: #E5E5E5;
 $dropdown-active-color: #D5D5D5;
 // Added for Oblique 11 migration:
 $container-color: #de;
-$fog: #FAFAFA; // gray 2%;
 $smoke: #F5F5F5; // gray 4%;
 $light-grey: #D5D5D5; // gray 16%;
 $gray-dark: #333;

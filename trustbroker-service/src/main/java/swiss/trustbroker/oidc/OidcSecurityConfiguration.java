@@ -53,10 +53,11 @@ import org.springframework.security.saml2.provider.service.web.RelyingPartyRegis
 import org.springframework.security.saml2.provider.service.web.authentication.Saml2AuthenticationRequestResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
-import swiss.trustbroker.api.qoa.service.QualityOfAuthenticationService;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.mapping.service.ClaimsMapperService;
+import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.oidc.opensaml5.OpenSaml5AuthenticationProvider;
 import swiss.trustbroker.oidc.opensaml5.OpenSaml5AuthenticationRequestResolver;
@@ -80,6 +81,8 @@ public class OidcSecurityConfiguration {
 
 	private final RelyingPartyDefinitions relyingPartyDefinitions;
 
+	private final QoaMappingService qoaMappingService;
+
 	private final JwkCacheService jwkCacheService;
 
 	private final ServerProperties serverProperties;
@@ -88,13 +91,15 @@ public class OidcSecurityConfiguration {
 
 	private final ScriptService scriptService;
 
+	private final ClaimsMapperService claimsMapperService;
+
 	private final AuditService auditService;
 
 	private final SsoService ssoService;
 
 	private final VelocityEngine velocityEngine;
 
-	private final QualityOfAuthenticationService qoaService;
+	private final QoaMappingService qoaService;
 
 	private final CustomOAuth2AuthorizationService customOAuth2AuthorizationService;
 
@@ -218,7 +223,8 @@ public class OidcSecurityConfiguration {
 	@Bean
 	public OAuth2TokenCustomizer<JwtEncodingContext> tokenCustomizer(JWKSource<SecurityContext> jwkSource) {
 		// Customize OAuth2Token payload
-		return new JwtTokenCustomizer(properties, relyingPartyDefinitions, scriptService, auditService, qoaService, jwkSource);
+		return new JwtTokenCustomizer(properties, relyingPartyDefinitions, scriptService, claimsMapperService, auditService,
+				qoaService, jwkSource);
 	}
 
 	/**
@@ -230,7 +236,7 @@ public class OidcSecurityConfiguration {
 	@Bean
 	Saml2AuthenticationRequestResolver authenticationRequestResolver() {
 		var authenticationRequestResolver = new OpenSaml5AuthenticationRequestResolver(relyingPartyResolver());
-		var authnRequestCustomizer = new OidcAuthnRequestContextCustomizer(properties, relyingPartyDefinitions);
+		var authnRequestCustomizer = new OidcAuthnRequestContextCustomizer(properties, relyingPartyDefinitions, qoaMappingService);
 		authenticationRequestResolver.setAuthnRequestCustomizer(authnRequestCustomizer);
 		return authenticationRequestResolver;
 	}

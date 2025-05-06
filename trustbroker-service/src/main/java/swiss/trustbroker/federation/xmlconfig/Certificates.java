@@ -25,6 +25,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 
 /**
@@ -47,6 +48,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Slf4j
 public class Certificates implements Serializable {
 
 	/**
@@ -74,15 +76,48 @@ public class Certificates implements Serializable {
 	private SignerTruststore encryptionTruststore;
 
 	/**
-	 * Keystore for backend connections via SAML the artifact resolution protocol.
+	 * Keystore for backend connections (via SAML the artifact resolution or OIDC metadata protocol).
+	 *
+	 * @since 1.9.0
 	 */
+	@XmlElement(name = "BackendKeystore")
+	private SignerKeystore backendKeystore;
+
+	/**
+	 * Truststore for backend connections (via SAML the artifact resolution or OIDC metadata protocol).
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlElement(name = "BackendTruststore")
+	private SignerTruststore backendTruststore;
+
+	/**
+	 * @deprecated Use backendKeystore
+	 */
+	@Deprecated(since = "1.9.0", forRemoval = true)
 	@XmlElement(name = "ArtifactResolutionKeystore")
 	private SignerKeystore artifactResolutionKeystore;
 
 	/**
-	 * Truststore for backend connections via SAML artifact resolution protocol.
+	 * @deprecated Use backendTruststore
 	 */
+	@Deprecated(since = "1.9.0", forRemoval = true)
 	@XmlElement(name = "ArtifactResolutionTruststore")
 	private SignerTruststore artifactResolutionTruststore;
 
+	public SignerKeystore getBackendKeystore() {
+		// fallback for transition
+		if (artifactResolutionKeystore != null) {
+			return artifactResolutionKeystore;
+		}
+		return backendKeystore;
+	}
+
+	public SignerTruststore getBackendTruststore() {
+		// fallback for transition
+		if (artifactResolutionTruststore != null) {
+			return artifactResolutionTruststore;
+		}
+		return backendTruststore;
+	}
 }

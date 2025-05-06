@@ -91,6 +91,13 @@ public class NetworkConfig {
 	@Builder.Default
 	private Boolean tracingEnabled = Boolean.TRUE;
 
+	/**
+	 * Default proxy URL.
+	 *
+	 * @since 1.9.0
+	 */
+	private String proxyUrl;
+
 	public boolean isIntranet(String name) {
 		return intranetNetworkName != null && intranetNetworkName.equals(name);
 	}

@@ -57,7 +57,7 @@ import swiss.trustbroker.homerealmdiscovery.dto.SupportInfo;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.homerealmdiscovery.util.OperationalUtil;
 import swiss.trustbroker.saml.dto.DeviceInfoReq;
-import swiss.trustbroker.saml.dto.UiObject;
+import swiss.trustbroker.saml.dto.UiObjects;
 import swiss.trustbroker.saml.service.AssertionConsumerService;
 import swiss.trustbroker.saml.service.ClaimsProviderService;
 import swiss.trustbroker.saml.service.RelyingPartyService;
@@ -101,26 +101,37 @@ public class HrdController {
 	private final ProfileSelectionService profileSelectionService;
 
 	// Return the list of CP issuers we need to render
+	// once the FE has been adapted, id and stateDataByAuthnReq can be changed to required
 	@GetMapping(path = "/api/v1/hrd/relyingparties/{issuer}/tiles")
 	@ResponseBody
-	public List<UiObject> getHrdTilesForRpIssuer(HttpServletRequest httpRequest, HttpServletResponse httpResponse,
-			@PathVariable("issuer") String issuer) {
+	public UiObjects getHrdTilesForRpIssuer(HttpServletRequest httpRequest, HttpServletResponse httpResponse,
+			@PathVariable("issuer") String issuer, @RequestParam(value = "session", required = false) String rpAuthnRequestId) {
+		rpAuthnRequestId = StringUtil.clean(rpAuthnRequestId);
 		var rpIssuer = ApiSupport.decodeUrlParameter(issuer);
 		var referer = WebUtil.getHeader(HttpHeaders.REFERER, httpRequest);
-		var rpRequest = assertionConsumerService.renderUI(rpIssuer, referer, null, httpRequest, null, null);
+
+		// state for current AuthnRequest must exist
+		var stateDataByAuthnReq = stateCacheService.findBySpId(rpAuthnRequestId, this.getClass().getSimpleName());
+
+		var rpRequest = assertionConsumerService.renderUi(rpIssuer, referer, null, httpRequest, null,
+				stateDataByAuthnReq.orElse(null));
 		return rpRequest.getUiObjects();
 	}
 
 	@GetMapping(path = "/api/v1/hrd/relyingparties/{sessionId}/continue")
-	public void handleContinueToRp(HttpServletRequest request, HttpServletResponse response,
+	public String handleContinueToRp(HttpServletRequest request, HttpServletResponse response,
 			@PathVariable(name = "sessionId") String sessionIdEncoded) {
 		log.debug("User confirmed continuation to RP");
 
 		var sessionId = ApiSupport.decodeUrlParameter(sessionIdEncoded);
 		var stateData = stateCacheService.findMandatoryValidState(sessionId, this.getClass().getSimpleName());
+		// avoid loop due to aborted status (no problem if not persisted):
+		stateData.getCpResponse().resetErrorPageStatus();
 		var rpId = stateData.getRpIssuer();
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpId, null);
-		relyingPartyService.sendResponseToRpFromSessionState(samlOutputService, relyingParty, stateData, request, response);
+		var returnUrl = relyingPartyService.sendResponseToRpFromSessionState(samlOutputService, relyingParty, stateData, request,
+				response);
+		return WebSupport.getViewRedirectResponse(returnUrl);
 	}
 
 	@GetMapping(path = "/api/v1/hrd/profiles")
@@ -184,13 +195,13 @@ public class HrdController {
 			HttpServletRequest request,
 			HttpServletResponse response,
 			@PathVariable("cpid") String cpIssuerId,
-			@RequestParam("id") String rpAuthnRequestId) {
+			@RequestParam("session") String rpAuthnRequestId) {
 		// security
 		cpIssuerId = ApiSupport.decodeUrlParameter(cpIssuerId);
 		rpAuthnRequestId = StringUtil.clean(rpAuthnRequestId);
 
 		// state for current AuthnRequest must exist
-		var stateDataByAuthnReq = fetchRequiredStateData(rpAuthnRequestId);
+		var stateDataByAuthnReq = stateCacheService.findRequiredBySpId(rpAuthnRequestId, this.getClass().getSimpleName());
 
 		// check SSO
 		var rpIssuerId = stateDataByAuthnReq.getRpIssuer();
@@ -201,18 +212,25 @@ public class HrdController {
 			return;
 		}
 		// internal processing - keep using stateDataByAuthnReq
-		claimsProviderService.sendSamlToCpWithMandatoryIds(samlOutputService, request, response, stateDataByAuthnReq,
-				cpIssuerId);
+		var redirectUrl = claimsProviderService.sendSamlToCpWithMandatoryIds(request, response, stateDataByAuthnReq, cpIssuerId);
+		sendOkRedirect(response, redirectUrl);
 	}
 
 	private void sendDeviceInfoRedirect(HttpServletResponse response, String cpIssuerId, String rpIssuerId,
 			String rpAuthnRequestId) {
 		var redirectForDeviceInfo = apiSupport.getDeviceInfoUrl(cpIssuerId, rpIssuerId, rpAuthnRequestId);
-		log.info("SSO device info redirect of AuthnRequest {} for CP {} to {}",
+		log.info("SSO device info redirect of authnRequestId={} for cpIssuer={} to redirectUrl={}",
 				rpAuthnRequestId, cpIssuerId, redirectForDeviceInfo);
-		// location header to be handled in hrd-cards.component, a 3xx status code would be handled by the Browser
-		response.setHeader(HttpHeaders.LOCATION, redirectForDeviceInfo);
-		response.setStatus(HttpServletResponse.SC_OK);
+		sendOkRedirect(response, redirectForDeviceInfo);
+	}
+
+	// location header to be handled in hrd-cards.component, a 3xx status code would be handled by the Browser
+	private static void sendOkRedirect(HttpServletResponse response, String redirectUrl) {
+		if (redirectUrl != null) {
+			log.debug("Sending HTTP status OK with location={}", redirectUrl);
+			response.setHeader(HttpHeaders.LOCATION, redirectUrl);
+			response.setStatus(HttpServletResponse.SC_OK);
+		}
 	}
 
 	// SSO and device fingerprinting is not an HRD functionality and this one might want to go to a new SSOController instead
@@ -232,8 +250,8 @@ public class HrdController {
 		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpIssuerId, referer);
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuerId, referer);
 
+		// SSO bailout based on previous CP auth
 		var stateDataByAuthnReq = findValidStateByAuthnRequestId(authReqId);
-		// no Subject.NameID yet -> check for SSO cookie of the SSO group
 		var stateByCookieId = ssoService.findValidStateFromCookies(relyingParty, claimsParty, request.getCookies());
 		if (stateByCookieId.isPresent()) {
 			log.debug("Session state found based on cookie, checking SSO...");
@@ -242,12 +260,12 @@ public class HrdController {
 			// AuthnRequest attributes like QOA etc. have been checked earlier in AssertionConsumerService
 			if (ssoService.ssoStateValidForDeviceInfo(claimsParty, relyingParty, ssoStateData, stateDataByAuthnReq, deviceID,
 					cpIssuerId)) {
-				return sendResponseForSso(request, response, relyingParty, ssoStateData, stateDataByAuthnReq);
+				return sendResponseForSso(request, response, relyingParty, claimsParty,  ssoStateData, stateDataByAuthnReq);
 			}
 		}
-		sendAuthnRequestToSingleIdp(request, response, stateDataByAuthnReq, claimsParty);
 
-		return null;
+		// all protocols
+		return sendAuthnRequestToSingleIdp(request, response, stateDataByAuthnReq, claimsParty);
 	}
 
 	private StateData findValidStateByAuthnRequestId(String authReqId) {
@@ -266,11 +284,11 @@ public class HrdController {
 	}
 
 	private ResponseEntity<ProfileResponse> sendResponseForSso(HttpServletRequest request, HttpServletResponse response,
-			RelyingParty relyingParty, StateData ssoStateData, StateData stateDataByAuthnReq) {
+			RelyingParty relyingParty, ClaimsParty claimsParty, StateData ssoStateData, StateData stateDataByAuthnReq) {
 		log.debug("Established CP identity and accepted fingerprint, sending AuthnResponse");
 
-		var redirectUrl = relyingPartyService.performAccessRequestIfRequired(request, relyingParty, ssoStateData,
-				stateDataByAuthnReq);
+		var redirectUrl = relyingPartyService.performAccessRequestWithDataRefreshIfRequired(request, relyingParty, claimsParty,
+				ssoStateData, stateDataByAuthnReq);
 		if (redirectUrl == null) {
 			redirectUrl = relyingPartyService.sendAuthnResponseToRpFromState(samlOutputService, request, response,
 					ssoStateData, stateDataByAuthnReq);
@@ -284,33 +302,49 @@ public class HrdController {
 		return new ResponseEntity<>(profileResponse, HttpStatus.OK);
 	}
 
-	private void sendAuthnRequestToSingleIdp(HttpServletRequest request, HttpServletResponse response,
-			StateData stateDataByAuthnReq, ClaimsParty claimsParty) {
-		log.debug("Sending request to IDP");
-		var deviceID = WebSupport.getDeviceId(request);
+	private ResponseEntity<ProfileResponse> sendAuthnRequestToSingleIdp(HttpServletRequest request,
+			HttpServletResponse response, StateData stateDataByAuthnReq, ClaimsParty claimsParty) {
+		var deviceId = WebSupport.getDeviceId(request);
+		log.debug("Sending request to IDP for device={}", deviceId);
+
+		// CP federation only on valid session on
 		if (stateDataByAuthnReq.isValid()) {
-			stateDataByAuthnReq.setDeviceId(deviceID);
+			// remember device
+			stateDataByAuthnReq.setDeviceId(deviceId);
 			stateCacheService.save(stateDataByAuthnReq, this.getClass().getSimpleName());
-			claimsProviderService.sendSamlToCp(samlOutputService, request, response, stateDataByAuthnReq, claimsParty.getId());
-			return;
+
+			// handle CP invocation
+			var redirectUrl =  claimsProviderService.sendAuthnRequestToCp(request, response, stateDataByAuthnReq, claimsParty);
+			if (redirectUrl == null) {
+				return null;
+			}
+			log.debug("Resulting redirectUrl={} for device={}", redirectUrl, deviceId);
+			return new ResponseEntity<>(ProfileResponse.builder().redirectUrl(redirectUrl).build(), HttpStatus.OK);
 		}
 		throw new RequestDeniedException(String.format("Unexpected invalid sessionId=%s", stateDataByAuthnReq.getId()));
 	}
 
-	@GetMapping(path = "/api/v1/announcements/{issuer}/{referer}")
+	@GetMapping(value = { "/api/v1/announcements/{issuer}/{appName}", "/api/v1/announcements/{issuer}" })
 	@ResponseBody
 	public List<AnnouncementUiElement> getAnnouncements(HttpServletRequest request, HttpServletResponse response,
-			@PathVariable("issuer") String issuer, @PathVariable("referer") String referer) {
+			@PathVariable("issuer") String issuer, @PathVariable(required = false, name = "appName") String appName) {
+
 		String decodedIssuer = ApiSupport.decodeUrlParameter(issuer);
-		String decodedReferer = ApiSupport.decodeUrlParameter(referer);
-		RelyingParty relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(decodedIssuer, decodedReferer);
+		String applicationName = null;
+		if (appName != null) {
+			applicationName = ApiSupport.decodeUrlParameter(appName);
+		}
+		log.debug("Requested announcements for issuer={} appName={}", issuer, appName);
+
+		RelyingParty relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(decodedIssuer, null);
 		if (relyingParty == null) {
-			log.error("RP config was not found for issuer={} referer={}, no announcements will be shown", decodedIssuer,
-					decodedReferer);
+			log.error("RP config was not found for issuer={} appName={}, no announcements will be shown", decodedIssuer,
+					applicationName);
 			return Collections.emptyList();
 		}
+
 		List<Announcement> announcementsForApplication =
-				announcementService.getAnnouncementsForApplication(relyingParty, relyingParty.getAnnouncement());
+				announcementService.getAnnouncementsForApplication(relyingParty, relyingParty.getAnnouncement(), applicationName);
 
 		// adminlogin cookie shall let users pass
 		var skipDisabling = OperationalUtil.skipUiFeaturesForAdminAndMonitoringClients(request, trustBrokerProperties);
@@ -327,15 +361,6 @@ public class HrdController {
 																.emailAddress(announcementEntity.getEmailAddress())
 																.build())
 				.toList();
-	}
-
-	private StateData fetchRequiredStateData(String rpAuthnRequestId) {
-		Optional<StateData> stateDataOpt = stateCacheService.findBySpId(rpAuthnRequestId, this.getClass().getSimpleName());
-		if (stateDataOpt.isEmpty()) {
-			throw new RequestDeniedException(String.format(
-					"State not found. Details: rpAuthnRequestId=%s", rpAuthnRequestId));
-		}
-		return stateDataOpt.get();
 	}
 
 	// redirect to HRD for the given session
@@ -365,25 +390,36 @@ public class HrdController {
 		}
 		// else: the default support is shown with general contact information
 		var result = builder.build();
-		log.debug("Found supportInfo={} for errorCode={} sessionId={}", result, errorCode, sessionId);
+		log.debug("Returning supportInfo={} for errorCode={} sessionId={}", result, errorCode, sessionId);
 		return result;
 	}
 
-	private Optional<Flow> getFlowForSessionId(String sessionId, String errorCode) {
-		var stateData = stateCacheService.findOptional(sessionId, HrdController.class.getSimpleName());
-		if (stateData.isEmpty()) {
+	Optional<Flow> getFlowForSessionId(String sessionId, String errorCode) {
+		var stateDataOpt = stateCacheService.findOptional(sessionId, HrdController.class.getSimpleName());
+		if (stateDataOpt.isEmpty()) {
+			log.info("Session not found for flow lookup: sessionId={}", sessionId);
 			return Optional.empty();
 		}
-		var rpIssuerId = stateData.get().getRpIssuer();
-		var referrer = stateData.get().getRpReferer();
+		var stateData = stateDataOpt.get();
+		var flowPolicy = stateData.getCpResponse() != null ? stateData.getCpResponse().getFlowPolicy() : null;
+		if (flowPolicy != null) {
+			log.debug("CP response of sessionId={} contains flow policy={} ", sessionId, flowPolicy);
+			return Optional.of(flowPolicy);
+		}
+		var rpIssuerId = stateData.getRpIssuer();
+		var referrer = stateData.getRpReferer();
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuerId, referrer, true);
 		if (relyingParty == null) {
+			log.error("RP not found for flow lookup: rpIssuerId={} referrer={} for sessionId={}", rpIssuerId, referrer, sessionId);
 			return Optional.empty();
 		}
-		return relyingParty.getFlows()
+		var flowOpt = relyingParty.getFlows()
 				.stream()
 				.filter(flow -> SamlStatusCode.toUiErrorCode(flow.getId()).equals(errorCode))
 				.findFirst();
+		log.debug("RP rpIssuerId={} of sessionId={} has errorCode={} flowPolicy={} ",
+				relyingParty.getId(), sessionId, errorCode, flowOpt.orElse(null));
+		return flowOpt;
 	}
 
 }

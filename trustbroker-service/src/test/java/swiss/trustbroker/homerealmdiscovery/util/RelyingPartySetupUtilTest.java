@@ -17,9 +17,11 @@ package swiss.trustbroker.homerealmdiscovery.util;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -38,12 +40,15 @@ import org.junit.jupiter.params.provider.CsvSource;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.SamlContextClass;
+import swiss.trustbroker.federation.xmlconfig.AcClass;
 import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.AccessRequest;
 import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.AuthorizationGrantType;
 import swiss.trustbroker.federation.xmlconfig.AuthorizationGrantTypes;
 import swiss.trustbroker.federation.xmlconfig.AuthorizedApplication;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderMappings;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
 import swiss.trustbroker.federation.xmlconfig.ClientAuthenticationMethod;
 import swiss.trustbroker.federation.xmlconfig.ClientAuthenticationMethods;
 import swiss.trustbroker.federation.xmlconfig.Definition;
@@ -55,6 +60,101 @@ import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.Scopes;
 
 class RelyingPartySetupUtilTest {
+
+	@Test
+	void mergeClaimsProviderMappings() {
+		var profileClaimsProviderMappings = ClaimsProviderMappings
+				.builder()
+				.claimsProviderList(List.of(
+						ClaimsProviderRelyingParty.builder()
+												  .id("P1enabled")
+												  .enabled(true)
+												  .order(100)
+												  .clientNetworks("N1,N2")
+												  .build(),
+						ClaimsProviderRelyingParty.builder()
+												  .id("P2disabled")
+												  .enabled(false)
+												  .order(200)
+												  .clientNetworks("N1,N2")
+												  .build(),
+						ClaimsProviderRelyingParty.builder()
+												  .id("P3network")
+												  .enabled(false)
+												  .order(300)
+												  .clientNetworks("N1,N2")
+												  .build()
+				))
+				.build();
+		var claimsProviderMappings = ClaimsProviderMappings
+				.builder()
+				.claimsProviderList(List.of(
+						ClaimsProviderRelyingParty.builder()
+												  .id("P1enabled")
+												  .relyingPartyAlias("alias1")
+												  .build(),
+						ClaimsProviderRelyingParty.builder()
+												  .id("P2disabled")
+												  .enabled(false)
+												  .build(),
+						ClaimsProviderRelyingParty.builder()
+												  .id("P3network")
+												  .enabled(true)
+												  .clientNetworks("N3")
+												  .build(),
+						ClaimsProviderRelyingParty.builder()
+												  .id("R1enabled")
+												  .enabled(true)
+												  .order(1)
+												  .clientNetworks("N4")
+												  .build(),
+						ClaimsProviderRelyingParty.builder()
+												  .id("R2disabled")
+												  .enabled(false)
+												  .order(999)
+												  .build()
+				))
+				.build();
+		var relyingParty = RelyingParty
+				.builder()
+				.id("TestRP")
+				.base("ProfileRP")
+				.claimsProviderMappings(claimsProviderMappings)
+				.build();
+
+		RelyingPartySetupUtil.mergeClaimsProviderMappings(relyingParty, profileClaimsProviderMappings);
+
+		// all enabled CPs from profile and setup were combined with overrides from setup, no disabled ones anymore
+		var mappings = relyingParty.getClaimsProviderMappings();
+		assertThat(mappings, is(notNullValue()));
+		var mappingList = relyingParty.getClaimsProviderMappings().getClaimsProviderList();
+		assertThat(mappingList, is(notNullValue()));
+		assertThat(mappingList.size(), is(4));
+		// SetupRP with alias copied
+		assertThat(mappingList.get(0).getId(), is("P1enabled"));
+		assertThat(mappingList.get(0).getClientNetworks(), is(nullValue()));
+		assertThat(mappingList.get(0).getRelyingPartyAlias(), is("alias1"));
+		assertThat(mappingList.get(0).getEnabled(), is(nullValue())); // null is treated as enabled
+		assertThat(mappingList.get(0).getOrder(), is(nullValue())); // null is treated as not relevant to clients
+		// ProfileRP merged
+		assertThat(mappingList.get(1).getId(), is("P3network"));
+		assertThat(mappingList.get(1).getEnabled(), is(true));
+		assertThat(mappingList.get(1).getOrder(), is(300));
+		assertThat(mappingList.get(1).getClientNetworks(), is("N3"));
+		assertThat(mappingList.get(1).getRelyingPartyAlias(), is(nullValue()));
+		// SetupRP copied
+		assertThat(mappingList.get(2).getId(), is("R1enabled"));
+		assertThat(mappingList.get(2).getClientNetworks(), is("N4"));
+		assertThat(mappingList.get(2).getRelyingPartyAlias(), is(nullValue()));
+		assertThat(mappingList.get(2).getEnabled(), is(true));
+		assertThat(mappingList.get(2).getOrder(), is(1));
+		// ProfileRP added
+		assertThat(mappingList.get(3).getId(), is("P1enabled"));
+		assertThat(mappingList.get(3).getEnabled(), is(true));
+		assertThat(mappingList.get(3).getOrder(), is(100));
+		assertThat(mappingList.get(3).getClientNetworks(), is("N1,N2"));
+		assertThat(mappingList.get(3).getRelyingPartyAlias(), is(nullValue()));
+	}
 
 	@Test
 	void mergeAccessRequestCopy() {
@@ -171,18 +271,22 @@ class RelyingPartySetupUtilTest {
 
 	@Test
 	void mergeQoaLevelsTest() {
-		RelyingParty relyingParty = new RelyingParty();
-		RelyingParty baseRelyingParty = new RelyingParty();
-
+		// empty
+		var relyingParty = new RelyingParty();
+		var baseRelyingParty = new RelyingParty();
 		assertDoesNotThrow(() -> RelyingPartySetupUtil.mergeQoaLevels(relyingParty, baseRelyingParty));
 
-		baseRelyingParty.setQoa(givenQoa(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED));
+		// base profile
+		var expectedQoa = givenQoa(null, SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED);
+		baseRelyingParty.setQoa(expectedQoa);
 		RelyingPartySetupUtil.mergeQoaLevels(relyingParty, baseRelyingParty);
-		assertEquals(1, relyingParty.getQoa().getClasses().size());
+		var actualQoa = relyingParty.getQoa();
+		assertThat(actualQoa, is(expectedQoa));
 
-		relyingParty.setQoa(givenQoa(SamlContextClass.PASSWORD_PROTECTED_TRANSPORT));
+		// preserve
+		baseRelyingParty.setQoa(givenQoa(2, SamlContextClass.SMART_CARD_PKI));
 		RelyingPartySetupUtil.mergeQoaLevels(relyingParty, baseRelyingParty);
-		assertEquals(2, relyingParty.getQoa().getClasses().size());
+		assertThat(relyingParty.getQoa(), is(expectedQoa));
 	}
 
 	@Test
@@ -300,7 +404,7 @@ class RelyingPartySetupUtilTest {
 						.build())
 				// stuff overwritten
 				.scopes(Scopes.builder().scopeList(List.of("openid", "email", "profile", "address", "phone")).build())
-				.qoa(Qoa.builder().classes(List.of("qoa10")).build())
+				.qoa(Qoa.builder().classes(List.of(AcClass.builder().contextClass("qoa10").build())).build())
 				.build();
 		var base = OidcClient.builder()
 				.redirectUris(AcWhitelist.builder().acUrls(List.of("url3", "url4")).build())
@@ -320,7 +424,7 @@ class RelyingPartySetupUtilTest {
 										ClientAuthenticationMethod.CLIENT_SECRET_BASIC,
 										ClientAuthenticationMethod.CLIENT_SECRET_POST)
 						).build())
-				.qoa(Qoa.builder().classes(List.of("lost")).build())
+				.qoa(Qoa.builder().classes(List.of(AcClass.builder().contextClass("lost").build())).build())
 				.build();
 
 		RelyingPartySetupUtil.mergeOidcClient(client, base);
@@ -359,13 +463,11 @@ class RelyingPartySetupUtilTest {
 		return definitions;
 	}
 
-	private Qoa givenQoa(String qoaClass) {
-		List<String> classes = new ArrayList<>();
-		classes.add(qoaClass);
-
+	private Qoa givenQoa(Integer order, String qoaClass) {
+		List<AcClass> classes = new ArrayList<>();
+		classes.add(AcClass.builder().order(order).contextClass(qoaClass).build());
 		Qoa qoa = new Qoa();
 		qoa.setClasses(classes);
-
 		return qoa;
 	}
 

@@ -70,6 +70,16 @@ public class StateCacheProperties {
 	private int txCommitDelay = 0;
 
 	/**
+	 * Delay before transaction retry in milliseconds (negative values indicate no retry).
+	 * <br/>
+	 * Default: -1
+	 *
+	 * @since 1.9.0
+	 */
+	@Builder.Default
+	private int txRetryDelayMs = -1;
+
+	/**
 	 * State cache schema migration. Currently unused.
 	 * <br/>
 	 * Default: true

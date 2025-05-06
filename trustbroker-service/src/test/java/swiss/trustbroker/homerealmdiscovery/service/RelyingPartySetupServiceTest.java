@@ -22,6 +22,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
@@ -37,10 +38,10 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.config.RegexNameValue;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
@@ -50,12 +51,15 @@ import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
+import swiss.trustbroker.federation.xmlconfig.OidcClient;
+import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.federation.xmlconfig.SsoGroup;
 import swiss.trustbroker.federation.xmlconfig.SsoGroupSetup;
 import swiss.trustbroker.homerealmdiscovery.util.OperationalUtil;
 import swiss.trustbroker.saml.test.util.ServiceSamlTestUtil;
+import swiss.trustbroker.sessioncache.dto.StateData;
 
 @SpringBootTest
 @ContextConfiguration(classes = { RelyingPartySetupService.class })
@@ -64,10 +68,10 @@ class RelyingPartySetupServiceTest {
 
 	private static final String RP_ID = "rp";
 
-	@MockBean
+	@MockitoBean
 	private TrustBrokerProperties trustBrokerProperties;
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartyDefinitions relyingPartyDefinitions;
 
 	@Autowired
@@ -373,6 +377,22 @@ class RelyingPartySetupServiceTest {
 		assertThat(relyingPartySetupService.getSsoGroupConfig("unknown", true), is(Optional.empty()));
 		assertThrows(TechnicalException.class,
 				() -> relyingPartySetupService.getSsoGroupConfig("invalid", false));
+	}
+
+	@Test
+	void getQoaConfigurationTest() {
+		String rpId = "urn:test:TESTRP";
+		String qoaRp = "urn:test:MOCKRP-QOA";
+		mockRelyingPartyConfiguration();
+		assertNull(relyingPartySetupService.getQoaConfiguration(null, rpId, null, null).config());
+		assertNotNull(relyingPartySetupService.getQoaConfiguration(null, qoaRp, null, null).config());
+
+		var stateData = StateData.builder().id("any").oidcClientId(qoaRp).build();
+		Qoa qoa = Qoa.builder().build();
+		OidcClient oidcClient = OidcClient.builder().qoa(qoa).build();
+		doReturn(Optional.of(oidcClient)).when(relyingPartyDefinitions).getOidcClientConfigById(qoaRp, null);
+
+		assertEquals(qoa, relyingPartySetupService.getQoaConfiguration(stateData, qoaRp, null, null).config());
 	}
 
 	private void mockTokenLifeTime(long tokenLifeTime) {

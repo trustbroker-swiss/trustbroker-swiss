@@ -77,15 +77,16 @@ class TraceSupportTest {
 		var request = new MockHttpServletRequest();
 
 		// incoming request with too short but acceptable trace header (pad and toLower will be applied)
-		var injectedTraceId = "0102030405060708090A0b0c0d0e0f"; // pad to hex32 and toLower
+		var injectedTraceId = "01020304-0506-0708-090A-0b0c0d0e0f"; // pad to hex32 and toLower and accept UUID notation
 		request.addHeader(TraceSupport.HTTP_REQUEST_ID, injectedTraceId);
 		request.addHeader(WebUtil.HTTP_HEADER_X_FORWARDED_FOR, "127.0.0.2");
 		TraceSupport.setMdcTraceContext(request);
+		var expectedTraceId = injectedTraceId.replaceAll("-", "");
 
 		// initial wire based traceId setup, parent spanId is generated as it's missing in X-Request-Id
 		var parentSpanId = TraceSupport.getMdcParentId();
-		var expectedTracePart = "00" + injectedTraceId.toLowerCase();
-		assertThat(TraceSupport.getCallerTraceParent(), is(injectedTraceId)); // not OpenTelemetry compliant
+		var expectedTracePart = "00" + expectedTraceId.toLowerCase();
+		assertThat(TraceSupport.getCallerTraceParent(), is(expectedTraceId)); // not OpenTelemetry compliant
 		assertWireTrace(expectedTracePart + ".0000000000000000");
 		assertThat(TraceSupport.getClientIp(), is("127.0.0.2/XFF"));
 
@@ -97,7 +98,7 @@ class TraceSupportTest {
 		// switch to conversation from HTTP traceparent (given it get's propagated correctly by user-agent), parent spanid stays
 		var conversationIdW3c = "00-11111111111111111111111111111111-0000000000000001-00";
 		TraceSupport.switchToConversation(conversationIdW3c);
-		assertThat(TraceSupport.getCallerTraceParent(), is(injectedTraceId)); // unchanged
+		assertThat(TraceSupport.getCallerTraceParent(), is(expectedTraceId)); // unchanged
 		assertConversationTrace(conversationIdW3c.split("-")[1] + "." + parentSpanId);
 
 		// switch to conversation from SAML ID or InResponseTo

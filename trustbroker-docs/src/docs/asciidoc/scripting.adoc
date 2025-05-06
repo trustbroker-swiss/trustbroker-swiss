@@ -60,7 +60,7 @@ with one of the requested QoA.
 There are the following members to get and set claims:
 
 - attributes: They come from the CPs and are sent to RPs with an OriginalIssuer=CP-IssuerID
-- userDetails: XTB has an ``IdmService`` abstraction. Claims from such user registries should use this to store claims.
+- userDetails: XTB has an ``IdmQueryService`` abstraction. Claims from such user registries should use this to store claims.
 - properties: Groovy scripts computing derived claims should store them here so the ``SetupRP``/``ProfileRP`` configuration show the
 contract properly.
 - claims: These are the OIDC attributes used for OIDC token assembly

@@ -14,7 +14,9 @@
 -->
 <header class="{{ theme.name }} ob-master-layout-header-title">
 	<div class="ob-master-layout-brand">
-		<aside *ngIf="environment" [style.color]="bannerColor()" [style.backgroundColor]="bannerBgColor()" (click)="hideBanner()">{{ environment }}</aside>
+		@if (environment) {
+			<aside [style.color]="bannerColor()" [style.backgroundColor]="bannerBgColor()" (click)="hideBanner()">{{ environment }}</aside>
+		}
 		<span class="ob-master-layout-logo" tabindex="-1">
 			<img class="{{ theme.name }}" [alt]="'trustbroker.header.logo' | translate" src="{{ imageUrl('logo.svg') }}" />
 		</span>
@@ -27,73 +29,84 @@
 
 	<nav class="ob-master-layout-header-controls">
 		<ul class="ob-header-controls header-locale d-flex" role="menu">
-			<li *ngIf="theme.hasHelp" role="menuitem" class="ob-control-item app-help-button">
-				<button
-					mat-stroked-button
-					help-icon-button
-					class="{{ theme.name }} app-header-button"
-					[attr.tabindex]="theme.helpTabindex"
-					(click)="toggleHelpPanel(true)"
-					[attr.aria-haspopup]="theme.hasHelpPanel"
-					[attr.aria-expanded]="helpExpanded()"
-					[attr.aria-label]="'trustbroker.header.help' | translate"
-				>
-					<span class="{{ theme.name }} ob-icon-wrapper" aria-hidden="true">
-						<img class="{{ theme.name }} app-icon app-help-circle" src="{{ imageUrl('help.svg') }}" alt="" aria-hidden="true" />
-						<span class="{{ theme.name }} app-help-button-text">{{ "trustbroker.header.help" | translate }}</span>
-					</span>
-				</button>
-			</li>
-
-			<li *ngIf="theme.hasLanguageSelector" role="menuitem" class="ob-control-item app-language-selector-button">
-				<div *ngIf="languageService.langChangeWithTechnicalLang | async as currentLang" position="left" class="{{ theme.name }} app-language-selector">
+			@if (theme.hasHelp) {
+				<li role="menuitem" class="ob-control-item app-help-button">
 					<button
 						mat-stroked-button
-						[obPopover]="appLanguagePopover"
-						[placement]="'bottom-start'"
-						tabindex="20"
-						(click)="languageSelectionToggle()"
-						aria-haspopup="true"
-						[attr.aria-expanded]="languageSelectionExpanded()"
-						[attr.aria-label]="('trustbroker.header.languageselection' | translate) + ' ' + (currentLang | nativeLanguageDisplay)"
+						help-icon-button
 						class="{{ theme.name }} app-header-button"
+						[attr.tabindex]="theme.helpTabindex"
+						(click)="toggleHelpPanel(true)"
+						[attr.aria-haspopup]="theme.hasHelpPanel"
+						[attr.aria-expanded]="helpExpanded()"
+						[attr.aria-label]="'trustbroker.header.help' | translate"
 					>
-						<img class="{{ theme.name }} app-icon app-globe" src="{{ imageUrl('globe.svg') }}" alt="" aria-hidden="true" />
-						<span>{{ currentLang | languageDisplay: false }}</span>
-						<img class="{{ theme.name }} app-expansion-indicator app-arrow-down" src="{{ imageUrl('arrow_down.svg') }}" alt="" aria-hidden="true" />
-						<span class="{{ theme.name }} mat-expansion-indicator app-arrow-down" aria-hidden="true"></span>
+						<span class="{{ theme.name }} ob-icon-wrapper" aria-hidden="true">
+							<img class="{{ theme.name }} app-icon app-help-circle" src="{{ imageUrl('help.svg') }}" alt="" aria-hidden="true" />
+							<span class="{{ theme.name }} app-help-button-text">{{ "trustbroker.header.help" | translate }}</span>
+						</span>
 					</button>
+				</li>
+			}
 
-					<ng-template #appLanguagePopover>
-						<div class="app-language-dropdown">
-							<ul>
-								<li *ngFor="let language of languages" class="dropdown" [class.active]="currentLang === language">
-									<button
-										class="ob-control-locale"
-										(click)="changeLanguage(language)"
-										[attr.id]="'lang_' + language"
-										tabindex="21"
-										[attr.aria-label]="language | nativeLanguageDisplay"
-									>
-										<span>{{ language | languageDisplay: theme.fullLanguageName }}</span>
-										<span *ngIf="currentLang === language" class="app-selected-language">
-											<img
-												class="app-selected-language-icon"
-												src="{{ imageUrl('check.svg') }}"
-												alt="{{ 'trustbroker.header.languageselection.selected' | translate }}"
-											/>
-										</span>
-									</button>
-								</li>
-							</ul>
+			@if (theme.hasLanguageSelector) {
+				<li role="menuitem" class="ob-control-item app-language-selector-button">
+					@if (languageService.langChangeWithTechnicalLang | async; as currentLang) {
+						<div position="left" class="{{ theme.name }} app-language-selector">
+							<button
+								mat-stroked-button
+								[obPopover]="appLanguagePopover"
+								[placement]="'bottom-start'"
+								tabindex="20"
+								(click)="languageSelectionToggle()"
+								aria-haspopup="true"
+								[attr.aria-expanded]="languageSelectionExpanded()"
+								[attr.aria-label]="('trustbroker.header.languageselection' | translate) + ' ' + (currentLang | nativeLanguageDisplay)"
+								class="{{ theme.name }} app-header-button"
+							>
+								<img class="{{ theme.name }} app-icon app-globe" src="{{ imageUrl('globe.svg') }}" alt="" aria-hidden="true" />
+								<span>{{ currentLang | languageDisplay: false }}</span>
+								<img class="{{ theme.name }} app-expansion-indicator app-arrow-down" src="{{ imageUrl('arrow_down.svg') }}" alt="" aria-hidden="true" />
+								<span class="{{ theme.name }} mat-expansion-indicator app-arrow-down" aria-hidden="true"></span>
+							</button>
+							<ng-template #appLanguagePopover>
+								<div class="app-language-dropdown">
+									<ul>
+										@for (language of languages; track language) {
+											<li class="dropdown" [class.active]="currentLang === language">
+												<button
+													class="ob-control-locale"
+													(click)="changeLanguage(language)"
+													[attr.id]="'lang_' + language"
+													tabindex="21"
+													[attr.aria-label]="language | nativeLanguageDisplay"
+												>
+													<span>{{ language | languageDisplay: theme.fullLanguageName }}</span>
+													@if (currentLang === language) {
+														<span class="app-selected-language">
+															<img
+																class="app-selected-language-icon"
+																src="{{ imageUrl('check.svg') }}"
+																alt="{{ 'trustbroker.header.languageselection.selected' | translate }}"
+															/>
+														</span>
+													}
+												</button>
+											</li>
+										}
+									</ul>
+								</div>
+							</ng-template>
 						</div>
-					</ng-template>
-				</div>
-			</li>
+					}
+				</li>
+			}
 
-			<li *ngIf="theme.hasThemeSelector" role="menuitem" class="ob-control-item app-theme-selector-button">
-				<app-theme-selector [theme]="theme"></app-theme-selector>
-			</li>
+			@if (theme.hasThemeSelector) {
+				<li role="menuitem" class="ob-control-item app-theme-selector-button">
+					<app-theme-selector [theme]="theme"></app-theme-selector>
+				</li>
+			}
 		</ul>
 	</nav>
 </header>

@@ -23,15 +23,18 @@ import { anything, mock, when } from 'ts-mockito';
 import { TranslationService } from '../app.module';
 import { HrdCardsComponent } from './hrd-cards.component';
 import { ApiService } from '../services/api.service';
+import { SafeMarkupPipe } from '../pipes/safe-markup.pipe';
+import { ComponentRef } from '@angular/core';
 
 describe('HrdCardsComponent', () => {
 	let component: HrdCardsComponent;
+	let componentRef: ComponentRef<HrdCardsComponent>;
 	let fixture: ComponentFixture<HrdCardsComponent>;
 	let mockApiService: ApiService;
 
 	beforeEach(async () => {
 		await TestBed.configureTestingModule({
-			declarations: [HrdCardsComponent],
+			declarations: [HrdCardsComponent, SafeMarkupPipe],
 			imports: [
 				HttpClientModule,
 				RouterTestingModule,
@@ -49,13 +52,15 @@ describe('HrdCardsComponent', () => {
 	beforeEach(() => {
 		// mock services
 		mockApiService = mock(ApiService);
-		when(mockApiService.getIdpObjects(anything())).thenReturn(of([]));
+		when(mockApiService.getIdpObjects(anything(), anything())).thenReturn(of({}));
 		TestBed.configureTestingModule({
 			providers: [{ provide: ApiService, useValue: mockApiService }]
 		});
 
 		fixture = TestBed.createComponent(HrdCardsComponent);
 		component = fixture.componentInstance;
+		componentRef = fixture.componentRef;
+		componentRef.setInput('idpObjects', []);
 		fixture.detectChanges();
 	});
 

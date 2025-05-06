@@ -21,9 +21,9 @@ import swiss.trustbroker.sessioncache.repo.StateCacheRepository;
 /**
  * Checks access to the StateCache DB via a dummy query.
  * As a HealthIndicator, this is included into the output of /actuator/health.
- * With details it is shown as:
+ * With details, it is shown as:
  * <pre>stateCache: status: "UP"</pre>
- * Without details it just affects the UP/DOWN status.
+ * Without details, it just affects the UP/DOWN status.
  */
 @Component
 public class StateCacheHealthIndicator extends TrustbrokerHealthIndicator {

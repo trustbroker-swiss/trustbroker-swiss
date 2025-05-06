@@ -38,6 +38,7 @@ import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.oidc.session.OidcSessionSupport;
 import swiss.trustbroker.util.ApiSupport;
 import swiss.trustbroker.util.WebSupport;
@@ -69,7 +70,9 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 	public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response,
 			AuthenticationException exception) throws IOException {
 		var clientId = OidcSessionSupport.getOidcClientId(request);
-		var client = relyingPartyDefinitions.getRelyingPartyByOidcClientId(clientId, null, trustBrokerProperties, true);
+		var client = relyingPartyDefinitions.getRelyingPartyOidcClientByOidcClientId(clientId, null, trustBrokerProperties, true);
+		var rpIssuerId = client != null ? client.getLeft().getId() : null;
+		var oidcClient = client != null ? client.getRight() : null;
 		var referrer = WebUtil.getHeader(HttpHeaders.REFERER, request);
 
 		// exception from sub-systems
@@ -79,7 +82,7 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 			var error = authException.getError();
 			errMsg = String.format("Failed OIDC %s for oidcClient=%s of rpIssuerId=%s and httpReferer=%s"
 							+ " with errorCode=%s exceptionMessage='%s' exceptionClass=%s description='%s' oidcData='%s'",
-					type, clientId, client != null ? client.getId() : null, referrer, error.getErrorCode(),
+					type, clientId, rpIssuerId, referrer, error.getErrorCode(),
 					exception.getMessage(), exception.getClass().getSimpleName(),
 					getDescription(exception, error.getDescription()), OidcUtil.getGrantOrToken(request));
 		}
@@ -88,7 +91,7 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 			var error = authException.getSaml2Error();
 			errMsg = String.format("Failed SAML %s for oidcClient=%s of rpIssuerId=%s and httpReferer=%s"
 							+ " with errorCode=%s exceptionMessage='%s' exceptionClass=%s description='%s'",
-					type, clientId, client != null ? client.getId() : null, referrer, error.getErrorCode(),
+					type, clientId, rpIssuerId, referrer, error.getErrorCode(),
 					exception.getMessage(), exception.getClass().getSimpleName(),
 					getDescription(exception, error.getDescription()));
 		}
@@ -96,15 +99,15 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 			// anything else
 			errMsg = String.format("Failed %s for oidcClient=%s of rpIssuerId=%s httpReferer=%s"
 							+ " with exceptionMessage='%s' exceptionClass=%s",
-					type, clientId, client != null ? client.getId() : null, referrer,
-					exception.getMessage(), exception.getClass().getName());
+					type, clientId, rpIssuerId, referrer, exception.getMessage(), exception.getClass().getName());
 		}
 
 		// construct redirect to OIDC client or service with service context
 		var traceId = TraceSupport.getOwnTraceParent();
 		var errorPage = apiSupport.getErrorPageUrl(ErrorCode.REQUEST_DENIED.getLabel(), traceId);
 		var location = OidcExceptionHelper.buildLocationForAuthenticationException(request, exception, errorPage,
-				trustBrokerProperties.getOidc().getIssuer(), "spring-security");
+				trustBrokerProperties.getOidc().getIssuer(), "spring-security",
+				uri -> validateRedirectUri(uri, oidcClient));
 
 		// invalidate web session to not base authorization_code flow after refresh_token failures
 		OidcSessionSupport.invalidateSession(request, response, trustBrokerProperties, clientId, errMsg);
@@ -119,6 +122,16 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 		else {
 			handleFailureWithServiceRedirect(errorPage, errMsg, request, response, exception);
 		}
+	}
+
+	private boolean validateRedirectUri(String redirectUri, OidcClient oidcClient) {
+		if (apiSupport.isInternalUrl(redirectUri)) {
+			return true;
+		}
+		if (oidcClient == null) {
+			return false;
+		}
+		return oidcClient.isValidRedirectUri(redirectUri);
 	}
 
 	private void handleFailureWithClientRedirect(String location, String errMsg, HttpServletResponse response)

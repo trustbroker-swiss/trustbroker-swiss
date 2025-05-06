@@ -30,7 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.api.idm.dto.IdmRequest;
-import swiss.trustbroker.api.idm.service.IdmService;
+import swiss.trustbroker.api.idm.service.IdmQueryService;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.util.DirectoryUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
@@ -39,6 +39,8 @@ import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
 import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.AuthorizedApplication;
 import swiss.trustbroker.federation.xmlconfig.Certificates;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderMappings;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.CounterParty;
 import swiss.trustbroker.federation.xmlconfig.Definition;
@@ -58,14 +60,13 @@ import swiss.trustbroker.federation.xmlconfig.Script;
 import swiss.trustbroker.federation.xmlconfig.Scripts;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.federation.xmlconfig.Signature;
-import swiss.trustbroker.federation.xmlconfig.SignerKeystore;
-import swiss.trustbroker.federation.xmlconfig.SignerTruststore;
 import swiss.trustbroker.federation.xmlconfig.Sso;
 import swiss.trustbroker.federation.xmlconfig.SubjectNameMappings;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.ResponseParameters;
 import swiss.trustbroker.script.service.ScriptService;
+import swiss.trustbroker.util.CertificateUtil;
 import swiss.trustbroker.util.PropertyUtil;
 
 @Slf4j
@@ -77,13 +78,13 @@ public class RelyingPartySetupUtil {
 	}
 
 	public static void loadRelyingParty(Collection<RelyingParty> relyingParties, String definitionPath, String pullConfigPath,
-			TrustBrokerProperties trustBrokerProperties, List<IdmService> idmServices, ScriptService scriptService) {
+			TrustBrokerProperties trustBrokerProperties, List<IdmQueryService> idmQueryServices, ScriptService scriptService) {
 		if (relyingParties == null) {
 			throw new TechnicalException("RelyingParties are missing or could not be loaded");
 		}
 		for (RelyingParty relyingParty : relyingParties) {
 			try {
-				loadRelyingParty(definitionPath, pullConfigPath, relyingParty, trustBrokerProperties, idmServices, scriptService);
+				loadRelyingParty(definitionPath, pullConfigPath, relyingParty, trustBrokerProperties, idmQueryServices, scriptService);
 			}
 			catch (TechnicalException ex) {
 				log.error("Could not load base claim: {}", ex.getInternalMessage());
@@ -93,14 +94,14 @@ public class RelyingPartySetupUtil {
 	}
 
 	private static void loadRelyingParty(String definitionPath, String pullConfigPath, RelyingParty relyingParty,
-			TrustBrokerProperties trustBrokerProperties, List<IdmService> idmServices, ScriptService scriptService) {
+			TrustBrokerProperties trustBrokerProperties, List<IdmQueryService> idmQueryServices, ScriptService scriptService) {
 		var baseRule = relyingParty.getBase();
 
 		if (!StringUtils.isBlank(baseRule)) {
 			var rulePath = resolvePath(definitionPath, pullConfigPath, baseRule, relyingParty.getSubPath(), trustBrokerProperties);
 			var basePath = Path.of(rulePath, baseRule).toString();
 			var baseClaim = ClaimsProviderUtil.loadRelyingParty(basePath);
-			mergeRelyingParty(relyingParty, baseClaim, idmServices);
+			mergeRelyingParty(relyingParty, baseClaim, idmQueryServices);
 			applyGlobalCertificates(relyingParty, trustBrokerProperties);
 			validateScripts(relyingParty, scriptService);
 		}
@@ -201,7 +202,19 @@ public class RelyingPartySetupUtil {
 		}
 	}
 
-	static void mergeRelyingParty(RelyingParty relyingParty, RelyingParty baseRelyingParty, List<IdmService> idmServices) {
+	private static void mergeClaimsSelection(RelyingParty relyingParty, AttributesSelection baseAttributes) {
+		var claimsSelection = relyingParty.getClaimsSelection();
+		if (claimsSelection == null || claimsSelection.getDefinitions() == null) {
+			relyingParty.setClaimsSelection(baseAttributes);
+		}
+		else if (baseAttributes != null && baseAttributes.getDefinitions() != null) {
+			List<Definition> collect = joinAndDistinctDefinitions(claimsSelection.getDefinitions(),
+					baseAttributes.getDefinitions());
+			claimsSelection.setDefinitions(collect);
+		}
+	}
+
+	static void mergeRelyingParty(RelyingParty relyingParty, RelyingParty baseRelyingParty, List<IdmQueryService> idmQueryServices) {
 		if (relyingParty == null) {
 			throw new TechnicalException("RelyingParty is missing");
 		}
@@ -219,23 +232,27 @@ public class RelyingPartySetupUtil {
 		// AccessRequest
 		mergeAccessRequest(relyingParty, baseRelyingParty);
 
-		//SecurityPolicies
+		// SecurityPolicies
 		var baseRelyingPartySecurityPolicies = baseRelyingParty.getSecurityPolicies();
 		mergeSecurityPoliciesConfig(relyingParty, baseRelyingPartySecurityPolicies);
 
-		//AssertionConsumer whitelist
+		// AssertionConsumer whitelist
 		var baseAcWhitelist = baseRelyingParty.getAcWhitelist();
 		mergeAcWhiteList(relyingParty, baseAcWhitelist);
 
-		//SubjectNameMappings
+		// ClaimsProviderMappings
+		var baseClaimsProviderMappings = baseRelyingParty.getClaimsProviderMappings();
+		mergeClaimsProviderMappings(relyingParty, baseClaimsProviderMappings);
+
+		// SubjectNameMappings
 		var baseSubjectNameMappings = baseRelyingParty.getSubjectNameMappings();
 		mergeSubjectNameMappings(relyingParty, baseSubjectNameMappings);
 
-		//Profile selection
+		// Profile selection
 		var baseProfileSelection = baseRelyingParty.getProfileSelection();
 		mergeProfileSelection(relyingParty, baseProfileSelection);
 
-		//CP Response Attributes
+		// CP Response Attributes
 		var baseCpAttributeSelection = baseRelyingParty.getAttributesSelection();
 		mergeCpAttributes(relyingParty, baseCpAttributeSelection);
 
@@ -252,27 +269,31 @@ public class RelyingPartySetupUtil {
 		// FlowPolicies
 		mergeFlowPolicies(relyingParty, baseRelyingParty.getFlowPolicies());
 
-		//Groovy
+		// Groovy
 		var baseGroovy = baseRelyingParty.getScripts();
 		mergeScripts(relyingParty, baseGroovy);
 
-		//Constant attributes
+		// Constant attributes
 		var baseClaimConstAttributes = baseRelyingParty.getConstAttributes();
 		mergeConstantAttributes(relyingParty, baseClaimConstAttributes);
 
-		//IDMQueries
+		// IDMQueries
 		if (baseRelyingParty.getIdmLookup() != null) {
 			if (relyingParty.getIdmLookup() == null) {
 				relyingParty.setIdmLookup(baseRelyingParty.getIdmLookup());
 			}
 			else {
 				mergeMultiQueryPolicy(relyingParty, baseRelyingParty);
-				mergeIdmQueries(relyingParty, baseRelyingParty.getIdmLookup(), idmServices);
+				mergeIdmQueries(relyingParty, baseRelyingParty.getIdmLookup(), idmQueryServices);
 			}
 		}
 
 		// Certificates
 		mergeCertificates(relyingParty, baseRelyingParty);
+
+		// ClaimsSelection
+		var baseClaimsSelection = baseRelyingParty.getClaimsSelection();
+		mergeClaimsSelection(relyingParty, baseClaimsSelection);
 	}
 
 	private static void mergeMultiQueryPolicy(RelyingParty relyingParty, RelyingParty baseRelyingParty) {
@@ -296,25 +317,17 @@ public class RelyingPartySetupUtil {
 		String signerCertPath = extractCertName(trustBrokerProperties.getSigner().getSignerCert());
 		String signerKeyPath = extractCertName(trustBrokerProperties.getSigner().getSignerKey());
 		if (certSetup.getSignerKeystore() == null && trustBrokerProperties.getSigner() != null) {
-			var globalSigner = SignerKeystore.builder()
-											 .certPath(signerCertPath)
-											 .password(trustBrokerProperties.getSigner().getPassword())
-											 .certType(trustBrokerProperties.getSigner().getType())
-											 .alias(trustBrokerProperties.getSigner().getKeyEntryId())
-											 .keyPath(signerKeyPath)
-											 .build();
+			var globalSigner = CertificateUtil.toSignerKeystore(trustBrokerProperties.getSigner());
+			globalSigner.setCertPath(signerCertPath);
+			globalSigner.setKeyPath(signerKeyPath);
 			certSetup.setSignerKeystore(globalSigner);
 		}
 		// trust ourselves as a last resort to not have a 'null' truststore
 		if (certSetup.getSignerTruststore() == null && trustBrokerProperties.getSigner() != null) {
 
-			var globalTrust = SignerTruststore.builder()
-											  .certPath(signerCertPath)
-											  .password(trustBrokerProperties.getSigner().getPassword())
-											  .certType(trustBrokerProperties.getSigner().getType())
-											  .alias(trustBrokerProperties.getSigner().getKeyEntryId())
-											  .keyPath(signerKeyPath)
-											  .build();
+			var globalTrust = CertificateUtil.toSignerTruststore(trustBrokerProperties.getSigner());
+			globalTrust.setCertPath(signerCertPath);
+			globalTrust.setKeyPath(signerKeyPath);
 			certSetup.setSignerTruststore(globalTrust);
 		}
 	}
@@ -395,21 +408,10 @@ public class RelyingPartySetupUtil {
 		PropertyUtil.copyMissingAttributes(relyingParty.initializedSaml().initializedArtifactBinding(), baseArtifactBinding);
 	}
 
-
 	static void mergeQoaLevels(RelyingParty relyingParty, RelyingParty baseRelyingParty) {
 		Qoa rpQoa = relyingParty.getQoa();
-		Qoa baseQoa = baseRelyingParty.getQoa();
-
 		if (rpQoa == null) {
 			relyingParty.setQoa(baseRelyingParty.getQoa());
-		}
-		else if (baseQoa != null && !baseQoa.getClasses().isEmpty()) {
-			List<String> rpQoaClasses = rpQoa.getClasses();
-			for (String qoa : baseQoa.getClasses()) {
-				if (!rpQoaClasses.contains(qoa)) {
-					rpQoaClasses.add(qoa);
-				}
-			}
 		}
 	}
 
@@ -519,9 +521,80 @@ public class RelyingPartySetupUtil {
 			var collect = joinAndDistinctLists(acWhitelist.getAcUrls(), baseAcWhitelist.getAcUrls());
 			acWhitelist.setAcUrls(collect);
 		}
-		// else: use what has been configured as is but make sure we internalized network URLs
+		// else: use RP configurations as is
 		log.debug("RP rpId={} has merged acWhitelistUrls={} ", relyingParty.getId(),
 				relyingParty.getAcWhitelist() != null ? relyingParty.getAcWhitelist().getAcUrls() : null);
+	}
+
+	static void mergeClaimsProviderMappings(RelyingParty relyingParty, ClaimsProviderMappings baseClaimsProviderMappings) {
+		var claimsProviderMappings = relyingParty.getClaimsProviderMappings();
+		// Use the pre-defined profile HRD to streamline the HRD selection for all related RPs.
+		// ClaimsProviderMappings.enabled behaves as follows:
+		// - null: Ignore ProfileRP settings when SetupRp does not contain ena enabled flags on entry leve (v1.8.0 compat)
+		// - false: Ignore SetupRP settings and onlx use profile
+		// - true: Merge ProfileRP and SetupRP entries
+		if (claimsProviderMappings == null || CollectionUtils.isEmpty(claimsProviderMappings.getClaimsProviderList())
+				|| Boolean.FALSE.equals(claimsProviderMappings.getEnabled())) {
+			relyingParty.setClaimsProviderMappings(baseClaimsProviderMappings);
+		}
+		// customize the HRD merging by id (ambiguous entries with the same ID in the profile are ignored)
+		else if (hasEnabledClaimsProvidersForMerge(claimsProviderMappings, baseClaimsProviderMappings)) {
+			mergeEnabledClaimsProviders(relyingParty, baseClaimsProviderMappings.getClaimsProviderList());
+		}
+		// else: use RP configurations as is dropping the disabled ones
+		discardDisabledClaimsProviders(relyingParty);
+		log.debug("RP rpId={} has merged claimsProviderMappings={} ", relyingParty.getId(),
+				relyingParty.getClaimsProviderMappings() != null ? relyingParty.getClaimsProviderMappings().getClaimsProviderList() : null);
+	}
+
+	// v18 behavior: Profile claims providers were ignored, v19 consider them , when setup uses enabled flags for compatibility
+	private static boolean hasEnabledClaimsProvidersForMerge(ClaimsProviderMappings claimsProviderMappings,
+			ClaimsProviderMappings baseClaimsProviderMappings) {
+		return baseClaimsProviderMappings != null
+				&& !CollectionUtils.isEmpty(baseClaimsProviderMappings.getClaimsProviderList())
+				&& (Boolean.TRUE.equals(claimsProviderMappings.getEnabled())
+				|| claimsProviderMappings.getClaimsProviderList()
+				.stream()
+				.anyMatch(c -> c.getEnabled() != null));
+	}
+
+	private static void mergeEnabledClaimsProviders(RelyingParty relyingParty,
+			List<ClaimsProviderRelyingParty> baseClaimsProviders) {
+		var claimsProviders = new ArrayList<>(
+				relyingParty.getClaimsProviderMappings()
+							.getClaimsProviderList());
+		baseClaimsProviders.forEach(bc -> {
+			var claimsProvider = claimsProviders.stream()
+					.filter(c -> c.getId().equals(bc.getId()) && c.getRelyingPartyAlias() == null)
+					.findFirst(); // not expecting ambiguous ids apart from the ones with relyingPartyAlias (that are not merged)
+			if (claimsProvider.isPresent()) {
+				log.debug("Merging cp={} from profile to setup for rp={}", bc.getId(), relyingParty.getId());
+				PropertyUtil.copyMissingAttributes(claimsProvider.get(), bc);
+			}
+			else {
+				log.debug("Adding cp={} from profile to setup for rp={} at pos={}",
+						bc.getId(), relyingParty.getId(), claimsProviders.size());
+				claimsProviders.add(bc);
+			}
+		});
+		log.debug("Merged rp={} profile={} baseClaimsProviders='{}' into claimsProviders='{}'",
+				relyingParty.getId(), relyingParty.getBase(), baseClaimsProviders, claimsProviders);
+		relyingParty.getClaimsProviderMappings()
+					.setClaimsProviderList(claimsProviders);
+	}
+
+	private static void discardDisabledClaimsProviders(RelyingParty relyingParty) {
+		var claimsProviderMappings = relyingParty.getClaimsProviderMappings();
+		if (claimsProviderMappings == null || CollectionUtils.isEmpty(claimsProviderMappings.getClaimsProviderList())) {
+			// historically we accept configurations without HRD federation section, could be more restrictive here
+			log.error("RelyingParty id={} needs a ClaimsProviderMappings section to federate", relyingParty.getId());
+			return;
+		}
+		var enabledCLaimsProviders = claimsProviderMappings.getClaimsProviderList()
+				.stream()
+				.filter(c -> c.getEnabled() == null || c.getEnabled())
+				.toList();
+		claimsProviderMappings.setClaimsProviderList(enabledCLaimsProviders);
 	}
 
 	static void mergeSubjectNameMappings(RelyingParty relyingParty, SubjectNameMappings baseSubjectNameMappings) {
@@ -535,7 +608,6 @@ public class RelyingPartySetupUtil {
 		// else: use what has been configured as is but make sure we internalized network URLs
 		log.debug("RP rpId={} has merged subjectNameMappings={} ", relyingParty.getId(),
 				relyingParty.getSubjectNameMappings() != null ? relyingParty.getSubjectNameMappings().getSubjects() : null);
-
 	}
 
 	static void mergeScripts(RelyingParty relyingParty, Scripts baseScripts) {
@@ -606,41 +678,33 @@ public class RelyingPartySetupUtil {
 		}
 	}
 
-	static void mergeIdmQueries(RelyingParty relyingParty, IdmLookup baseLookup, List<IdmService> idmServices) {
+	static void mergeIdmQueries(RelyingParty relyingParty, IdmLookup baseLookup, List<IdmQueryService> idmQueryServices) {
 		if (baseLookup.getQueries() == null) {
 			return;
 		}
-
 		for (IdmQuery baseIdmQuery : baseLookup.getQueries()) {
 			mergeIdmQuery(relyingParty, baseIdmQuery);
 		}
-		sortIdmQueries(relyingParty, idmServices);
+		sortIdmQueries(relyingParty, idmQueryServices);
 	}
 
 	private static void mergeIdmQuery(RelyingParty relyingParty, IdmQuery baseIdmQuery) {
 		var idmQuery = getExistingIdmQuery(relyingParty.getIdmLookup(), baseIdmQuery.getName(), baseIdmQuery.getId());
 		if (idmQuery != null) {
-
 			PropertyUtil.copyAttributeIfBlank(IdmQuery::setIssuerNameId, IdmQuery::getIssuerNameId, idmQuery, baseIdmQuery);
-
 			PropertyUtil.copyAttributeIfBlank(IdmQuery::setIssuerNameIdNS, IdmQuery::getIssuerNameIdNS, idmQuery, baseIdmQuery);
-
 			PropertyUtil.copyAttributeIfBlank(IdmQuery::setSubjectNameId, IdmQuery::getSubjectNameId, idmQuery, baseIdmQuery);
-
 			PropertyUtil.copyAttributeIfMissing(IdmQuery::setStatusPolicy, IdmQuery::getStatusPolicy, idmQuery, baseIdmQuery);
-
 			PropertyUtil.copyAttributeIfBlank(IdmQuery::setClientExtId, IdmQuery::getClientExtId, idmQuery, baseIdmQuery);
-
-			if (StringUtils.isBlank(idmQuery.getClientExtId())) {
-				log.error("Rp={} has no ClientExtId configured. IDMLookup will not work! "
-						+ "Check the SetupRP and the corresponding RpProfile", relyingParty.getId());
-			}
-
 			PropertyUtil.copyAttributeIfBlank(IdmQuery::setAppFilter, IdmQuery::getAppFilter, idmQuery, baseIdmQuery);
 
 			var baseIdmQueryResponseAttributes = baseIdmQuery.getUserDetailsSelection();
 			mergeIdmRespAttributes(idmQuery, baseIdmQueryResponseAttributes);
 
+			if (StringUtils.isBlank(idmQuery.getClientExtId())) {
+				log.error("Rp={} has no ClientExtId configured. IDMLookup will not work! "
+						+ "Check the SetupRP and the corresponding RpProfile", relyingParty.getId());
+			}
 			if (idmQuery.getUserDetailsSelection() == null || idmQuery.getUserDetailsSelection()
 																	  .getDefinitions()
 																	  .isEmpty()) {
@@ -663,12 +727,12 @@ public class RelyingPartySetupUtil {
 	}
 
 
-	private static void sortIdmQueries(RelyingParty relyingParty, List<IdmService> idmServices) {
+	private static void sortIdmQueries(RelyingParty relyingParty, List<IdmQueryService> idmQueryServices) {
 		if (relyingParty.getIdmLookup() == null) {
 			return;
 		}
-		for (IdmService idmService : idmServices) {
-			List<IdmRequest> idmRequests = idmService.sortIdmRequests(relyingParty.getIdmLookup());
+		for (IdmQueryService idmQueryService : idmQueryServices) {
+			List<IdmRequest> idmRequests = idmQueryService.sortIdmRequests(relyingParty.getIdmLookup());
 			relyingParty.getIdmLookup().updateIdmQueries(idmRequests);
 		}
 	}
@@ -761,15 +825,14 @@ public class RelyingPartySetupUtil {
 		return null;
 	}
 
-	public static List<Definition> getIdpAttrDefinitions(CpResponse cpResponse, RelyingPartySetupService relyingPartySetupService,
+	public static List<Definition> getCpAttrDefinitions(CpResponse cpResponse, RelyingPartySetupService relyingPartySetupService,
 			ResponseParameters params) {
-		var idpAttributesDefinition = relyingPartySetupService.getRpAttributesDefinitions(
-				params.getRpIssuerId(), params.getRpReferer());
-		if (idpAttributesDefinition.isEmpty()) {
-			idpAttributesDefinition = relyingPartySetupService.getCpAttributeDefinitions(
+		var cpAttributesDefinition = relyingPartySetupService.getRpAttributesDefinitions(params.getRpIssuerId(), params.getRpReferer());
+		if (cpAttributesDefinition.isEmpty()) {
+			cpAttributesDefinition = relyingPartySetupService.getCpAttributeDefinitions(
 					cpResponse.getIssuer(), params.getRpIssuerId());
 		}
-		return idpAttributesDefinition;
+		return cpAttributesDefinition;
 	}
 
 }

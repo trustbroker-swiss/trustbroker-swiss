@@ -26,6 +26,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import swiss.trustbroker.common.saml.dto.SamlBinding;
 import swiss.trustbroker.common.saml.dto.SignatureParameters;
+import swiss.trustbroker.mapping.dto.QoaConfig;
 
 /**
  * Abstraction for shared features of RP and CP.
@@ -83,6 +84,13 @@ public abstract class CounterParty implements PathReference, Serializable {
 	 * @return Scripts
 	 */
 	public abstract Scripts getScripts();
+
+	/**
+	 * @return Qoa configuration
+	 *
+	 * @since 1.9.0
+	 */
+	public abstract Qoa getQoa();
 
 	// XmlTransient not allowed on transient fields (the Javadoc does not say transient is considered XmlTransient):
 
@@ -154,5 +162,9 @@ public abstract class CounterParty implements PathReference, Serializable {
 			return true;
 		}
 		return getSamlArtifactBinding().validInboundBinding(samlBinding);
+	}
+
+	public QoaConfig getQoaConfig() {
+		return new QoaConfig(getQoa(), getId());
 	}
 }

@@ -57,12 +57,10 @@ public class AccessFilter implements Filter {
 			+ "|/robots.txt"
 			// oidc services (spring-authorization-server and Keycloak fake)
 			+ "|/oauth2/.*|/login/.*|/login|/logout|/logout/.*|/realms/.*|/saml2/.*|/userinfo|/.well-known/openid-configuration"
-			// DEV only legacy API
-			+ "|/trustbroker/adfs/ls"
 			+ ")$";
 
 	private static final String INTERNAL_ALLOWED_PATH_REGEX = "^("
-			+ "/actuator/health|/actuator/info"
+			+ "/actuator/health|/actuator/health/liveness|/actuator/health/readiness|/actuator/info"
 			+ "|" + ApiSupport.RECONFIG_URL
 			+ "|" + ApiSupport.CONFIG_STATUS_API
 			+ "|" + ApiSupport.CONFIG_SCHEMAS_API + "/.*"

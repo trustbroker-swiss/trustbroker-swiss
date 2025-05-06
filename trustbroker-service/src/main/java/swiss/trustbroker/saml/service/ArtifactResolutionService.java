@@ -39,7 +39,6 @@ import org.springframework.stereotype.Service;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.audit.service.InboundAuditMapper;
 import swiss.trustbroker.audit.service.OutboundAuditMapper;
-import swiss.trustbroker.common.config.KeystoreProperties;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.dto.ArtifactPeer;
@@ -59,6 +58,7 @@ import swiss.trustbroker.federation.xmlconfig.ProtocolEndpoints;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.saml.util.AssertionValidator;
+import swiss.trustbroker.util.CertificateUtil;
 
 @Service
 @Slf4j
@@ -142,25 +142,24 @@ public class ArtifactResolutionService {
 		if (endpoints != null) {
 			metadataUrl = endpoints.getMetadataUrl();
 			arpUrl = endpoints.getArtifactResolutionUrl();
-			arpIndex = endpoints.getArtifactResolutionIndex();
-			proxyUrl = endpoints.getArtifactResolutionProxyUrl();
+			if (endpoints.getArtifactResolutionIndex() != null) {
+				arpIndex = endpoints.getArtifactResolutionIndex();
+			}
+			proxyUrl = endpoints.getProxyUrl();
 		}
 		if (proxyUrl == null) {
 			proxyUrl = trustBrokerProperties.getSaml().getArtifactResolution().getProxyUrl();
 		}
+		if (proxyUrl == null && trustBrokerProperties.getNetwork() != null) {
+			proxyUrl = trustBrokerProperties.getNetwork().getProxyUrl();
+		}
 		var truststoreParameters = trustBrokerProperties.getSaml().getArtifactResolution().getTruststore();
-		if (certificates != null && certificates.getArtifactResolutionTruststore() != null) {
-			truststoreParameters = KeystoreProperties.builder()
-					.signerCert(certificates.getArtifactResolutionTruststore().getCertPath())
-					.password(certificates.getArtifactResolutionTruststore().getPassword())
-					.build();
+		if (certificates != null && certificates.getBackendTruststore() != null) {
+			truststoreParameters = CertificateUtil.toKeystoreProperties(certificates.getBackendTruststore());
 		}
 		var keystoreParameters = trustBrokerProperties.getSaml().getArtifactResolution().getKeystore();
-		if (certificates != null && certificates.getArtifactResolutionKeystore() != null) {
-			keystoreParameters = KeystoreProperties.builder()
-					.signerCert(certificates.getArtifactResolutionKeystore().getCertPath())
-					.password(certificates.getArtifactResolutionKeystore().getPassword())
-					.build();
+		if (certificates != null && certificates.getBackendKeystore() != null) {
+			keystoreParameters = CertificateUtil.toKeystoreProperties(certificates.getBackendKeystore());
 		}
 		log.debug("Using Truststore={} Keystore={} proxyUrl={}",
 				truststoreParameters != null  ? truststoreParameters.getSignerCert() : null,

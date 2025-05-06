@@ -32,9 +32,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.exception.ErrorMarker;
 import swiss.trustbroker.common.exception.ExceptionUtil;
 import swiss.trustbroker.common.exception.TechnicalException;
@@ -49,7 +49,7 @@ class VelocityUtilTest {
 
 	private static final String TEMPLATE = "/templates/Template.vm";
 
-	@MockBean
+	@MockitoBean
 	private VelocityEngine mockEngine;
 
 	@Test

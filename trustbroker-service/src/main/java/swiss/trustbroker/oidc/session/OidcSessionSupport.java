@@ -28,6 +28,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.event.Level;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.AuthenticatedPrincipal;
 import org.springframework.security.core.Authentication;
@@ -91,9 +92,6 @@ public class OidcSessionSupport {
 
 	// track authenticated subject FYI mainly
 	private static final String SPRING_PRINCIPAL_NAME = "SPRING_PRINCIPAL_NAME";
-
-	// forced authentication support flag to prevent loops when prompt=login comes along
-	private static final String OIDC_PROMPT_LOGIN_PENDING = "OIDC_PROMPTLOGIN_PENDING";
 
 	private OidcSessionSupport() {
 	}
@@ -216,19 +214,20 @@ public class OidcSessionSupport {
 		// - We might find an Oidc Client matching the URL, but it's the wrong one leading to failed client auth or wrong claims
 		// Currently happens on trustrbroker-oidcclient logout with just the redirect-uri but no OPTIONAL client_id or
 		// id_token_hint. See https://openid.net/specs/openid-connect-rpinitiated-1_0.html fpr details.
-		if (clientIds.size() > 1) {
-			log.warn("Ambiguous OIDC client configuration from source={} url={} resulting in clientIds='{}' on endpoint={}. "
-							+ "Would lead to client auth failures or unexpected claims due to session mismatch. Called from {}",
+		if (clientIds.size() != 1) {
+			var level = clientIds.isEmpty() ? Level.DEBUG : Level.WARN;
+			log.atLevel(level).log(
+					"OIDC client configuration not decidable from source={} url={} resulting in clientIds='{}' on endpoint={} "
+					+ " Would lead to client auth failures or unexpected claims due to session mismatch. Called from {}",
 					source, StringUtil.clean(url), clientIds, request.getRequestURI(),
 					WebSupport.getClientHint(request, networkConfig));
 			return null; // client request without session context
 		}
-		else if (!clientIds.isEmpty()) {
-			log.info("OIDC client configuration guessed from source={} url={} resulting in clientId={} on endpoint={} {}",
-					source, StringUtil.clean(url), clientIds.iterator().next(), request.getRequestURI(),
-							WebSupport.getClientHint(request, networkConfig));
-		}
-		return clientIds.isEmpty() ? null : clientIds.iterator().next();
+		var clientId = clientIds.iterator().next();
+		log.info("OIDC client configuration guessed from source={} url={} resulting in clientId={} on endpoint={} {}",
+				source, StringUtil.clean(url), clientId, request.getRequestURI(),
+				WebSupport.getClientHint(request, networkConfig));
+		return clientId;
 	}
 
 	// Similar to getOidcClientId we want to locate the containers sub-session referring to the client state
@@ -437,7 +436,18 @@ public class OidcSessionSupport {
 					cl.isValidRedirectUri(messageUrl));
 			if (clients.size() > 1) {
 				// not enough information sent by client and matching via URL finds multiple configs using the same ACUrl
-				clients = clients.stream().filter(cl -> cl.isSameRealm(realm)).toList();
+				var realmClients = clients.stream()
+						.filter(cl -> cl.isSameRealm(realm))
+						.distinct()
+						.toList();
+				if (realmClients.isEmpty()) {
+					log.warn("Clients by messageUrl='{}' are ambiguous and trying realm={} has no result. HINT: Check "
+									+ "Oidc.Client.realm correctness and application use and RedirectUris for redundancies.",
+							messageUrl, realm);
+				}
+				else {
+					clients = realmClients;
+				}
 			}
 			clients.forEach(c -> ret.add(c.getId()));
 		}
@@ -550,17 +560,6 @@ public class OidcSessionSupport {
 			session.setAttributeInternal(OidcSessionSupport.SAML_SSO_SESSION_ID, ssoSessionId);
 		}
 
-		// In case of prompt=login we mark the current flow as being in-progress
-		var request = HttpExchangeSupport.getRunningHttpRequest(); // we have a session, there must be a request
-		if (OidcUtil.isOidcPromptLogin(request)) {
-			if (log.isDebugEnabled()) {
-				log.debug("Ignoring login SKIPPED for clientId={} with {}={} on endpoint={} called from {}",
-						clientId, OidcUtil.OIDC_PROMPT, OidcUtil.OIDC_PROMPT_LOGIN,
-						request.getRequestURI(), WebSupport.getClientHint(request, trustBrokerProperties.getNetwork()));
-			}
-			session.setAttributeInternal(OIDC_PROMPT_LOGIN_PENDING, System.currentTimeMillis());
-		}
-
 		// login done we have a principal
 		if (principal != null) {
 			// leave a trace of the subject on HTTP and XTB session (DEBUG only)
@@ -572,6 +571,7 @@ public class OidcSessionSupport {
 		// NOTE: DB sync is triggered by spring-security context set
 
 		// track on client to survive federation redirects and as a fallback to find auth state
+		var request = HttpExchangeSupport.getRunningHttpRequest(); // we have a session, there must be a request
 		var cookieName = getClientIdRelatedCookieName(clientId);
 		var oidcSessionCookie = createOidcCookie(clientId, cookieName, session.getId(), true,
 				request, relyingPartyDefinitions, trustBrokerProperties);
@@ -862,49 +862,34 @@ public class OidcSessionSupport {
 	// If client wants to force a login we ignore returning a session, SAML side handles the forceAuthn=true afterward.
 	// keycloak.js: Set options.prompt="login" in the console for the /authorize call to trigger a re-login.
 	// This will loop because the adapter stores the options in the browser storage so a completed login triggers again
-	static TomcatSession invalidateSessionOnPromptLogin(TomcatSession session,
-			String idpUrl, String clientId, NetworkConfig networkConfig) {
+	static TomcatSession invalidateSessionOnPromptLoginOrStepup(
+			TomcatSession session, String clientId, NetworkConfig networkConfig) {
 		if (session == null) {
 			return null;
 		}
 
-		// discard session for a new login
+		// pending OIDC transaction
 		var request = HttpExchangeSupport.getRunningHttpRequest();
-		if (!OidcUtil.isOidcPromptLogin(request)) {
-			var referer = WebUtil.getValidOrigin(WebUtil.getOriginOrReferer(request));
-			if (referer != null && referer.equals(idpUrl)) {
-				// return from SAML IDP - results in a  redirect to the original URL, which must not trigger another IDP login
-				if (log.isDebugEnabled()) {
-					log.debug("Ignoring login SKIPPED for clientId={} with {}={} on endpoint={} called from {} with referrer={}",
-							clientId, OidcUtil.OIDC_PROMPT, OidcUtil.OIDC_PROMPT_LOGIN,
-							request.getRequestURI(), WebSupport.getClientHint(request, networkConfig), referer);
-				}
-				session.setAttributeInternal(OIDC_PROMPT_LOGIN_PENDING, System.currentTimeMillis());
-			}
+
+		// pending login federation signaled by spring-security (see HttpSessionRequestCache)
+		if (isAuthorizeInFederation(request)) {
+			log.debug("Returning from federated login and continue with authorization_code generation for clientId={}", clientId);
 			return session;
 		}
 
-		// we have a marker on our session about an established principal so keycloak.js can fetch the token once
-		var loginEstablishedStamp = session.getAttribute(OidcSessionSupport.OIDC_PROMPT_LOGIN_PENDING);
-		if (loginEstablishedStamp != null) {
-			// keycloak.js relies on getting cached state when /authorize => /token is executed after login
-			// we could check on the timestamp here to allow multiple fetches within a defined period of time
-			if (log.isDebugEnabled()) {
-				log.debug("Forcing login SKIPPED for clientId={} with {}={} on endpoint={} called from {}",
-						clientId, OidcUtil.OIDC_PROMPT, OidcUtil.OIDC_PROMPT_LOGIN,
-						request.getRequestURI(), WebSupport.getClientHint(request, networkConfig));
-			}
-			session.removeAttribute(OidcSessionSupport.OIDC_PROMPT_LOGIN_PENDING);
-			return session;
+		// discard session when a QoA stepup might be required
+		if (isAcrValuesStepupRequired(request, session, clientId)) {
+			handleSessionDiscard(clientId, request, OidcUtil.OIDC_ACR_VALUES, networkConfig);
+			return null;
 		}
-		if (log.isInfoEnabled()) {
-			log.info("Forcing login for clientId={} with {}={} on endpoint={} called from {}",
-					clientId, OidcUtil.OIDC_PROMPT, OidcUtil.OIDC_PROMPT_LOGIN,
-					request.getRequestURI(), WebSupport.getClientHint(request, networkConfig));
+
+		// discard session when prompt=login forces a federated login
+		if (OidcUtil.isOidcPromptLogin(request)) {
+			handleSessionDiscard(clientId, request, OidcUtil.OIDC_PROMPT, networkConfig);
+			return null;
 		}
-		// get rid of state
-		session.invalidate();
-		return null;
+
+		return session;
 	}
 
 	public static void invalidateSsoState(HttpServletRequest request, StateCacheService stateCacheService,
@@ -987,6 +972,41 @@ public class OidcSessionSupport {
 			initiator = WebUtil.getOriginOrReferer(request);
 		}
 		return initiator;
+	}
+
+	public static void rememberAcrValues(HttpServletRequest request) {
+		var messageAcrValues = OidcUtil.getAcrValues(request);
+		if (!messageAcrValues.isEmpty() && request.getSession(false) instanceof TomcatSession session) {
+			session.getStateData().setContextClasses(messageAcrValues);
+		}
+	}
+
+	public static boolean isAcrValuesStepupRequired(HttpServletRequest request, TomcatSession session, String clientId) {
+		var messageAcrValues = OidcUtil.getAcrValues(request);
+		var sessionAcrValues = session.getStateData().getContextClasses();
+		if (sessionAcrValues != null && !messageAcrValues.equals(sessionAcrValues)) {
+			log.info("OIDC stepup triggerd by clientId={} with messageAcrValues='{}' not matching sessionAcrValues='{}'",
+					clientId, messageAcrValues, sessionAcrValues);
+			return true;
+		}
+		return false;
+	}
+
+	private static boolean isAuthorizeInFederation(HttpServletRequest request) {
+		var savedRequest = request.getParameter("continue"); // spring-security v6 uses message tagging
+		var authPath = ApiSupport.isOidcAuthPath(request.getRequestURI());
+		return !authPath || savedRequest != null;
+	}
+
+	private static void handleSessionDiscard(String clientId, HttpServletRequest request,
+			String triggerParameter, NetworkConfig networkConfig) {
+		var triggerValue = StringUtil.clean(request.getParameter(triggerParameter));
+		var referer = WebUtil.getValidOrigin(WebUtil.getOriginOrReferer(request));
+		log.info("Drop web session for clientId={} triggered by {}='{}' on endpoint={} called by referer='{}' from network='{}'",
+				clientId, triggerParameter, triggerValue, request.getRequestURI(),
+				referer, WebSupport.getClientHint(request, networkConfig));
+		request.getSession()
+			   .invalidate();
 	}
 
 }

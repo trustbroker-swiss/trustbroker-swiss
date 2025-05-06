@@ -18,6 +18,7 @@ import { NgModule } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { DateAdapter, NativeDateAdapter } from '@angular/material/core';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatGridListModule } from '@angular/material/grid-list';
@@ -28,7 +29,7 @@ import { MatSidenavModule } from '@angular/material/sidenav';
 import { BrowserModule } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { RouterModule } from '@angular/router';
-import { HTTP_INTERCEPTORS, HttpClient, HttpClientModule } from '@angular/common/http';
+import { HTTP_INTERCEPTORS, HttpClient, provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
 import { StoreRouterConnectingModule } from '@ngrx/router-store';
 import { StoreModule } from '@ngrx/store';
 import { MissingTranslationHandler, MissingTranslationHandlerParams, TranslateLoader, TranslateModule } from '@ngx-translate/core';
@@ -66,6 +67,11 @@ import { LanguageService } from './services/language.service';
 import { ThemeService } from './services/theme-service';
 import { SsoComponent } from './sso/sso.component';
 import { ThemeSelectorComponent } from './theme-selector/theme-selector';
+import { HrdCardsContainerComponent } from './hrd-cards-container/hrd-cards-container.component';
+import { HrdCardsV2Component } from './hrd-cards-v2/hrd-cards-v2.component';
+import { AnyCardHasCategoryPipe } from './pipes/any-card-has-category.pipe';
+import { BucketizeIdpObjectsPipe } from './pipes/bucketize-idp-objects.pipe';
+import { HrdBannerComponent } from './hrd-banner/hrd-banner.component';
 
 export class TranslationService implements TranslateLoader {
 	private readonly baseUrl = environment.apiUrl;
@@ -95,7 +101,10 @@ export class MissingTranslationHelper implements MissingTranslationHandler {
 @NgModule({
 	declarations: [
 		AppComponent,
+		HrdCardsContainerComponent,
 		HrdCardsComponent,
+		HrdCardsV2Component,
+		HrdBannerComponent,
 		SsoComponent,
 		MaterialFooterComponent,
 		MaterialFrameComponent,
@@ -118,10 +127,10 @@ export class MissingTranslationHelper implements MissingTranslationHandler {
 		BackdropComponent,
 		ThemeSelectorComponent
 	],
+	bootstrap: [AppComponent],
 	imports: [
 		BrowserModule,
 		BrowserAnimationsModule,
-		HttpClientModule,
 		MatCardModule,
 		MatGridListModule,
 		MatMenuModule,
@@ -147,16 +156,19 @@ export class MissingTranslationHelper implements MissingTranslationHandler {
 		MatSidenavModule,
 		MatCheckboxModule,
 		FormsModule,
-		MatExpansionModule
+		MatExpansionModule,
+		AnyCardHasCategoryPipe,
+		BucketizeIdpObjectsPipe
 	],
 	providers: [
 		LanguageService,
 		ThemeService,
 		DeviceInfoService,
 		{ provide: HTTP_INTERCEPTORS, useClass: CustomHttpInterceptor, multi: true },
-		{ provide: ObMasterLayoutConfig, useClass: MasterLayoutConfig }
-	],
-	bootstrap: [AppComponent]
+		{ provide: ObMasterLayoutConfig, useClass: MasterLayoutConfig },
+		{ provide: DateAdapter, useClass: NativeDateAdapter },
+		provideHttpClient(withInterceptorsFromDi())
+	]
 })
 export class AppModule {
 	constructor(iconRegistry: MatIconRegistry) {

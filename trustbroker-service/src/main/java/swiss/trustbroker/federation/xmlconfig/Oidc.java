@@ -40,7 +40,7 @@ import lombok.NoArgsConstructor;
 public class Oidc implements Serializable {
 
 	/**
-	 * List of OIDC clients.
+	 * List of OIDC clients handled via the same configuration.
 	 */
 	@XmlElement(name = "Client")
 	@Builder.Default

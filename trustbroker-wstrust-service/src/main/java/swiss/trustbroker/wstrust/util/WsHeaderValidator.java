@@ -17,13 +17,10 @@ package swiss.trustbroker.wstrust.util;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.opensaml.saml.saml2.core.Assertion;
 import org.opensaml.soap.wsaddressing.Address;
 import org.opensaml.soap.wstrust.WSTrustConstants;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.util.StringUtil;
-import swiss.trustbroker.config.TrustBrokerProperties;
-import swiss.trustbroker.saml.util.AssertionValidator;
 import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
 
 @Slf4j
@@ -94,10 +91,6 @@ public class WsHeaderValidator {
 		}
 
 		return toHost.equals(issuerHost);
-	}
-
-	public static void validateAssertion(Assertion assertion, TrustBrokerProperties properties) {
-		AssertionValidator.validateRstAssertion(assertion, properties, null);
 	}
 
 }

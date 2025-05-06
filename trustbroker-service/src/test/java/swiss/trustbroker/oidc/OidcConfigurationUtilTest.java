@@ -83,11 +83,13 @@ class OidcConfigurationUtilTest {
 
 	private static final int DEFAULT_TOKEN_TIME_SECS = 120;
 
+	private static final int DEFAULT_CODE_TIME_SECS = 60;
+
 	private static final int ACCESS_TOKEN_TIME_TO_LIVE_MIN = 4;
 
 	private static final int REFRESH_TOKEN_TIME_TO_LIVE_MIN = 5;
 
-	private static final int AUTHORIZATION_CODE_TIME_TO_LIVE_MIN = 3;
+	private static final int AUTHORIZATION_CODE_TIME_TO_LIVE_MIN = DEFAULT_CODE_TIME_SECS / 60;
 
 	@BeforeAll
 	static void setup() {
@@ -292,13 +294,14 @@ class OidcConfigurationUtilTest {
 
 	@Test
 	void testGetTokenSettings() {
-		var noSettings = OidcConfigurationUtil.getTokenSettings(null, 1800); // sessionLifetimeSec
-		assertThat(noSettings.getAuthorizationCodeTimeToLive(), is(Duration.ofMinutes(30)));
+		var noSettings = OidcConfigurationUtil.getTokenSettings(null, 1800, 300); // sessionLifetimeSec
+		assertThat(noSettings.getAuthorizationCodeTimeToLive(), is(Duration.ofMinutes(5)));
 		assertThat(noSettings.getAccessTokenTimeToLive(), is(Duration.ofMinutes(30)));
 		assertThat(noSettings.getRefreshTokenTimeToLive(), is(Duration.ofMinutes(30)));
 
-		var defaultSettings = OidcConfigurationUtil.getTokenSettings(OidcConfigurationUtil.defaultSecurityPolicies(180), 180);
-		assertThat(defaultSettings.getAuthorizationCodeTimeToLive(), is(Duration.ofMinutes(3)));
+		var defaultSettings = OidcConfigurationUtil.getTokenSettings(
+				OidcConfigurationUtil.defaultSecurityPolicies(180), 180, 120);
+		assertThat(defaultSettings.getAuthorizationCodeTimeToLive(), is(Duration.ofMinutes(2)));
 		assertThat(defaultSettings.getAccessTokenTimeToLive(), is(Duration.ofMinutes(3)));
 		assertThat(defaultSettings.getRefreshTokenTimeToLive(), is(Duration.ofMinutes(3)));
 
@@ -308,7 +311,7 @@ class OidcConfigurationUtilTest {
 				.tokenTimeToLiveMin(125)
 				.sessionTimeToLiveMin(maxAgeSec / 60)
 				.build();
-		var pkceSettings = OidcConfigurationUtil.getTokenSettings(pkcePolicies, 1800);
+		var pkceSettings = OidcConfigurationUtil.getTokenSettings(pkcePolicies, 1800, 6);
 		assertThat(pkceSettings.getAuthorizationCodeTimeToLive(), is(Duration.ofMinutes(115)));
 		assertThat(pkceSettings.getAccessTokenTimeToLive(), is(Duration.ofMinutes(125)));
 		assertThat(pkceSettings.getRefreshTokenTimeToLive(), is(Duration.ofMinutes(30))); // unused
@@ -329,20 +332,21 @@ class OidcConfigurationUtilTest {
 				.tokenTimeToLiveMin(125)
 				.refreshTokenTimeToLiveMin(135)
 				.build();
-		var privSettings = OidcConfigurationUtil.getTokenSettings(privPolicies, 1800);
-		assertThat(privSettings.getAuthorizationCodeTimeToLive(), is(Duration.ofMinutes(30)));
+		var privSettings = OidcConfigurationUtil.getTokenSettings(privPolicies, 1800, 300);
+		assertThat(privSettings.getAuthorizationCodeTimeToLive(), is(Duration.ofMinutes(5)));
 		assertThat(privSettings.getAccessTokenTimeToLive(), is(Duration.ofMinutes(125)));
 		assertThat(privSettings.getRefreshTokenTimeToLive(), is(Duration.ofMinutes(135)));
 	}
 
 	@ParameterizedTest
 	@CsvSource(value = {
-			"60,null,null,null,null,null,60,null,60,60", // fallback to defaultTokenTimeMin
-			"60,null,120,null,null,null,60,120,120,60", // fallback to tokenTtl
-			"30,150,160,170,180,190,150,170,180,190", // override tokenTtl
-			"30,null,null,239,240,241,30,239,240,241", // no tokenTtl
+			"3600,60,null,null,null,null,null,1,null,60,60", // fallback to global token TTL (in seconds)
+			"3600,60,null,120,null,null,null,1,120,120,60", // fallback to tokenTtl
+			"3600,60,3,160,170,180,190,3,170,180,190", // override tokenTtl
+			"900,120,null,null,239,240,241,2,239,240,241", // no tokenTtl
 	}, nullValues = "null")
-	void testGetTokenSettingsOverride(Integer defaultTokenTimeMin,
+	void testGetTokenSettingsOverride(
+			Integer globalTokenTtlSecs, Integer globalCodeTtlSecs,
 			Integer codeTtl, Integer tokenTtl, Integer idTokenTtl, Integer accessTokenTtl, Integer refreshTokenTtl,
 			Integer expectedCodeTtl, Integer expectedIdTokenTtl, Integer expectedAccessTokenTtl,
 			Integer expectedRefreshTokenTtl) {
@@ -354,7 +358,7 @@ class OidcConfigurationUtilTest {
 				.authorizationCodeTimeToLiveMin(codeTtl)
 				.build();
 		assertThat(policies.getIdTokenTimeToLiveMin(), is(expectedIdTokenTtl)); // defaultTokenTimeMin has no effect
-		var settings = OidcConfigurationUtil.getTokenSettings(policies, defaultTokenTimeMin * 60);
+		var settings = OidcConfigurationUtil.getTokenSettings(policies, globalTokenTtlSecs, globalCodeTtlSecs);
 		assertThat(settings.getAuthorizationCodeTimeToLive(), is(Duration.ofMinutes(expectedCodeTtl)));
 		assertThat(settings.getAccessTokenTimeToLive(), is(Duration.ofMinutes(expectedAccessTokenTtl)));
 		assertThat(settings.getRefreshTokenTimeToLive(), is(Duration.ofMinutes(expectedRefreshTokenTtl)));
@@ -374,7 +378,7 @@ class OidcConfigurationUtilTest {
 	void createRegisteredClient(boolean withDefaults) {
 		var oidcClient = givenOidcClient(withDefaults);
 
-		var result = OidcConfigurationUtil.createRegisteredClient(oidcClient, DEFAULT_TOKEN_TIME_SECS);
+		var result = OidcConfigurationUtil.createRegisteredClient(oidcClient, DEFAULT_TOKEN_TIME_SECS, DEFAULT_CODE_TIME_SECS);
 
 		var authMethods = ClientAuthenticationMethod.defaultValues();
 		var grantTypes = AuthorizationGrantType.defaultValues();

@@ -53,9 +53,9 @@ import org.opensaml.soap.wstrust.RequestType;
 import org.opensaml.soap.wstrust.TokenType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ContextConfiguration;
-import swiss.trustbroker.api.idm.service.IdmService;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import swiss.trustbroker.api.idm.service.IdmQueryService;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
@@ -73,6 +73,7 @@ import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.mapping.service.ClaimsMapperService;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.service.RelyingPartyService;
 import swiss.trustbroker.script.service.ScriptService;
@@ -111,26 +112,29 @@ class WsTrustServiceTest {
 	@Autowired
 	WsTrustService wsTrustService;
 
-	@MockBean
+	@MockitoBean
 	CredentialReader credentialReader;
 
-	@MockBean
+	@MockitoBean
 	TrustBrokerProperties trustBrokerProperties;
 
-	@MockBean
+	@MockitoBean
 	RelyingPartySetupService relyingPartySetupService;
 
-	@MockBean
+	@MockitoBean
 	ScriptService scriptService;
 
-	@MockBean
-	IdmService idmService;
+	@MockitoBean
+	IdmQueryService idmQueryService;
 
-	@MockBean
+	@MockitoBean
 	RelyingPartyService relyingPartyService;
 
-	@MockBean
+	@MockitoBean
 	AuditService auditService;
+
+	@MockitoBean
+	ClaimsMapperService claimsMapperService;
 
 	@Test
 	void smokeTest() {

@@ -37,7 +37,7 @@ import swiss.trustbroker.api.relyingparty.dto.RelyingPartyConfig;
 public class NoOpAnnouncementService implements AnnouncementService {
 
 	@Override
-	public boolean showAnnouncements(AnnouncementsRpData announcementsRpData) {
+	public boolean showAnnouncements(AnnouncementsRpData announcementsRpData, String providerName) {
 		log.debug("{}.showAnnouncements called", this.getClass().getName());
 		return false;
 	}
@@ -50,7 +50,7 @@ public class NoOpAnnouncementService implements AnnouncementService {
 
 	@Override
 	public List<Announcement> getAnnouncementsForApplication(RelyingPartyConfig relyingPartyConfig,
-			AnnouncementsRpData announcementsRpData) {
+			AnnouncementsRpData announcementsRpData, String appName) {
 		log.debug("{}.getAnnouncementsForApplication called", this.getClass().getName());
 		return new ArrayList<>();
 	}

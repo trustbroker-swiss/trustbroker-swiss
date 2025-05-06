@@ -84,6 +84,16 @@ public class ClaimsParty extends CounterParty {
 	private StatusPolicy statusPolicy;
 
 	/**
+	 * Enable IDM provisioning based on CP response.
+	 * <br/>
+	 * Default: FALSE
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlAttribute(name = "provision")
+	private ProvisioningMode provision;
+
+	/**
 	 * Configure what QoA the CP can deliver per default, e.g. weak, normal or strong. See XTB Single Sign On (SSO, SLO)
 	 * on how QoA is handled in the context of XTB.
 	 */
@@ -148,6 +158,14 @@ public class ClaimsParty extends CounterParty {
 	private SecurityPolicies securityPolicies;
 
 	/**
+	 * OIDC client configuration to integrate CP/IDP
+	 *
+ 	 * @since 1.9.0
+	 */
+	@XmlElement(name = "Oidc")
+	private Oidc oidc;
+
+	/**
 	 * SAML protocol configuration for this CP.
 	 */
 	@XmlElement(name = "Saml")
@@ -162,6 +180,14 @@ public class ClaimsParty extends CounterParty {
 	 */
 	@XmlElement(name = "SubjectNameMappings")
 	private SubjectNameMappings subjectNameMappings;
+
+	/**
+	 * QoA configurations for this CP.
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlElement(name = "Qoa")
+	private Qoa qoa;
 
 	/**
 	 * The filtering is done when the SAML response is received from the CP. This element therefore declares, which original
@@ -208,13 +234,6 @@ public class ClaimsParty extends CounterParty {
 		return authLevel;
 	}
 
-	public Saml initializedSaml() {
-		if (saml == null) {
-			saml = new Saml();
-		}
-		return saml;
-	}
-
 	// Pass on rpIssuer to CP in Scoping element - defaults to false
 	public boolean isDelegateOrigin() {
 		return securityPolicies != null && Boolean.TRUE.equals(securityPolicies.getDelegateOrigin());
@@ -231,6 +250,24 @@ public class ClaimsParty extends CounterParty {
 	@Override
 	public String getShortType() {
 		return "CP";
+	}
+
+	public boolean isProvisioningEnabled() {
+		return provision != null && provision.isEnabled();
+	}
+
+	/**
+	 * @return true if OIDC is to be used towards CP
+	 */
+	public boolean useOidc() {
+		return oidc != null;
+	}
+
+	/**
+	 * @return true if SAML is to be used towards CP
+	 */
+	public boolean useSaml() {
+		return !useOidc(); // SAML is the default
 	}
 
 }

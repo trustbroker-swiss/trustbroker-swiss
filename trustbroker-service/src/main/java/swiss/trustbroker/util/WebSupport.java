@@ -87,7 +87,7 @@ public class WebSupport {
 		return WebUtil.getUserAgent(request);
 	}
 
-	public static boolean isIntranet(HttpServletRequest request, NetworkConfig networkConfig) {
+	public static boolean isClientOnIntranet(HttpServletRequest request, NetworkConfig networkConfig) {
 		return networkConfig != null && networkConfig.isIntranet(getClientNetwork(request, networkConfig));
 	}
 
@@ -97,7 +97,7 @@ public class WebSupport {
 
 	public static boolean isLbHealthCheck(HttpServletRequest request, NetworkConfig networkConfig) {
 		return "/actuator/health".equals(request.getRequestURI())
-				&& isIntranet(request, networkConfig)
+				&& isClientOnIntranet(request, networkConfig)
 				&& WebUtil.getHeader(HTTP_HEADER_X_REAL_IP, request) != null;
 	}
 

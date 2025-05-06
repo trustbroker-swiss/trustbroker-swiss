@@ -63,13 +63,14 @@ public class ArtifactBinding implements Serializable {
 	@XmlAttribute(name = "sourceIdEncoded")
 	private String sourceIdEncoded;
 
-	public boolean useArtifactBinding(boolean initiatedByArtifactBinding) {
+	public boolean useArtifactBinding(SamlBinding requestBinding, SamlBinding requestedResponseBinding) {
 		if (outboundMode == null) {
 			return false;
 		}
 		return switch (outboundMode) {
 			case REQUIRED -> true;
-			case SUPPORTED -> initiatedByArtifactBinding;
+			case SUPPORTED -> requestedResponseBinding == SamlBinding.ARTIFACT ||
+					(requestedResponseBinding == null && requestBinding == SamlBinding.ARTIFACT);
 			case NOT_SUPPORTED -> false;
 		};
 	}

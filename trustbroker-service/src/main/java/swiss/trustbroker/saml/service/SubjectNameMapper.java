@@ -20,7 +20,9 @@ import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import swiss.trustbroker.federation.xmlconfig.CounterParty;
 import swiss.trustbroker.federation.xmlconfig.SubjectName;
+import swiss.trustbroker.saml.dto.ClaimSource;
 import swiss.trustbroker.saml.dto.CpResponse;
+import swiss.trustbroker.saml.util.ClaimSourceUtil;
 
 @Slf4j
 class SubjectNameMapper {
@@ -39,7 +41,7 @@ class SubjectNameMapper {
 			else {
 				subjectMapping = nameIdMappings.getSubjects()
 						.stream()
-						.filter(m -> m.isIssuerMatching(cpIssuer) && mapSubject(m, counterParty, cpResponse))
+						.filter(m -> mapSubject(m, counterParty, cpResponse))
 						.findFirst();
 			}
 		}
@@ -51,18 +53,36 @@ class SubjectNameMapper {
 	}
 
 	private static boolean mapSubject(SubjectName subjectMapping, CounterParty counterParty, CpResponse cpResponse) {
-		var cpIssuer = cpResponse.getIssuerId();
+
+		var nameIdClaim = subjectMapping.getClaim();
 		var nameIdSource = subjectMapping.getSource();
-		var claimSource = "AttributesSelection";
-		var nameId = cpResponse.getAttribute(nameIdSource);
+		var claimSource = "";
+		String nameId = null;
+
+		if (nameIdClaim == null) {
+			log.debug("SubjectName mapping claim not set for={}", counterParty.getId());
+			return false;
+		}
+
+		// source = cpIssuer or  null
+		var cpIssuer = cpResponse.getIssuerId();
+		if (ClaimSourceUtil.isCpSource(cpIssuer, nameIdSource) || nameIdSource == null) {
+			claimSource = "AttributesSelection";
+			nameId = cpResponse.getAttribute(nameIdClaim);
+		}
+
+		// source = IDM/IdmQuery.name or null
 		if (nameId == null) {
 			claimSource = "UserDetailsSelection";
-			nameId = cpResponse.getUserDetail(nameIdSource);
+			nameId = getNameIdFromUserDetails(cpResponse, nameIdSource, nameIdClaim);
 		}
-		if (nameId == null) {
+
+		// source = PROPS or null
+		if (nameId == null && (ClaimSource.PROPS.name().equals(nameIdSource) || nameIdSource == null)) {
 			claimSource = "PropertiesSelection";
-			nameId = cpResponse.getProperty(nameIdSource);
+			nameId = cpResponse.getProperty(nameIdClaim);
 		}
+
 		if (nameId != null) {
 			// also allow to adjust the format (relevant for some RPs)
 			var nameIdFormat = subjectMapping.getFormat();
@@ -74,14 +94,21 @@ class SubjectNameMapper {
 			log.info("Change federation principal from cpIssuer={} cpNameId={} to {} issuer={} rpNameId={}"
 							+ " using source='{} ({})' format={}",
 					cpIssuer, cpResponse.getOriginalNameId(), counterParty.getShortType(), counterParty.getId(),
-					cpResponse.getNameId(), nameIdSource, claimSource, nameIdFormat);
+					cpResponse.getNameId(), nameIdClaim, claimSource, nameIdFormat);
 			return true;
 		}
 		log.debug("Preserve federation principal for {} issuer={} cpIssuer={} cpNameId={} rpNameId={}"
 						+ " using format={} because source={} is undefined",
 				counterParty.getShortType(), counterParty.getId(), cpIssuer, cpResponse.getOriginalNameId(),
-				cpResponse.getNameId(), cpResponse.getNameIdFormat(), nameIdSource);
+				cpResponse.getNameId(), cpResponse.getNameIdFormat(), nameIdClaim);
 		return false;
+	}
+
+	static String getNameIdFromUserDetails(CpResponse cpResponse, String nameIdSource, String nameIdClaim) {
+		if (nameIdSource != null && nameIdSource.startsWith(ClaimSource.IDM.name())) {
+			return cpResponse.getUserDetail(nameIdClaim, nameIdSource);
+		}
+		return nameIdSource == null ? cpResponse.getUserDetail(nameIdClaim) : null;
 	}
 
 }

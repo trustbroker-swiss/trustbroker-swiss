@@ -64,7 +64,11 @@ public class ArtifactResolution {
 
 	/**
 	 * Default proxy URL for artifact resolution.
+	 *
+	 * @deprecated Use NetworkConfig.proxyUrl
+	 * @see NetworkConfig#getProxyUrl()
 	 */
+	@Deprecated(since = "1.9.0")
 	private String proxyUrl;
 
 	/**

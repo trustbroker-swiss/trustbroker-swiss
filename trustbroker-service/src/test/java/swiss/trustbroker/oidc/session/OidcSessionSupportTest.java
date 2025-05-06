@@ -336,6 +336,20 @@ class OidcSessionSupportTest {
 		verifyNoInteractions(ssoService);
 	}
 
+	@Test
+	void testAcrValuesStepup() {
+		var request = new MockHttpServletRequest();
+		var session = new TomcatSession(null);
+		session.setStateData(StateData.builder().id("1").build());
+		request.setSession(session);
+		assertThat(OidcSessionSupport.isAcrValuesStepupRequired(request, session, "TestClient"), is(false));
+		request.setParameter("acr_values", "acr1 acr2");
+		OidcSessionSupport.rememberAcrValues(request);
+		assertThat(OidcSessionSupport.isAcrValuesStepupRequired(request, session, "TestClient"), is(false));
+		request.setParameter("acr_values", "acr3");
+		assertThat(OidcSessionSupport.isAcrValuesStepupRequired(request, session, "TestClient"), is(true));
+	}
+
 	@ParameterizedTest
 	@MethodSource
 	void testGetSsoStateDataForClientFromSso(Set<SsoSessionParticipant> participants1,

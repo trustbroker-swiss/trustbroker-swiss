@@ -15,7 +15,10 @@
 
 package swiss.trustbroker.util;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,6 +31,7 @@ import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.NetworkConfig;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
 import swiss.trustbroker.oidc.session.HttpExchangeSupport;
 
@@ -37,30 +41,17 @@ import swiss.trustbroker.oidc.session.HttpExchangeSupport;
 @Slf4j
 public class HrdSupport {
 
-	public static final String HTTP_URLTESTER_CP = "urltester"; // sent by system teams URL-Tester to skip HRD
+	public static final String HTTP_HRD_HINT_HEADER = "urltester"; // test framework signaling CP ID via HTTP header
 
-	public static final String HTTP_CP_HINT = "idp";
+	public static final String HTTP_HRD_HINT_PARAMETER = "hrd_hint"; // RP can do IDP pre-selection via HTTP query/post parameter
 
 	private HrdSupport() {
 	}
 
-	private static String getClaimsProviderWithPepIdpHint(String hint, TrustBrokerProperties properties) {
-		hint = hint.toUpperCase().replace("LOGIN", "-LOGIN");
-		if (properties.getEnterpriseIdpId().endsWith(hint)) {
-			return properties.getEnterpriseIdpId();
-		}
-		else if (properties.getPublicIdpId().endsWith(hint)) {
-			return properties.getPublicIdpId();
-		}
-		else if (properties.getMobileIdpId().endsWith(hint)) {
-			return properties.getMobileIdpId();
-		}
-		return null;
-	}
-
-	public static boolean requestFromTestApplication(HttpServletRequest request) {
-		return WebUtil.getCookie(HTTP_URLTESTER_CP, request) != null
-				|| WebUtil.getHeader(HTTP_URLTESTER_CP, request) != null;
+	public static boolean requestFromTestApplication(HttpServletRequest request, NetworkConfig networkConfig) {
+		return (WebUtil.getCookie(HTTP_HRD_HINT_HEADER, request) != null
+				|| WebUtil.getHeader(HTTP_HRD_HINT_HEADER, request) != null)
+				&& WebSupport.isClientOnIntranet(request, networkConfig);
 	}
 
 	private static boolean hasAutoLoginDisabled(HttpServletRequest request, TrustBrokerProperties properties) {
@@ -81,18 +72,21 @@ public class HrdSupport {
 		}
 
 		// Testing hint: HTTP urltester header signaling selected CP independent of network etc. required for automation
-		var cpSelection = WebUtil.getCookie(HTTP_URLTESTER_CP, request);
-		reason = updateReason(cpSelection, HTTP_URLTESTER_CP + " cookie", reason);
-		if (cpSelection == null) {
-			cpSelection = WebUtil.getHeader(HTTP_URLTESTER_CP, request);
-			reason = updateReason(cpSelection, HTTP_URLTESTER_CP + " header", reason);
+		String cpSelection = null;
+
+		if (WebSupport.isClientOnIntranet(request, properties.getNetwork())) {
+			cpSelection = WebUtil.getCookie(HTTP_HRD_HINT_HEADER, request);
+			reason = updateReason(cpSelection, HTTP_HRD_HINT_HEADER + " cookie", reason);
+			if (cpSelection == null) {
+				cpSelection = WebUtil.getHeader(HTTP_HRD_HINT_HEADER, request);
+				reason = updateReason(cpSelection, HTTP_HRD_HINT_HEADER + " header", reason);
+			}
 		}
 
 		// CP (IDP) hint: idp=xyz is supported there as a REST hint by applications
-		if (cpSelection == null && WebUtil.getParameter(HTTP_CP_HINT, request) != null) {
-			var hint = StringUtil.clean(WebUtil.getParameter(HTTP_CP_HINT, request));
-			cpSelection = getClaimsProviderWithPepIdpHint(hint, properties);
-			reason = updateReason(cpSelection, HTTP_CP_HINT + " param", reason);
+		if (cpSelection == null && WebUtil.getParameter(HTTP_HRD_HINT_PARAMETER, request) != null) {
+			cpSelection = StringUtil.clean(WebUtil.getParameter(HTTP_HRD_HINT_PARAMETER, request));
+			reason = updateReason(cpSelection, HTTP_HRD_HINT_PARAMETER + " parameter", reason);
 		}
 
 		// Testing hint: HTTP autoLogin cookie Disabling autoLogin behavior so testers can select CP manually
@@ -127,6 +121,24 @@ public class HrdSupport {
 		return false;
 	}
 
+	public static boolean isXtbDestination(TrustBrokerProperties trustBrokerProperties, String destination) {
+		if (destination == null || trustBrokerProperties.getOidc() == null
+				|| trustBrokerProperties.getOidc().getPerimeterUrl() == null) {
+			return false;
+		}
+		try {
+			URI destinationUrl = new URI(destination);
+			URI oidcPerimeterUrl = new URI(trustBrokerProperties.getOidc().getPerimeterUrl());
+			if (destinationUrl.getHost() == null || oidcPerimeterUrl.getHost() == null) {
+				return false;
+			}
+			return destinationUrl.getHost().equals(oidcPerimeterUrl.getHost());
+		}
+		catch (URISyntaxException ex) {
+			throw new RequestDeniedException("Invalid URL", ex);
+		}
+	}
+
 	private static String updateReason(String cpSelection, String override, String reason) {
 		return cpSelection != null ? override : reason;
 	}
@@ -140,7 +152,7 @@ public class HrdSupport {
 		}
 		var cpSelection = getClaimsProviderHint(request, properties);
 		if (cpSelection == null && WebSupport.getClientNetwork(request, properties.getNetwork()) != null) {
-			if (WebSupport.isIntranet(request, properties.getNetwork())) {
+			if (WebSupport.isClientOnIntranet(request, properties.getNetwork())) {
 				cpSelection = properties.getEnterpriseIdpId();
 			}
 			else if (WebSupport.isClientOnInternet(request, properties.getNetwork())) {
@@ -158,11 +170,12 @@ public class HrdSupport {
 			HrdService hrdService) {
 
 		// bailout if we have only a single CP based on config or groovy scripting
+		log.debug("HRD reduce start ({}): {}", cpMappings != null ? cpMappings.size() : 0, cpMappings);
 		if (cpMappings == null || cpMappings.size() < 2) {
 			return cpMappings;
 		}
 
-		// matching hint first as it should select an existing CP and we are done including the mobile GW
+		// matching hint first as it should select an existing CP, and we are done including the mobile GW
 		cpMappings = filterMappingsForHint(cpSelectionHint, cpMappings);
 
 		// throw out all CPs not valid for current network (not applied if cpSelectionHint already chose aa single CP)
@@ -182,10 +195,11 @@ public class HrdSupport {
 		// discard all remaining mappings with a relyingPartyAlias except if we only have such still
 		cpMappings = filterMappingsForNonMatchingAliases(cpMappings);
 
+		log.debug("HRD reduce end ({}): {}", cpMappings.size(), cpMappings);
 		return cpMappings;
 	}
 
-	// map elements if they are not ClaimsProviderRelyingParty
+	// map elements if they are not ClaimsProviderRelyingParty (just type conversion)
 	private static List<ClaimsProviderRelyingParty> mapResultMappings(List<HrdClaimsProviderToRelyingPartyMapping> mappings) {
 		List<ClaimsProviderRelyingParty> result = new ArrayList<>(mappings.size());
 		for (var mapping : mappings) {
@@ -195,16 +209,18 @@ public class HrdSupport {
 	}
 
 	private static List<ClaimsProviderRelyingParty> filterMappingDuplicates(List<ClaimsProviderRelyingParty> cpMappings) {
-		var dup = new ArrayList<String>();
-		var ret = new ArrayList<ClaimsProviderRelyingParty>();
+		var dedup = new LinkedHashMap<String, ClaimsProviderRelyingParty>(); // retain order
 		cpMappings.forEach(m -> {
-			if (!dup.contains(m.getId())) {
-				dup.add(m.getId());
-				ret.add(m);
-
+			var currentEntry = dedup.get(m.getId());
+			if (currentEntry == null || m.getRelyingPartyAlias() == null) {
+				currentEntry = dedup.put(m.getId(), m); // prefer plain entries over aliased ones
+			}
+			if (currentEntry != null) {
+				log.debug("Dropped duplicate or aliased cpId={} relyingPartyAlias={}", m.getId(), m.getRelyingPartyAlias());
 			}
 		});
-		return ret;
+		log.debug("HRD de-duplicated ({} => {}): {}", cpMappings.size(), dedup.size(), dedup.values());
+		return dedup.isEmpty() ? cpMappings : dedup.values().stream().toList();
 	}
 
 	private static List<ClaimsProviderRelyingParty> filterMappingsForHint(String cpSelectionHint,
@@ -213,12 +229,13 @@ public class HrdSupport {
 			return cpMappings;
 		}
 		var selectedCp = cpMappings.stream().filter(cpm -> cpm.getId().equals(cpSelectionHint)).toList();
-		log.debug("Got idpHint={} reducing CP mappings from {} to 1 entry", cpSelectionHint, cpMappings.size());
 		if (!selectedCp.isEmpty()) {
 			var newList = new ArrayList<ClaimsProviderRelyingParty>(); // eliminate output duplicates
 			newList.add(selectedCp.get(0));
+			log.debug("HRD reduced by hint={} ({}): {}", cpSelectionHint, newList.size(), newList);
 			return newList;
 		}
+		log.debug("HRD ignored invalid hint={}", cpSelectionHint);
 		return cpMappings;
 	}
 
@@ -233,15 +250,12 @@ public class HrdSupport {
 		}
 		var networkHeader = properties.getNetwork() != null ? properties.getNetwork().getNetworkHeader() : null;
 		var newList = new ArrayList<>(cpMappings.stream().filter(cpm -> cpm.isValidForNetwork(network)).toList());
-		if (log.isDebugEnabled()) {
-			log.debug("Got {}={} reducing CP mappings from {} to {} entries", networkHeader, network,
-					cpMappings.size(), newList.size());
-		}
 		if (newList.isEmpty()) {
 			throw new RequestDeniedException(String.format(
 					"Got %s=%s but none of the configured cps are available on that network: %s",
 					networkHeader, network, cpMappings));
 		}
+		log.debug("HRD reduced by network={} ({}): {}", network, newList.size(), newList);
 		return newList;
 	}
 
@@ -251,9 +265,9 @@ public class HrdSupport {
 			return cpMappings;
 		}
 		var newList = new ArrayList<>(cpMappings.stream().filter(cpm -> cpm.isMatchingRelyingPartyAlias(rpOrAppId)).toList());
-		log.debug("Got relyingPartyAlias={} reducing CP mappings from {} to {} entries", rpOrAppId,
-				cpMappings.size(), newList.size());
-		return newList.isEmpty() ? cpMappings : newList;
+		var ret = newList.isEmpty() ? cpMappings : newList;
+		log.debug("HRD reduced by rpOrAppId={} ({}): {}", rpOrAppId, ret.size(), ret);
+		return ret;
 	}
 
 	private static List<ClaimsProviderRelyingParty> filterMappingsForNonMatchingAliases(
@@ -262,9 +276,9 @@ public class HrdSupport {
 			return cpMappings;
 		}
 		var newList = new ArrayList<>(cpMappings.stream().filter(cpm -> cpm.getRelyingPartyAlias() == null).toList());
-		log.debug("Discard relyingPartyAlias entries reducing CP mappings from {} to {} entries",
-				cpMappings.size(), newList.size());
-		return newList.isEmpty() ? cpMappings : newList;
+		var ret = newList.isEmpty() ? cpMappings : newList;
+		log.debug("HRD reduced by non-matching-aliases ({}): {}", ret.size(), ret);
+		return ret;
 	}
 
 }

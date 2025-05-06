@@ -40,9 +40,9 @@ import org.opensaml.saml.saml2.core.StatusCode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -59,6 +59,7 @@ import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.monitoring.dto.Status;
 import swiss.trustbroker.saml.dto.RpRequest;
 import swiss.trustbroker.saml.dto.UiObject;
+import swiss.trustbroker.saml.dto.UiObjects;
 import swiss.trustbroker.saml.service.AssertionConsumerService;
 import swiss.trustbroker.saml.service.ClaimsProviderService;
 import swiss.trustbroker.saml.service.SamlOutputService;
@@ -78,25 +79,25 @@ class MonitoringControllerTest {
 
 	private static final String CP_URN = "urn:cpIssuer1";
 
-	@MockBean
+	@MockitoBean
 	private TrustBrokerProperties trustBrokerProperties;
 
-	@MockBean
+	@MockitoBean
 	private SamlValidator samlValidator;
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartySetupService relyingPartySetupService;
 
-	@MockBean
+	@MockitoBean
 	private AssertionConsumerService assertionConsumerService;
 
-	@MockBean
+	@MockitoBean
 	private ClaimsProviderService claimsProviderService;
 
 	@Autowired
 	private WebApplicationContext webApplicationContext;
 
-	@MockBean
+	@MockitoBean
 	private SamlOutputService samlOutputService;
 
 	private ApiSupport apiSupport;
@@ -171,7 +172,7 @@ class MonitoringControllerTest {
 				.andExpect(content().string(""));
 
 		verify(claimsProviderService, times(1))
-				.sendSamlToCpWithMandatoryIds(any(), any(), any(), eq(state), eq(CP_URN));
+				.sendSamlToCpWithMandatoryIds(any(), any(), eq(state), any());
 	}
 
 	@ParameterizedTest
@@ -192,7 +193,7 @@ class MonitoringControllerTest {
 				.andExpect(content().string(""));
 
 		verify(claimsProviderService, times(1))
-				.sendSamlToCpWithMandatoryIds(any(), any(), any(), eq(state), eq(CP_URN));
+				.sendSamlToCpWithMandatoryIds(any(), any(), eq(state), any());
 	}
 
 	static Object[][] testMonitoringRpCp() {
@@ -256,7 +257,8 @@ class MonitoringControllerTest {
 	}
 
 	private static RpRequest createRpRequest(String... cpUrn) {
-		var uiObjects = Arrays.asList(cpUrn).stream().map(MonitoringControllerTest::createUiObject).toList();
+		var uiObjectList = Arrays.asList(cpUrn).stream().map(MonitoringControllerTest::createUiObject).toList();
+		var uiObjects = UiObjects.builder().tiles(uiObjectList).build();
 		return RpRequest.builder().uiObjects(uiObjects).build();
 	}
 

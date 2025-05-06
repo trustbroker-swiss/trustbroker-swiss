@@ -17,6 +17,7 @@ package swiss.trustbroker.federation.xmlconfig;
 
 import java.io.Serializable;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
 import jakarta.xml.bind.annotation.XmlAttribute;
@@ -47,6 +48,39 @@ public class ClaimsProviderRelyingParty implements Serializable, HrdClaimsProvid
 	 */
 	@XmlAttribute(name = "id")
 	private String id;
+
+	/**
+	 * Allow pre-configuration of ClaimsProviderMappings with enabled or disabled ClaimsParty in profiles and only pick
+	 * them per relying party in setup.
+	 * Default: Unset value signals an enabled claims party and ignoring entries with the same id in the profile.
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlAttribute(name = "enabled")
+	private Boolean enabled;
+
+	/**
+	 * Indicates the order of display in the UI. Special values:
+	 * <ol>
+	 *     <li>less or equal 0 - do not show in UI</li>
+	 *     <li>1xx - first priority CPs (displayed larger, ordered numerically)</li>
+	 *     <li>2xx - second priority CPs (displayed larger, ordered numerically)</li>
+	 *     <li>3xx - third priority CPs (displayed smalled, ordered numerically)</li>
+	 * </ol>
+	 * Default: ordered of definition in the XML
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlAttribute(name = "order")
+	private Integer order;
+
+	/**
+	 * Show banner if tile is enabled.
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlAttribute(name = "banner")
+	private String banner;
 
 	/**
 	 * A comma separated list of network identifiers. When computing the HRD screen the incoming loadbalancer HTTP Header
@@ -98,6 +132,12 @@ public class ClaimsProviderRelyingParty implements Serializable, HrdClaimsProvid
 				.clientNetworks(mapping.getClientNetworks())
 				.relyingPartyAlias(mapping.getRelyingPartyAlias())
 				.build();
+	}
+
+	@JsonIgnore
+	public boolean isDisplayed() {
+		// Old HRD config does not use order and CPs with alias are never displayed
+		return (order == null || order > 0);
 	}
 
 }

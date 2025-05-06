@@ -18,45 +18,67 @@
 	</div>
 	<div>
 		<h2 class="medium-emphasis mb-2" [innerHTML]="textKey | translate | safeMarkup"></h2>
-		<p *ngIf="!supportInfo" class="medium-emphasis" [innerHTML]="infoKey | translate | safeMarkup"></p>
-		<div *ngIf="supportInfoData" class="app-support">
-			<div *ngIf="supportInfoData.appUrl" class="app-support-info">
-				<div class="medium-emphasis" [innerHTML]="'trustbroker.error.main.support.furtherinfo' | translate | safeMarkup"></div>
-				<div>
-					<a href="{{ supportInfoData.appUrl }}">{{ "trustbroker.error.main.support.documentation" | translate }}</a>
-				</div>
-			</div>
-			<div *ngIf="supportInfoData.emailAddress || supportInfoData.phoneNumber" class="app-support-contact">
-				<div class="medium-emphasis" [innerHTML]="'trustbroker.error.main.support.servicedesk' | translate | safeMarkup"></div>
-				<div *ngIf="supportInfoData.emailAddress">
-					<div>{{ "trustbroker.error.main.support.emailladdress" | translate }}</div>
-					<div>
-						<a href="mailto:{{ supportInfoData.emailAddress }}">{{ supportInfoData.emailAddress }}</a>
+		@if (!supportInfo) {
+			<p class="medium-emphasis" [innerHTML]="infoKey | translate | safeMarkup"></p>
+		}
+		@if (supportInfoData) {
+			<div class="app-support">
+				@if (supportInfoData.appUrl) {
+					<div class="app-support-info">
+						<div class="medium-emphasis" [innerHTML]="'trustbroker.error.main.support.furtherinfo' | translate | safeMarkup"></div>
+						<div>
+							<a href="{{ supportInfoData.appUrl }}">{{ "trustbroker.error.main.support.documentation" | translate }}</a>
+						</div>
 					</div>
-				</div>
-				<div *ngIf="supportInfoData.phoneNumber">
-					<div [innerHTML]="'trustbroker.error.main.support.phonennumber' | translate | safeMarkup"></div>
-					<div>
-						<a href="tel:{{ supportInfoData.phoneNumber }}">{{ supportInfoData.phoneNumber }}</a>
+				}
+				@if (supportInfoData.emailAddress || supportInfoData.phoneNumber) {
+					<div class="app-support-contact">
+						<div class="medium-emphasis" [innerHTML]="'trustbroker.error.main.support.servicedesk' | translate | safeMarkup"></div>
+						@if (supportInfoData.emailAddress) {
+							<div>
+								<div>{{ "trustbroker.error.main.support.emailladdress" | translate }}</div>
+								<div>
+									<a href="mailto:{{ supportInfoData.emailAddress }}">{{ supportInfoData.emailAddress }}</a>
+								</div>
+							</div>
+						}
+						@if (supportInfoData.phoneNumber) {
+							<div>
+								<div [innerHTML]="'trustbroker.error.main.support.phonennumber' | translate | safeMarkup"></div>
+								<div>
+									<a href="tel:{{ supportInfoData.phoneNumber }}">{{ supportInfoData.phoneNumber }}</a>
+								</div>
+							</div>
+						}
 					</div>
+				}
+				<div class="app-support-contact">
+					@if (showSupportInfoText) {
+						<p class="medium-emphasis" [innerHTML]="supportInfoText | translate | safeMarkup"></p>
+					}
+					@if (showSupportContactText) {
+						<p class="medium-emphasis">
+							<span [innerHTML]="supportContactText | translate | safeMarkup"></span>
+							<a href="{{ supportContactUrl | translate }}" target="_blank">{{ "trustbroker.error.main.support.documentation" | translate }}</a>
+						</p>
+					}
 				</div>
 			</div>
-			<div class="app-support-contact">
-				<p *ngIf="showSupportInfoText" class="medium-emphasis" [innerHTML]="supportInfoText | translate | safeMarkup"></p>
-				<p *ngIf="showSupportContactText" class="medium-emphasis">
-					<span [innerHTML]="supportContactText | translate | safeMarkup"></span>
-					<a href="{{ supportContactUrl | translate }}" target="_blank">{{ "trustbroker.error.main.support.documentation" | translate }}</a>
-				</p>
-			</div>
-		</div>
-		<p class="medium-emphasis" *ngIf="reference">
-			<span [innerHTML]="referenceKey | translate | safeMarkup"></span><span>{{ reference }}</span>
-		</p>
-		<button *ngIf="continueButton" mat-flat-button color="accent" (click)="continueFlow()" tabindex="1" type="submit" class="{{ theme.name }} button-text mt-2">
-			<span>{{ "trustbroker.error.main.button.continue" | translate }}</span>
-		</button>
-		<button *ngIf="reloginButton" mat-flat-button color="accent" (click)="relogin()" tabindex="2" type="submit" class="{{ theme.name }} button-text mt-2">
-			<span>{{ "trustbroker.error.main.button.relogin" | translate }}</span>
-		</button>
+		}
+		@if (reference) {
+			<p class="medium-emphasis">
+				<span [innerHTML]="referenceKey | translate | safeMarkup"></span><span>{{ reference }}</span>
+			</p>
+		}
+		@if (continueButton) {
+			<button mat-flat-button color="accent" (click)="continueFlow()" tabindex="1" type="submit" class="{{ theme.name }} button-text mt-2">
+				<span>{{ "trustbroker.error.main.button.continue" | translate }}</span>
+			</button>
+		}
+		@if (reloginButton) {
+			<button mat-flat-button color="accent" (click)="relogin()" tabindex="2" type="submit" class="{{ theme.name }} button-text mt-2">
+				<span>{{ "trustbroker.error.main.button.relogin" | translate }}</span>
+			</button>
+		}
 	</div>
 </div>

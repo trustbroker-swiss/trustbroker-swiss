@@ -47,7 +47,7 @@ public class AppErrorViewResolver implements ErrorViewResolver {
 		var errorPage = resolveErrorPage(status, traceId);
 		if (OidcExceptionHelper.hasAuthenticationException(request)) {
 			var location = OidcExceptionHelper.buildLocationForAuthenticationException(request, errorPage,
-					trustBrokerProperties.getOidc().getIssuer(), "spring-mvc");
+					trustBrokerProperties.getOidc().getIssuer(), "spring-mvc", apiSupport::isInternalUrl);
 			if (location != null) {
 				log.debug("Authentication exception resulted in location={}", location);
 				errorPage = location;

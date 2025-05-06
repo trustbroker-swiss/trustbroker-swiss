@@ -15,6 +15,7 @@
 
 package swiss.trustbroker.federation.xmlconfig;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -196,7 +197,9 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 
 	/**
 	 * Constant attributes to be added for this RP.
+	 * @deprecated replaced with ClaimsSelection
 	 */
+	@Deprecated(since = "1.9.0", forRemoval = true)
 	@XmlElement(name = "ConstAttributes")
 	private ConstAttributes constAttributes;
 
@@ -211,6 +214,14 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 	 */
 	@XmlElement(name = "PropertiesSelection")
 	private AttributesSelection propertiesSelection;
+
+	/**
+	 * RP side claims selection.
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlElement(name = "ClaimsSelection")
+	private AttributesSelection claimsSelection;
 
 	/**
 	 * Profile selection configuration for this RP.
@@ -262,6 +273,11 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 	@Override
 	public Scripts getScripts() {
 		return scripts;
+	}
+
+	@Override
+	public Qoa getQoa() {
+		return qoa;
 	}
 
 	// XmlTransient not allowed on transient fields (the Javadoc does not say transient is considered XmlTransient):
@@ -371,6 +387,27 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 		}
 		return claimsProviderMappings.getClaimsProviderList().stream()
 				.filter(cpRp -> rpAliasId.equals(cpRp.getRelyingPartyAlias())).findFirst();
+	}
+
+	public List<Definition> getAllDefinitions() {
+		List<Definition> allDefs = new ArrayList<>();
+		addAllDefinitions(attributesSelection, allDefs);
+		if (idmLookup != null) {
+			idmLookup.getQueries().forEach(
+					q -> addAllDefinitions(q.getUserDetailsSelection(), allDefs));
+		}
+		addAllDefinitions(propertiesSelection, allDefs);
+		addAllDefinitions(claimsSelection, allDefs);
+		if (constAttributes != null && constAttributes.getAttributeDefinitions() != null) {
+			allDefs.addAll(constAttributes.getAttributeDefinitions());
+		}
+		return allDefs;
+	}
+
+	private static void addAllDefinitions(AttributesSelection attributesSelection, List<Definition> allDefs) {
+		if (attributesSelection != null && attributesSelection.getDefinitions() != null) {
+			allDefs.addAll(attributesSelection.getDefinitions());
+		}
 	}
 
 	@Nonnull

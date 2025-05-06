@@ -15,14 +15,31 @@
 
 package swiss.trustbroker.common.util;
 
+import java.text.ParseException;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JWSVerifier;
+import com.nimbusds.jose.crypto.ECDSAVerifier;
+import com.nimbusds.jose.crypto.RSASSAVerifier;
+import com.nimbusds.jose.jwk.ECKey;
+import com.nimbusds.jose.jwk.JWK;
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.KeyType;
+import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jwt.JWTClaimNames;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpHeaders;
+import swiss.trustbroker.common.exception.RequestDeniedException;
+import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.Base64Util;
 
 @Slf4j
@@ -35,6 +52,12 @@ public class OidcUtil {
     public static final String REDIRECT_URI = "redirect_uri"; // GET /authorize, /logout
 
     public static final String ID_TOKEN_HINT = "id_token_hint"; // GET /logout
+
+    public static final String GRANT_TYPE = "grant_type"; // POST /token
+
+    public static final String CODE = "code"; // POST /token
+
+    public static final String CLIENT_SECRET = "client_secret"; // POST /token
 
     public static final String TOKEN_INTROSPECT = "token"; // GET /introspect
 
@@ -85,6 +108,16 @@ public class OidcUtil {
     public static final String OIDC_HEADER_KEYID = "kid";
 
     public static final String OIDC_HEADER_TYPE_JWT = "JWT";
+
+	public static final String TOKEN_RESPONSE_ID_TOKEN = "id_token";
+
+	public static final String TOKEN_RESPONSE_ACCESS_TOKEN = "access_token";
+
+	public static final String TOKEN_RESPONSE_REFRESH_TOKEN = "refresh_token";
+
+	public static final String TOKEN_RESPONSE_TOKEN_TYPE = "token_type";
+
+	public static final String TOKEN_RESPONSE_EXPIRES_IN = "expires_in";
 
     private OidcUtil() {
     }
@@ -140,6 +173,10 @@ public class OidcUtil {
         return basicAuth.split(":")[0];
     }
 
+	public static String getBasicAuthorizationHeader(String clientId, String clientSecret) {
+		return HTTP_BASIC + ' ' + Base64Util.encode(clientId + ':' + clientSecret, true);
+	}
+
     private static String getClaimFromAuthorizationHeader(String header, String claimName) {
         if (header == null || header.isEmpty()) {
             return null;
@@ -168,8 +205,15 @@ public class OidcUtil {
     }
 
     public static String getClaimFromJwtToken(String jwtToken, String claimName) {
+		var claims = getClaimsFromJwtToken(jwtToken);
+		var claimValue = getClaimFromClaims(claims, claimName);
+		log.debug("JWT token encountered with {}={}", claimName, claimValue);
+		return claimValue;
+	}
+
+	public static Map<String, Object> getClaimsFromJwtToken(String jwtToken) {
         if (jwtToken == null) {
-            return jwtToken;
+            return Collections.emptyMap();
         }
         var toks = jwtToken.split("\\.");
         // JWT token?
@@ -180,18 +224,15 @@ public class OidcUtil {
             else {
                 log.debug("Non-JWT token encountered: {}", jwtToken);
             }
-            return null;
+            return Collections.emptyMap();
         }
         try {
-            var claims = JsonUtil.parseJsonObject(Base64Util.urlDecode(toks[1]), false);
-            var claimValue = getClaimFromClaims(claims, claimName);
-            log.debug("JWT token encountered with {}={}", claimName, claimValue);
-            return claimValue;
+            return JsonUtil.parseJsonObject(Base64Util.urlDecode(toks[1]), false);
         }
         catch (Exception ex) {
             log.info("Fishy JWT token encountered: {}", jwtToken, ex);
         }
-        return null;
+        return Collections.emptyMap();
     }
 
     public static boolean isOidcPromptLogin(HttpServletRequest request) {
@@ -202,7 +243,15 @@ public class OidcUtil {
         return false;
     }
 
-    public static boolean isOidcPromptNone(HttpServletRequest request) {
+	public static List<String> getAcrValues(HttpServletRequest request) {
+		var messageAcrValues = request != null ? request.getParameter(OidcUtil.OIDC_ACR_VALUES) : null;
+		if (StringUtils.isNotEmpty(messageAcrValues)) {
+			return Arrays.asList(messageAcrValues.split("\\s"));
+		}
+		return Collections.emptyList();
+	}
+
+	public static boolean isOidcPromptNone(HttpServletRequest request) {
         if (request != null) {
             var prompt = request.getParameter(OidcUtil.OIDC_PROMPT);
             return OidcUtil.OIDC_PROMPT_NONE.equals(prompt);
@@ -271,6 +320,33 @@ public class OidcUtil {
 			}
 		}
 		return ret.toString();
+	}
+
+	public static JWTClaimsSet verifyJwtToken(String jwtToken, JWKSet keys, String clientId) {
+		try {
+			var jwt = SignedJWT.parse(jwtToken);
+			var header = jwt.getHeader();
+			var kid = header.getKeyID();
+			var key = keys.getKeyByKeyId(kid);
+			var verifier = getVerifier(key.getKeyType(), key, clientId);
+			if (!jwt.verify(verifier)) {
+				throw new RequestDeniedException(String.format("Invalid JWT token from clientId=%s", clientId));
+			}
+			return jwt.getJWTClaimsSet();
+		}
+		catch (ParseException | JOSEException ex) {
+			throw new TechnicalException(String.format("Cannot parse JWT token from clientId=%s: %s", clientId, ex.getMessage()));
+		}
+	}
+
+	private static JWSVerifier getVerifier(KeyType keyType, JWK key, String clientId) throws JOSEException {
+		if (keyType.equals(KeyType.EC)) {
+			return new ECDSAVerifier(new ECKey.Builder(key.toECKey()).build());
+		}
+		if (keyType.equals(KeyType.RSA)) {
+			return new RSASSAVerifier(new RSAKey.Builder(key.toRSAKey()).build());
+		}
+		throw new TechnicalException(String.format("KeyType=%s clientId=%s not supported", keyType, clientId));
 	}
 
 }

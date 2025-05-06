@@ -103,7 +103,7 @@ public class CustomRelyingPartyRegistrationRepository implements RelyingPartyReg
 					cred.add(signing);
 				})
 				// Validation
-				.assertingPartyDetails(details -> details
+				.assertingPartyMetadata(details -> details
 						// Must match with the incoming Response.Issuer
 						.entityId(identityProvider.getResponseIssuerId())
 						// Default is GET

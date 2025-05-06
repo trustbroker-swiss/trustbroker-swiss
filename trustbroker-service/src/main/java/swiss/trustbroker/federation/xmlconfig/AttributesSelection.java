@@ -20,6 +20,7 @@ import java.util.List;
 
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
+import jakarta.xml.bind.annotation.XmlAttribute;
 import jakarta.xml.bind.annotation.XmlElement;
 import jakarta.xml.bind.annotation.XmlRootElement;
 import lombok.AllArgsConstructor;
@@ -37,6 +38,14 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AttributesSelection implements Serializable {
+
+	/**
+	 * Policy for merging attributes from multiple sources.
+	 *
+	 * @since 1.9.0
+	 */
+	@XmlAttribute(name="multiSourcePolicy")
+	private MultiResultPolicy multiSourcePolicy;
 
 	/**
 	 * List of attribute definitions.

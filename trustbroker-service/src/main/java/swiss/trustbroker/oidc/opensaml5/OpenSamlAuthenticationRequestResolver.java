@@ -154,7 +154,7 @@ class OpenSamlAuthenticationRequestResolver {
 		Issuer iss = this.issuerBuilder.buildObject();
 		iss.setValue(entityId);
 		authnRequest.setIssuer(iss);
-		authnRequest.setDestination(registration.getAssertingPartyDetails().getSingleSignOnServiceLocation());
+		authnRequest.setDestination(registration.getAssertingPartyMetadata().getSingleSignOnServiceLocation());
 		authnRequest.setAssertionConsumerServiceURL(assertionConsumerServiceLocation);
 		if (registration.getNameIdFormat() != null) {
 			NameIDPolicy nameIdPolicy = this.nameIdPolicyBuilder.buildObject();
@@ -166,9 +166,9 @@ class OpenSamlAuthenticationRequestResolver {
 			authnRequest.setID(TraceSupport.getOwnTraceParentForSaml());
 		}
 		String relayState = this.relayStateResolver.convert(request);
-		Saml2MessageBinding binding = registration.getAssertingPartyDetails().getSingleSignOnServiceBinding();
+		Saml2MessageBinding binding = registration.getAssertingPartyMetadata().getSingleSignOnServiceBinding();
 		if (binding == Saml2MessageBinding.POST) {
-			if (registration.getAssertingPartyDetails().getWantAuthnRequestsSigned()
+			if (registration.getAssertingPartyMetadata().getWantAuthnRequestsSigned()
 					|| registration.isAuthnRequestsSigned()) {
 				OpenSaml5SigningUtils.sign(authnRequest, registration);
 			}
@@ -188,7 +188,7 @@ class OpenSamlAuthenticationRequestResolver {
 				.samlRequest(deflatedAndEncoded)
 				.relayState(relayState)
 				.id(authnRequest.getID());
-			if (registration.getAssertingPartyDetails().getWantAuthnRequestsSigned()
+			if (registration.getAssertingPartyMetadata().getWantAuthnRequestsSigned()
 					|| registration.isAuthnRequestsSigned()) {
 				OpenSaml5SigningUtils.QueryParametersPartial parametersPartial = OpenSaml5SigningUtils.sign(registration)
 					.param(Saml2ParameterNames.SAML_REQUEST, deflatedAndEncoded);

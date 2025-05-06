@@ -62,6 +62,12 @@ public interface AttributeName {
 		return null;
 	}
 
+	/**
+	 * @return provisioning configuration of this attribute.
+	 * @since 1.9.0
+	 */
+	default String getProvision() { return null; }
+
 	// default name comparison:
 
 	/**
@@ -121,7 +127,7 @@ public interface AttributeName {
 	 * @see AttributeName#equalsByNamespace(String)
 	 */
 	default boolean equalsByNameOrNamespace(String name, String source) {
-		return (equalsByName(name) || equalsByNamespace(name)) && (source == null || source.equals(getSource()));
+		return (equalsByName(name) || equalsByNamespace(name)) && isEqualsBySource(source);
 	}
 
 	/**
@@ -149,8 +155,19 @@ public interface AttributeName {
 		if (attributeName == null) {
 			return false;
 		}
-		return (equalsByName(attributeName.getName()) || equalsByNamespace(attributeName.getNamespaceUri()))
-				&& (source == null || source.equals(getSource()));
+		boolean equalsBySource = isEqualsBySource(source);
+		return (equalsByName(attributeName.getName()) || equalsByNamespace(attributeName.getNamespaceUri())) && equalsBySource;
+	}
+
+	/**
+	 * @param source
+	 * @return true if the sources are equals or null
+	 */
+	default boolean isEqualsBySource(String source) {
+		if (source == null || getSource() == null) {
+			return true;
+		}
+		return getSource().startsWith(source);
 	}
 
 	/**

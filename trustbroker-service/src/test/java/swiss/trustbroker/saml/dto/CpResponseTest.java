@@ -20,9 +20,13 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.commons.lang3.SerializationUtils;
 import org.junit.jupiter.api.Test;
@@ -169,7 +173,7 @@ class CpResponseTest {
 	void testCloneEquality() {
 		var userDetails = new HashMap<Definition, List<String>>();
 		userDetails.put(Definition.builder()
-								  .source("GLOBAL")
+								  .source("IDM:GLOBAL")
 								  .name(CoreAttributeName.EMAIL.getName())
 								  .build(), List.of("mail1"));
 		userDetails.put(Definition.builder()
@@ -184,6 +188,35 @@ class CpResponseTest {
 								   .build();
 		var cpResponseClone = SerializationUtils.clone(cpResponse);
 		assertThat(cpResponseClone, equalTo(cpResponse));
+	}
+
+	@Test
+	void testFeatureConditions() {
+		var cpResponse = CpResponse.builder().build();
+		var condition1 = "test1";
+		var condition2 = "test2";
+		var condition3 = "test3";
+
+		cpResponse.featureConditions(null);
+		assertThat(cpResponse.getFeatureConditions(), is(Collections.emptySet()));
+
+		cpResponse.featureConditions(Set.of(condition1, condition2));
+		assertThat(cpResponse.getFeatureConditions(), is(Set.of(condition1, condition2)));
+
+		assertTrue(cpResponse.addFeatureCondition(condition3));
+		assertTrue(cpResponse.hasFeatureCondition(condition3));
+		assertThat(cpResponse.getFeatureConditions(), is(Set.of(condition1, condition2, condition3)));
+
+		assertFalse(cpResponse.addFeatureCondition(condition3));
+		assertThat(cpResponse.getFeatureConditions(), is(Set.of(condition1, condition2, condition3)));
+
+		assertTrue(cpResponse.removeFeatureCondition(condition3));
+		assertFalse(cpResponse.hasFeatureCondition(condition3));
+		assertThat(cpResponse.getFeatureConditions(), is(Set.of(condition1, condition2)));
+
+		assertFalse(cpResponse.removeFeatureCondition(condition3));
+		assertThat(cpResponse.getFeatureConditions(), is(Set.of(condition1, condition2)));
+
 	}
 
 }

@@ -32,5 +32,14 @@ public enum GuiFeatures {
 	/**
 	 * Enable backdrop component.
 	 */
-	BACKDROP
+	BACKDROP,
+
+	/**
+	 * Enable HRD with ordering and banner support.
+	 * <br/>
+	 * Note: This new layout will become the default in a later release and the old layout will be dropped.
+	 *
+	 * @since 1.9.0
+	 */
+	HRD_BANNERS
 }

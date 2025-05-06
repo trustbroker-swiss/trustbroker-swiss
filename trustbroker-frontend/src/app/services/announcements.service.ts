@@ -28,7 +28,10 @@ export class AnnouncementsService {
 
 	constructor(private readonly http: HttpClient) {}
 
-	getAnnouncements(issuer, referer): Observable<AnnouncementResponse[]> {
-		return this.http.get<AnnouncementResponse[]>(`${this.baseUrl}announcements/${issuer}/${referer}`, {});
+	getAnnouncements(issuer, appName): Observable<AnnouncementResponse[]> {
+		if (typeof appName !== 'undefined') {
+			return this.http.get<AnnouncementResponse[]>(`${this.baseUrl}announcements/${issuer}/${appName}`, {});
+		}
+		return this.http.get<AnnouncementResponse[]>(`${this.baseUrl}announcements/${issuer}`, {});
 	}
 }

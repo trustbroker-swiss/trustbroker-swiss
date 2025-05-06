@@ -35,7 +35,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.opensaml.saml.saml2.core.Response;
 import org.opensaml.saml.saml2.core.StatusCode;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -52,6 +51,7 @@ import org.springframework.security.saml2.core.Saml2ErrorCodes;
 import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticationException;
 import org.springframework.security.web.WebAttributes;
 import org.springframework.security.web.savedrequest.SavedRequest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.saml.util.SamlFactory;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.common.util.OidcUtil;
@@ -65,7 +65,7 @@ class OidcExceptionHelperTest {
 
 	private MockHttpServletRequest request;
 
-	@MockBean
+	@MockitoBean
 	private SavedRequest savedRequest;
 
 	@BeforeEach
@@ -80,7 +80,8 @@ class OidcExceptionHelperTest {
 	void adaptLocationForAuthenticationException(AuthenticationException authException, String redirectUri, String returnUrl,
 			String issuer, String expectedResult) {
 		mockSession(authException, redirectUri);
-		var result = OidcExceptionHelper.buildLocationForAuthenticationException(request, returnUrl, issuer, "unit-test");
+		var result = OidcExceptionHelper.buildLocationForAuthenticationException(request, returnUrl, issuer, "unit-test",
+				uri -> redirectUri.equals(uri));
 		assertThat(result, is(expectedResult));
 	}
 
@@ -225,13 +226,14 @@ class OidcExceptionHelperTest {
 	@Test
 	void saveAuthenticationException() {
 		// no exception in session
-		mockSession(null, "http://localhost/test");
+		var redirectUri = "http://localhost/test";
+		mockSession(null, redirectUri);
 		var authException = new OAuth2AuthenticationException("test");
 		assertThat(OidcExceptionHelper.hasAuthenticationException(request), is(false));
 		OidcExceptionHelper.saveAuthenticationException(request, authException);
 		assertThat(OidcExceptionHelper.hasAuthenticationException(request), is(true));
 		var result = OidcExceptionHelper.buildLocationForAuthenticationException(
-				request, "/return", "http://localhost", "unit-test");
+				request, "/return", "http://localhost", "unit-test", uri -> redirectUri.equals(uri));
 		assertThat(result, is("http://localhost/test?error=test&error_uri=http%3A%2F%2Flocalhost%2Freturn"));
 	}
 

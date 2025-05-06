@@ -118,7 +118,7 @@ public class CustomOAuth2AuthorizationService extends JdbcOAuth2AuthorizationSer
 
 			var start = clock.instant();
 			var currentTimestamp = Timestamp.from(start);
-			log.info("Start reaping token store (delayMs={})...", randomDelayMs);
+			log.info("Start reaping TokenCache (delayMs={})...", randomDelayMs);
 			SqlParameterValue[] parameters = new SqlParameterValue[] {
 					new SqlParameterValue(Types.TIMESTAMP, currentTimestamp),
 					new SqlParameterValue(Types.TIMESTAMP, currentTimestamp),
@@ -144,11 +144,11 @@ public class CustomOAuth2AuthorizationService extends JdbcOAuth2AuthorizationSer
 			}
 		}
 		catch (OptimisticLockException | ConcurrencyFailureException ex) {
-			log.info("Skipped token store reaper cycle (sessions collected by peer already). Details: {}",
+			log.info("Skipped TokenCache reaper cycle (entries collected by peer already). Details: {}",
 					ex.getMessage());
 		}
 		catch (InterruptedException ex) {
-			log.info("Skipped token store reaper cycle");
+			log.info("Skipped TokenCache reaper cycle");
 			Thread.currentThread().interrupt(); // restore interrupt state
 		}
 		catch (Exception ex) {

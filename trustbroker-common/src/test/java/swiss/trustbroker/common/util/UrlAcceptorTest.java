@@ -107,7 +107,7 @@ class UrlAcceptorTest {
 			"https://localhost:80,https://localhost:443,false",
 			"https://localhost:80,https://localhost:0,true",
 			"https://localhost:80,https://localhost:.*/.*,true", // should not run into urlOkForAccess (URI.getPort is an int)
-			// Sub-path ok by accpeting /.* as nothing
+			// Sub-path ok by accepting /.* as nothing
 			"https://example.trustbroker.swiss/path/same,https://example.trustbroker.swiss/path/same,true",
 			"https://example.trustbroker.swiss/path/same,https://example.trustbroker.swiss/path/same/.*,true",
 			"https://example.trustbroker.swiss/path/other,https://example.trustbroker.swiss/path/same/.*,false"

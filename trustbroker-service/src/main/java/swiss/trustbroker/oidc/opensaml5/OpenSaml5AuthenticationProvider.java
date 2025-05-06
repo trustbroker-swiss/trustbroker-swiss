@@ -403,7 +403,7 @@ public final class OpenSaml5AuthenticationProvider implements AuthenticationProv
 				result = result.concat(new Saml2Error(Saml2ErrorCodes.INVALID_DESTINATION, message));
 			}
 			String assertingPartyEntityId = token.getRelyingPartyRegistration()
-				.getAssertingPartyDetails()
+				.getAssertingPartyMetadata()
 				.getEntityId();
 			if (!StringUtils.hasText(issuer) || !issuer.equals(assertingPartyEntityId)) {
 				String message = String.format("Invalid issuer [%s] for SAML response [%s]", issuer, response.getID());
@@ -756,7 +756,7 @@ public final class OpenSaml5AuthenticationProvider implements AuthenticationProv
 		RelyingPartyRegistration relyingPartyRegistration = token.getRelyingPartyRegistration();
 		String audience = relyingPartyRegistration.getEntityId();
 		String recipient = relyingPartyRegistration.getAssertionConsumerServiceLocation();
-		String assertingPartyEntityId = relyingPartyRegistration.getAssertingPartyDetails().getEntityId();
+		String assertingPartyEntityId = relyingPartyRegistration.getAssertingPartyMetadata().getEntityId();
 		Map<String, Object> params = new HashMap<>();
 		Assertion assertion = assertionToken.getAssertion();
 		if (assertionContainsInResponseTo(assertion)) {

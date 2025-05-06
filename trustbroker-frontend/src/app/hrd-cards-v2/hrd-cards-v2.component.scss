@@ -1,0 +1,145 @@
+/*
+ * Copyright (C) 2024 trustbroker.swiss team BIT
+ *
+ * This program is free software.
+ * You can redistribute it and/or modify it under the terms of the GNU Affero General Public License
+ * as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ *
+ * See the GNU Affero General Public License for more details.
+ * You should have received a copy of the GNU Affero General Public License along with this program.
+ * If not, see <https://www.gnu.org/licenses/>.
+ */
+
+:host {
+	--large-gap: 1.5rem;
+	--small-gap: 0.5rem;
+
+	display: flex;
+	justify-content: center;
+
+	.main {
+		flex-grow: 1;
+		max-width: 1014px;
+		min-width: 336px;
+
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+
+		.cards {
+			display: flex;
+			flex-direction: column;
+			gap: var(--large-gap);
+
+			.card-section {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(200px, 0.5fr));
+				grid-gap: var(--small-gap);
+
+				.idp-card {
+					--border-size: 4px;
+					padding: 0.5rem;
+					border-radius: 0.625rem;
+					height: 4.5rem;
+					width: 100%;
+					background-color: #fff;
+					border: var(--border-size) solid #f2f7fa;
+					box-shadow: 0 1px 1px 0 rgba(0, 0, 0, 0.14), 0 2px 1px -1px rgba(0, 0, 0, 0.12), 0px 1px 3px 0px rgba(0, 0, 0, 0.20);
+					text-align: left;
+
+					display: flex;
+					flex-direction: row;
+					align-items: center;
+					gap: 1.5rem;
+
+					position: relative;
+
+					img {
+						width: 48px;
+						height: 48px;
+					}
+
+					&:hover {
+						background-color: #f3faffff !important;
+						cursor: pointer;
+						color: black !important;
+					}
+
+					&:focus {
+						background-color: #f3faffff !important;
+						color: black !important;
+						outline-color: #D5D5D5 !important;
+					}
+
+					&:focus-visible {
+						box-shadow: 0 5px 14px #999;
+						outline: none;
+					}
+
+					.disabled-overlay {
+						position: absolute;
+						backdrop-filter: blur(5px);
+						background-color: #454545;
+						color: white;
+						height: calc(100% + 2 * var(--border-size));
+						width: calc(100% + 2 * var(--border-size));
+						opacity: 0.8;
+						display: flex;
+						align-items: center;
+						justify-content: center;
+
+						box-sizing: border-box;
+						border-radius: 0.625rem;
+						left: calc(-1 * var(--border-size));
+						top: calc(-1 * var(--border-size));
+
+						p {
+							text-align: center;
+						}
+					}
+				}
+			}
+		}
+
+		// S - MOBILE
+		@media screen and (max-width: 511px) {
+			.cards {
+				gap: 1rem;
+
+				.card-section {
+					grid-template-columns: 1fr;
+					gap: 0.5rem;
+				}
+			}
+		}
+
+		// M
+		@media screen and (min-width: 512px) and (max-width: 731px) {
+			.cards .card-section {
+				grid-template-columns: 1fr;
+			}
+		}
+
+		// L
+		@media screen and (min-width: 732px) and (max-width: 1013px) {
+			.cards .card-section {
+				grid-template-columns: repeat(auto-fit, minmax(45%, 0.5fr));
+			}
+		}
+
+		// XL
+		@media screen and (min-width: 1014px) {
+			.cards .card-section {
+				grid-template-columns: repeat(3, minmax(30%, 0.5fr));
+
+				// only the first two sections must have a variable column count which can be expanded to 0.5fr.
+				&.expandable-to-half-size {
+					grid-template-columns: repeat(auto-fit, minmax(30%, 0.5fr));
+				}
+			}
+		}
+	}
+}

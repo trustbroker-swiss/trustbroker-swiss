@@ -2,7 +2,7 @@
 buildscript {
 	ext {
 		top = ''
-		buildVersion = '1.8.0'
+		buildVersion = '1.9.0'
 		buildTimestamp = null
 		// build promotion
 		buildName = System.env.BUILD_NAME
@@ -18,10 +18,10 @@ buildscript {
 
 plugins {
 	id 'base'
-	id 'org.springframework.boot'		version '3.3.5' apply false
+	id 'org.springframework.boot'		version '3.4.4' apply false
 	id 'org.ajoberstar.grgit'			version '4.1.1'	apply true
 	id "org.unbroken-dome.test-sets"	version '4.1.0' apply false
-	id 'com.google.cloud.tools.jib'		version '3.4.3'	apply false
+	id 'com.google.cloud.tools.jib'		version '3.4.4'	apply false
 	id "com.github.node-gradle.node"	version "7.0.2"	apply false
 	id 'com.jfrog.artifactory' 			version '4.33.1'
 }
@@ -63,7 +63,7 @@ subprojects {
 				mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
 				// spring-cloud: https://spring.io/projects/spring-cloud
 				// https://central.sonatype.com/artifact/org.springframework.cloud/spring-cloud-dependencies/2023.0.1/versions
-				mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2023.0.3'
+				mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2024.0.0'
 			}
 			// dependency management for libraries used in multiple components
 			dependencies {
@@ -81,10 +81,10 @@ subprojects {
 				dependency 'org.apache.velocity:velocity-engine-core:2.4.1'
 
 				// web-service and XMl processing
-				// https://central.sonatype.com/artifact/org.apache.cxf/apache-cxf/4.0.5/versions
+				// https://central.sonatype.com/artifact/org.apache.cxf/apache-cxf/4.0.6/versions
 				// https://central.sonatype.com/artifact/com.sun.xml.messaging.saaj/saaj-impl/versions
 				// NOTE: WS-import from wsdl not managed here, see trustbroker-wstrust-service for that.
-				dependencySet(group:'org.apache.cxf', version: '4.0.5')	{
+				dependencySet(group:'org.apache.cxf', version: '4.0.6')	{
 					entry 'cxf-rt-transports-http'
 					entry 'cxf-rt-frontend-jaxws'
 				}
@@ -139,7 +139,7 @@ subprojects {
 
 				// exclude old opensaml stuff from spring-security too
 				// https://central.sonatype.com/artifact/org.springframework.security/spring-security-saml2-service-provider/6.2.4/versions
-				dependency('org.springframework.security:spring-security-saml2-service-provider:6.3.4') {
+				dependency('org.springframework.security:spring-security-saml2-service-provider:6.4.4') {
 					exclude group: 'org.opensaml', name: 'opensaml-core'
 				}
 

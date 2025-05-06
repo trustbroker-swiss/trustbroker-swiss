@@ -22,11 +22,12 @@ import { ErrorPageComponent } from './error-page/error-page.component';
 import { HrdCardsComponent } from './hrd-cards/hrd-cards.component';
 import { ProfileSelectionComponent } from './profile-selection/profile-selection.component';
 import { SsoComponent } from './sso/sso.component';
+import { HrdCardsContainerComponent } from './hrd-cards-container/hrd-cards-container.component';
 
 export const routes: Routes = [
 	{
 		path: 'home/:issuer/:authnRequestId',
-		component: HrdCardsComponent
+		component: HrdCardsContainerComponent
 	},
 	{
 		path: 'device/:cpUrn/:rpUrn/:id',
@@ -65,7 +66,7 @@ export const routes: Routes = [
 		component: AnnouncementsComponent
 	},
 	{
-		path: 'announcements/:issuer/:authnRequestId/:referer',
+		path: 'announcements/:issuer/:authnRequestId/:appName',
 		component: AnnouncementsComponent
 	},
 	{

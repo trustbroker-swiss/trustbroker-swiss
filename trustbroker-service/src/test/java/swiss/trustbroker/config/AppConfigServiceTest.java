@@ -29,9 +29,9 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.setup.service.GitService;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.service.XmlConfigStatusService;
@@ -49,6 +49,7 @@ import swiss.trustbroker.homerealmdiscovery.util.ClaimsProviderUtil;
 import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
 import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.oidc.ClientConfigInMemoryRepository;
+import swiss.trustbroker.oidc.client.service.AuthorizationCodeFlowService;
 import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
 
@@ -56,29 +57,32 @@ import swiss.trustbroker.test.saml.util.SamlTestBase;
 @ContextConfiguration(classes = { AppConfigService.class })
 class AppConfigServiceTest {
 
-	@MockBean
+	@MockitoBean
 	private ApplicationEventPublisher eventPublisher;
 
-	@MockBean
+	@MockitoBean
 	private TrustBrokerProperties properties;
 
-	@MockBean
+	@MockitoBean
 	private GitService gitService;
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartyDefinitions relyingPartyDefinitions;
 
-	@MockBean
+	@MockitoBean
 	private ScriptService scriptService;
 
-	@MockBean
+	@MockitoBean
 	private ClientConfigInMemoryRepository clientConfigInMemoryRepository;
 
-	@MockBean
+	@MockitoBean
 	private MetricsService metricsService;
 
-	@MockBean
+	@MockitoBean
 	private XmlConfigStatusService xmlConfigStatusService;
+
+	@MockitoBean
+	private AuthorizationCodeFlowService authorizationCodeFlowService;
 
 	@Autowired
 	private AppConfigService appConfigService;

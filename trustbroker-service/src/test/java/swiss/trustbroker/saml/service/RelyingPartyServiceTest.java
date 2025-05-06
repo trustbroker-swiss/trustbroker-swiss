@@ -66,25 +66,27 @@ import org.opensaml.saml.saml2.core.Response;
 import org.opensaml.saml.saml2.core.SessionIndex;
 import org.opensaml.saml.saml2.core.StatusCode;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.api.accessrequest.dto.AccessRequestHttpData;
 import swiss.trustbroker.api.accessrequest.dto.AccessRequestResult;
 import swiss.trustbroker.api.accessrequest.service.AccessRequestService;
+import swiss.trustbroker.api.idm.dto.IdmProvisioningRequest;
+import swiss.trustbroker.api.idm.dto.IdmProvisioningResult;
+import swiss.trustbroker.api.idm.dto.IdmProvisioningStatus;
 import swiss.trustbroker.api.idm.dto.IdmRequests;
 import swiss.trustbroker.api.idm.dto.IdmResult;
-import swiss.trustbroker.api.idm.service.IdmService;
+import swiss.trustbroker.api.idm.service.IdmProvisioningService;
+import swiss.trustbroker.api.idm.service.IdmQueryService;
 import swiss.trustbroker.api.idm.service.IdmStatusPolicyCallback;
 import swiss.trustbroker.api.profileselection.dto.ProfileSelectionData;
 import swiss.trustbroker.api.profileselection.dto.ProfileSelectionResult;
 import swiss.trustbroker.api.profileselection.service.ProfileSelectionService;
-import swiss.trustbroker.api.qoa.service.QualityOfAuthenticationService;
 import swiss.trustbroker.api.relyingparty.dto.RelyingPartyConfig;
 import swiss.trustbroker.api.sessioncache.dto.CpResponseData;
 import swiss.trustbroker.audit.service.AuditService;
@@ -102,6 +104,7 @@ import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.config.TrustBrokerConfiguration;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.ArtifactResolution;
+import swiss.trustbroker.config.dto.NetworkConfig;
 import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.config.dto.SamlProperties;
 import swiss.trustbroker.config.dto.SecurityChecks;
@@ -114,7 +117,10 @@ import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.Encryption;
 import swiss.trustbroker.federation.xmlconfig.Flow;
+import swiss.trustbroker.federation.xmlconfig.HomeName;
 import swiss.trustbroker.federation.xmlconfig.IdmLookup;
+import swiss.trustbroker.federation.xmlconfig.ProvisioningMode;
+import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.Saml;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
@@ -122,7 +128,9 @@ import swiss.trustbroker.federation.xmlconfig.SloResponse;
 import swiss.trustbroker.federation.xmlconfig.Sso;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.homerealmdiscovery.util.DefaultIdmStatusPolicyCallback;
-import swiss.trustbroker.qoa.dto.NoOpQoa;
+import swiss.trustbroker.mapping.dto.CustomQoa;
+import swiss.trustbroker.mapping.service.ClaimsMapperService;
+import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.ResponseData;
 import swiss.trustbroker.saml.test.util.ServiceSamlTestUtil;
@@ -178,48 +186,50 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 
 	private static final String IDENTITY_QUERY = "IDENTITY";
 
-	@MockBean
+	@MockitoBean
 	private TrustBrokerProperties trustBrokerProperties;
 
-	@MockBean
+	@MockitoBean
 	private RelyingPartySetupService relyingPartySetupService;
 
-	@MockBean
-	private IdmService idmService;
+	@MockitoBean
+	private IdmQueryService idmQueryService;
 
-	@MockBean
+	@MockitoBean
+	private IdmProvisioningService idmProvisioningService;
+
+	@MockitoBean
 	ScriptService scriptService;
 
-	@MockBean
-	@Qualifier("stateCache")
-	private StateCacheService cacheService;
-
-	@MockBean
+	@MockitoBean
 	private ProfileSelectionService profileSelectionService;
 
-	@MockBean
+	@MockitoBean
 	private SsoService ssoService;
 
-	@MockBean
+	@MockitoBean
 	private AuditService auditService;
 
-	@MockBean
+	@MockitoBean
 	private AccessRequestService accessRequestService;
 
-	@MockBean
+	@MockitoBean
 	private ResponseFactory responseFactory;
 
-	@MockBean
+	@MockitoBean
 	private StateCacheService stateCacheService;
 
-	@MockBean
+	@MockitoBean
 	private ArtifactCacheService artifactCacheService;
 
-	@MockBean
+	@MockitoBean
 	private UnknownUserPolicyService unknownUserPolicyService;
 
-	@MockBean
-	private QualityOfAuthenticationService qoaService;
+	@MockitoBean
+	private QoaMappingService qoaService;
+
+	@MockitoBean
+	private ClaimsMapperService claimsMapperService;
 
 	@Autowired
 	private SamlOutputService outputService;
@@ -248,7 +258,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 
 	@BeforeEach
 	void setupMocks() {
-		doReturn(NoOpQoa.UNSPECIFIED).when(qoaService).getUnspecifiedAuthLevel();
+		doReturn(CustomQoa.UNDEFINED_QOA).when(qoaService).getUnspecifiedAuthLevel();
 	}
 
 	@ParameterizedTest
@@ -360,25 +370,16 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var request = new MockHttpServletRequest();
 		var relyingParty = RelyingParty
 				.builder()
-				.id("rp1")
-				.accessRequest(AccessRequest
-						.builder()
-						.authorizedApplications(AuthorizedApplications
-								.builder()
-								.build())
-						.build())
+				.id(rpIssuer)
+				.accessRequest(AccessRequest.builder().authorizedApplications(AuthorizedApplications.builder().build()).build())
 				.build();
-		var idmLookup = IdmLookup
-				.builder()
-				.build();
-		var cpResponse = CpResponse
-				.builder()
-				.rpIssuer("rp2")
-				.idmLookup(idmLookup)
-				.build();
+		var idmLookup = IdmLookup.builder().build();
+		var cpResponse = CpResponse.builder().rpIssuer("rp2").idmLookup(idmLookup).build();
 		stateData.setCpResponse(cpResponse);
+		var claimsParty = ClaimsParty.builder().id(CP_ISSUER_ID).build();
 		var url = fallback ? "https://localhost/initiate" : null;
 		var httpData = AccessRequestHttpData.of(request);
+		doReturn(relyingParty).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(rpIssuer, null);
 
 		var idmRefreshCallback = ArgumentCaptor.forClass(Runnable.class);
 		doReturn(AccessRequestResult.of(false,  url))
@@ -386,8 +387,8 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 						idmRefreshCallback.capture());
 
 		// url is returned by AR
-		assertThat(relyingPartyService.performAccessRequestIfRequired(request, relyingParty, stateData, null),
-				is(url));
+		assertThat(relyingPartyService.performAccessRequestWithDataRefreshIfRequired(
+				request, relyingParty, claimsParty, stateData, null), is(url));
 		assertThat(idmRefreshCallback.getValue(), is(not(nullValue())));
 		idmRefreshCallback.getValue().run(); // would have been called by the real method
 
@@ -396,17 +397,17 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var cpResponseData = ArgumentCaptor.forClass(CpResponseData.class);
 		var queryData = ArgumentCaptor.forClass(IdmRequests.class);
 		var callback = ArgumentCaptor.forClass(IdmStatusPolicyCallback.class);
-		verify(idmService, times(1)).getAttributesAudited(relyingPartyConfig.capture(),
+		verify(idmQueryService, times(1)).getAttributesAudited(relyingPartyConfig.capture(),
 				cpResponseData.capture(), queryData.capture(), callback.capture());
 		assertThat(relyingPartyConfig.getValue().getId(), is(rpIssuer));
 		assertThat(cpResponseData.getValue().getIssuerId(), is(cpResponse.getIssuer()));
 		assertThat(queryData.getValue().getQueryList(), hasSize(idmLookup.getQueries().size()));
 		assertThat(callback.getValue(), instanceOf(DefaultIdmStatusPolicyCallback.class));
 		if (fallback) {
-			verify(cacheService).save(stateData, RelyingPartyService.class.getSimpleName());
+			verify(stateCacheService).save(stateData, RelyingPartyService.class.getSimpleName());
 		}
 		else {
-			verifyNoInteractions(cacheService);
+			verifyNoInteractions(stateCacheService);
 		}
 	}
 
@@ -417,21 +418,23 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		stateData.setCpResponse(CpResponse.builder().rpIssuer(ISSUER_ID).build());
 		var request = new MockHttpServletRequest();
 		var relyingParty = RelyingParty.builder().id(ISSUER_ID).build();
+		var claimsParty = ClaimsParty.builder().id(CP_ISSUER_ID).build();
 		var httpData = AccessRequestHttpData.of(request);
 
 		doReturn(AccessRequestResult.of(retainSession, url))
 				.when(accessRequestService).performAccessRequestIfRequired(eq(httpData), eq(relyingParty), eq(stateData), any());
 
-		assertThat(relyingPartyService.performAccessRequestIfRequired(request, relyingParty, stateData, null), is(url));
+		assertThat(relyingPartyService.performAccessRequestWithDataRefreshIfRequired(
+				request, relyingParty, claimsParty, stateData, null), is(url));
 		if (retainSession) {
-			verify(ssoService).establishImplicitSso(relyingParty, stateData);
-			verifyNoInteractions(cacheService);
+			verify(ssoService).establishImplicitSso(relyingParty, claimsParty, stateData);
+			verifyNoInteractions(stateCacheService);
 		}
 		else {
 			verifyNoInteractions(ssoService);
-			verify(cacheService).save(stateData, RelyingPartyService.class.getSimpleName());
+			verify(stateCacheService).save(stateData, RelyingPartyService.class.getSimpleName());
 		}
-		verifyNoInteractions(idmService);
+		verifyNoInteractions(idmQueryService);
 	}
 
 	static Object[][] testPerformInteractiveAccessRequestRequired() {
@@ -441,19 +444,26 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		};
 	}
 
-	@Test
-	void testSkipInteractiveAccessRequest() {
+	@ParameterizedTest
+	@CsvSource(value = { "true,null", "false," + DESTINATION_URL }, nullValues = "null")
+	void testSkipInteractiveAccessRequest(boolean intranet, String expected) {
 		var stateData = givenState(ISSUER_ID);
 		stateData.setCpResponse(CpResponse.builder().rpIssuer(ISSUER_ID).build());
 		var request = new MockHttpServletRequest();
 		var relyingParty = RelyingParty.builder().id(ISSUER_ID).build();
-		request.addHeader(HrdSupport.HTTP_URLTESTER_CP, "anycp");
+		var claimsParty = ClaimsParty.builder().id(CP_ISSUER_ID).build();
+		request.addHeader(HrdSupport.HTTP_HRD_HINT_HEADER, "anycp");
+		var network = new NetworkConfig();
+		when(trustBrokerProperties.getNetwork()).thenReturn(network);
+		request.addHeader(network.getNetworkHeader(),
+				intranet ? network.getIntranetNetworkName() : network.getInternetNetworkName());
 		var httpData = AccessRequestHttpData.of(request);
 
 		doReturn(AccessRequestResult.of(false, DESTINATION_URL))
 				.when(accessRequestService).performAccessRequestIfRequired(eq(httpData), eq(relyingParty), eq(stateData), any());
 
-		assertThat(relyingPartyService.performAccessRequestIfRequired(request, relyingParty, stateData, null), nullValue());
+		assertThat(relyingPartyService.performAccessRequestWithDataRefreshIfRequired(
+				request, relyingParty, claimsParty, stateData, null), is(expected));
 	}
 
 	@Test
@@ -462,17 +472,18 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		stateData.setCpResponse(CpResponse.builder().rpIssuer(ISSUER_ID).build());
 		var request = new MockHttpServletRequest();
 		var relyingParty = RelyingParty.builder().id(ISSUER_ID).build();
+		var claimsParty = ClaimsParty.builder().id(CP_ISSUER_ID).build();
 		var httpData = AccessRequestHttpData.of(request);
 
 		doReturn(AccessRequestResult.of(false, null))
 				.when(accessRequestService).performAccessRequestIfRequired(eq(httpData), eq(relyingParty), eq(stateData), any());
 
-		assertThat(relyingPartyService.performAccessRequestIfRequired(request, relyingParty, stateData, null),
-				is(nullValue()));
+		assertThat(relyingPartyService.performAccessRequestWithDataRefreshIfRequired(
+				request, relyingParty, claimsParty, stateData, null), is(nullValue()));
 
-		verifyNoInteractions(cacheService);
+		verifyNoInteractions(stateCacheService);
 
-		verifyNoInteractions(idmService);
+		verifyNoInteractions(idmQueryService);
 	}
 
 	@ParameterizedTest
@@ -701,7 +712,6 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var profileSelectionData = ProfileSelectionData.builder()
 				.oidcClientId(CLIENT_ID)
 				.exchangeId(RELAY_STATE)
-				.selectedProfileId(PROFILE_ID)
 				.build();
 		doReturn(ProfileSelectionResult.empty()).when(profileSelectionService).doSsoProfileSelection(
 				profileSelectionData, relyingParty, cpResponse, stateData);
@@ -717,7 +727,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 			var cpResponseData = ArgumentCaptor.forClass(CpResponseData.class);
 			var queryData = ArgumentCaptor.forClass(IdmRequests.class);
 			var callback = ArgumentCaptor.forClass(IdmStatusPolicyCallback.class);
-			verify(idmService, times(1)).getAttributes(relyingPartyConfig.capture(),
+			verify(idmQueryService, times(1)).getAttributes(relyingPartyConfig.capture(),
 					cpResponseData.capture(), queryData.capture(), callback.capture());
 			assertThat(relyingPartyConfig.getValue().getId(), is(RP_ISSUER_ID));
 			assertThat(cpResponseData.getValue().getIssuerId(), is(CP_ISSUER_ID));
@@ -726,7 +736,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 			assertThat(callback.getValue(), instanceOf(DefaultIdmStatusPolicyCallback.class));
 		}
 		else {
-			verifyNoInteractions(idmService);
+			verifyNoInteractions(idmQueryService);
 		}
 	}
 
@@ -742,7 +752,8 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		stateData.getSpStateData().setOidcClientId(CLIENT_ID);
 		doReturn(stateData).when(stateCacheService).find(RELAY_STATE, RelyingPartyService.class.getSimpleName());
 		var cpResponse = givenCpResponse();
-		mockClaimsParty();
+		var claimsParty = mockClaimsParty();
+		mockProvisioning(claimsParty, cpResponse);
 		var mockHttpRequest = new MockHttpServletRequest();
 		var mockHttpResponse = new MockHttpServletResponse();
 		var arResult = AccessRequestResult.of(false, null);
@@ -752,10 +763,41 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		doReturn(ProfileSelectionResult.empty()).when(profileSelectionService).doInitialProfileSelection(
 				ProfileSelectionData.builder().exchangeId(RELAY_STATE).oidcClientId(CLIENT_ID).build(),
 				relyingParty, cpResponse, stateData);
+
 		var result = relyingPartyService.sendResponseWithSamlResponseFromCp(outputService, responseData, cpResponse,
 				mockHttpRequest, mockHttpResponse);
+
 		assertThat(result, is(nullValue()));
 		validateResponse(useArtifactBinding, StatusCode.SUCCESS, mockHttpResponse);
+	}
+
+	private void mockProvisioning(ClaimsParty claimsParty, CpResponse cpResponse) {
+		var name = claimsParty.getAttributesSelection().getDefinitions().get(0);
+		assertTrue(name.isProvisioningAttribute());
+		var email = claimsParty.getAttributesSelection().getDefinitions().get(1);
+		assertTrue(email.isProvisioningAttribute());
+		assertTrue(email.isProvisioningIdAttribute());
+		var homeName = claimsParty.getAttributesSelection().getDefinitions().get(2);
+		assertFalse(homeName.isProvisioningAttribute());
+		var originalAttributes = Map.of(name, List.of("name"), email, List.of("email"), homeName, List.of("homename"));
+		var provisionedAttributes = List.of(name, email);
+		var qoa = 10;
+		cpResponse.setOriginalAttributes(originalAttributes);
+		Map<Object, Object> additionalAttributes = Map.of("Key1", 100);
+		cpResponse.setAdditionalIdmData(additionalAttributes);
+		var provRequest = IdmProvisioningRequest.builder()
+												.identifyingClaim(provisionedAttributes.get(1)) // from CP AttributeSelection
+												.homeName(HOME_NAME)
+												.cpSubjectNameId(USER_NAME_ID)
+												.idmAttributes(Collections.emptyMap())
+												.cpAttributes(originalAttributes)
+												.provisioningAttributes(provisionedAttributes)
+												.cpAuthenticationQoa(qoa)
+												.additionalData(additionalAttributes)
+												.build();
+		var provResult = IdmProvisioningResult.builder().status(IdmProvisioningStatus.CREATED).build();
+		doReturn(qoa).when(qoaService).getMaxQoaOrder(cpResponse.getContextClasses(), claimsParty.getQoaConfig());
+		doReturn(provResult).when(idmProvisioningService).createOrUpdateUser(provRequest);
 	}
 
 	@Test
@@ -766,7 +808,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var idmResult = IdmResult.builder().userDetails(
 				Map.of(Definition.ofName(CoreAttributeName.FIRST_NAME),
 				List.of(value))).build();
-		doReturn(Optional.of(idmResult)).when(idmService).getAttributesAudited(any(), any(), any(), any());
+		doReturn(Optional.of(idmResult)).when(idmQueryService).getAttributesAudited(any(), any(), any(), any());
 
 		relyingPartyService.reloadIdmData(relyingParty, stateData);
 
@@ -820,8 +862,9 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		}
 		var stateData = (rpSessionInit != null || cpSessionInit != null) ? givenState(RP_ISSUER_ID) : null;
 		if (stateData != null) {
-			stateData.getSpStateData().setInitiatedViaArtifactBinding(rpSessionInit);
-			stateData.setInitiatedViaArtifactBinding(cpSessionInit);
+			stateData.getSpStateData().setRequestBinding(
+					Boolean.TRUE.equals(rpSessionInit) ? SamlBinding.ARTIFACT : SamlBinding.POST);
+			stateData.setRequestBinding(Boolean.TRUE.equals(cpSessionInit) ? SamlBinding.ARTIFACT : SamlBinding.POST);
 		}
 		assertThat(RelyingPartyService.useArtifactBinding(relyingParty, stateData, binding), is(result));
 	}
@@ -868,6 +911,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 	private CpResponse givenCpResponse() {
 		var cpResponse = givenCpResponse(CP_ISSUER_ID, CLIENT_EXT_ID, HOME_NAME, USER_NAME_ID, false);
 		cpResponse.setRpDestination(DESTINATION_URL);
+		cpResponse.setContextClasses(List.of("qoa10"));
 		return cpResponse;
 	}
 
@@ -943,11 +987,27 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 				.build();
 	}
 
-	private void mockClaimsParty() {
+	private ClaimsParty mockClaimsParty() {
+		var name = Definition.ofNames(CoreAttributeName.NAME);
+		name.setProvision(Boolean.TRUE.toString());
+		var email = Definition.ofNames(CoreAttributeName.EMAIL);
+		email.setProvision(Boolean.TRUE.toString());
+		email.setProvisioningId(true);
+
 		var claimsParty = ClaimsParty.builder()
 				.id(CP_ISSUER_ID)
+				.provision(ProvisioningMode.TRUE)
+				.homeName(HomeName.builder().value(HOME_NAME).build())
+				.attributesSelection(
+						AttributesSelection.builder()
+								.definitions(List.of(name, email, Definition.ofNames(CoreAttributeName.HOME_NAME)))
+								.build()
+				)
+				.qoa(Qoa.builder().build())
 				.build();
 		doReturn(claimsParty).when(relyingPartySetupService).getClaimsProviderSetupByIssuerId(CP_ISSUER_ID, null);
+		doReturn(Optional.of(claimsParty)).when(relyingPartySetupService).getClaimsProviderSetupById(CP_ISSUER_ID);
+		return claimsParty;
 	}
 
 	private Assertion givenAssertion() {

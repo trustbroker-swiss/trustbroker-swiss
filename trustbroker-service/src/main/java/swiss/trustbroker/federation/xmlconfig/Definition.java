@@ -19,6 +19,7 @@ import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -27,12 +28,13 @@ import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
 import jakarta.xml.bind.annotation.XmlAttribute;
 import jakarta.xml.bind.annotation.XmlRootElement;
-import jakarta.xml.bind.annotation.XmlTransient;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.api.sessioncache.dto.AttributeName;
 import swiss.trustbroker.common.saml.util.AttributeRegistry;
@@ -51,9 +53,10 @@ import swiss.trustbroker.common.saml.util.AttributeRegistry;
 @Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
+@Slf4j
 public class Definition implements Serializable, AttributeName {
 
-	private static final String CLAIM_NAME_DELIMITER = ",";
+	static final String LIST_ATTRIBUTE_DELIMITER = ",";
 
 	/**
 	 * 	Short name used in auditing and for IDM attribute addressing.
@@ -107,22 +110,55 @@ public class Definition implements Serializable, AttributeName {
 	private Multivalued multiValued = Multivalued.ORIGINAL;
 
 	/**
-	 * Mapper to be used for the value.
+	 * Comma-separated list of mappers to be used for the value.
+	 *
+	 * @since 1.9.0
 	 */
+	@XmlAttribute(name = "mappers")
+	private String mappers;
+
+	/**
+	 * Mapper to be used for the value.
+	 *
+	 * @deprecated use mappers
+	 */
+	@Deprecated(since = "1.9.0", forRemoval = true)
 	@XmlAttribute(name = "oidcMapper")
-	private OidcMapper oidcMapper;
+	private ClaimsMapper oidcMapper;
+
+	/**
+	 * Provision this attribute to IDM.
+	 * <br/>
+	 * The value or list of comma-separated values indicate into what type(s) of IDM object provisioning services should
+	 * provision this data.
+	 * <br/>
+	 * The actual fields to provision would usually be selected based on name/namespace URI.
+	 * <br/>
+	 * Generic values: true (a provisioning service selects an appropriate target), false (not provisioned - single value only).
+	 * <br/>
+	 * Default: false
+	 *
+	 * @since 1.9.0
+	 * @see swiss.trustbroker.api.idm.service.IdmProvisioningService
+	 */
+	@XmlAttribute(name = "provision")
+	private String provision;
+
+	/**
+	 * ID attribute for provisioning.
+	 *
+	 * @since 1.9.0
+	 * @see swiss.trustbroker.api.idm.service.IdmProvisioningService
+	 */
+	@XmlAttribute(name = "provisioningId")
+	private Boolean provisioningId;
+
 
 	/**
 	 * Single value from constant configuration (we currently only use single valued in XML via ConstAttributes).
  	 */
 	@XmlAttribute(name = "value")
 	private String value;
-
-	/**
-	 * Multiple values from CP input (multi valued possible in rare cases) - not used in XML.
- 	 */
-	@XmlTransient
-	private List<String> values;
 
 	/**
 	 * To restrict emitting an attribute, the scope can be set as follows:
@@ -138,7 +174,7 @@ public class Definition implements Serializable, AttributeName {
 	/**
 	 * Source of the definition
 	 */
-	@XmlTransient
+	@XmlAttribute(name = "source")
 	private String source;
 
 	public Definition(String name) {
@@ -165,18 +201,20 @@ public class Definition implements Serializable, AttributeName {
 		this.value = singleValue;
 	}
 
-	public Definition(String name, String namespaceUri, List<String> multiValue) {
-		this.name = name;
-		this.namespaceUri = namespaceUri;
-		this.values = multiValue;
-	}
-
 	public static Definition ofName(AttributeName attributeName) {
 		return new Definition(attributeName.getName());
 	}
 
 	public static Definition ofNames(AttributeName attributeName) {
 		return new Definition(attributeName.getName(), attributeName.getNamespaceUri());
+	}
+
+	public static Definition ofNameAndSource(String name, String source) {
+		return Definition.builder().name(name).source(source).build();
+	}
+
+	public static Definition ofNameNamespaceUriAndSource(String name, String namespaceUri, String source) {
+		return Definition.builder().name(name).namespaceUri(namespaceUri).source(source).build();
 	}
 
 	public static Definition ofNamespaceUri(AttributeName attributeName) {
@@ -188,12 +226,7 @@ public class Definition implements Serializable, AttributeName {
 	}
 
 	private static List<String> oidcNamesToList(String oidcNames) {
-		return oidcNames != null ? Arrays.asList(oidcNames.split(CLAIM_NAME_DELIMITER)) : Collections.emptyList();
-	}
-
-	public boolean hasNamedValues() {
-		return namespaceUri != null && (value != null ||
-				(values != null && !values.isEmpty()));
+		return oidcNames != null ? Arrays.asList(oidcNames.split(LIST_ATTRIBUTE_DELIMITER)) : Collections.emptyList();
 	}
 
 	@Override
@@ -202,11 +235,29 @@ public class Definition implements Serializable, AttributeName {
 		return oidcNamesToList(oidcNames);
 	}
 
+	@JsonIgnore
+	@SuppressWarnings("java:S5738") // contains fallback to deprecated oidcMapper
+	public List<ClaimsMapper> getMappers() {
+		if (oidcMapper != null) {
+			log.warn("Deprecated attribute oidcMapper={} used on name={} namespaceUri={} - change to mappers={}",
+					oidcMapper, name, namespaceUri, oidcMapper);
+		}
+		if (StringUtils.isEmpty(mappers)) {
+			// fallback: transition
+			return oidcMapper != null ? Collections.singletonList(oidcMapper) : Collections.emptyList();
+		}
+		return Arrays.stream(mappers.split(LIST_ATTRIBUTE_DELIMITER))
+				.map(ClaimsMapper::of)
+				.filter(Objects::nonNull)
+				.toList();
+	}
+
+	@JsonIgnore
 	public List<String> getMultiValues() {
 		if (value != null) {
 			return List.of(value); // from config
 		}
-		return values != null ? values : Collections.emptyList(); // from CP
+		return Collections.emptyList();
 	}
 
 	public AttributeName findAttributeName() {
@@ -238,7 +289,16 @@ public class Definition implements Serializable, AttributeName {
 		else if (name != null) {
 			ret = name.equals(attributeName.getName()) || name.equals(attributeName.getNamespaceUri());
 		}
-		return ret && (source == null || source.equals(getSource()));
+		return ret && isEqualsBySource(source);
 	}
 
+	@JsonIgnore
+	public boolean isProvisioningAttribute() {
+		return provision != null && !provision.equalsIgnoreCase(Boolean.FALSE.toString());
+	}
+
+	@JsonIgnore
+	public boolean isProvisioningIdAttribute() {
+		return Boolean.TRUE.equals(provisioningId);
+	}
 }

@@ -6,7 +6,7 @@ XTB provides various API hooks for implementing certain features. They are defin
 |===
 |API | Purpose | Status
 
-|``IdmService``
+|``IdmQueryService``
 |Interface for accessing an Identity Management (IDM) service.
 
 E.g. an implementation could use LDAP or a custom API of the IDM.

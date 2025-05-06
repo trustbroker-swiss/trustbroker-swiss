@@ -24,7 +24,8 @@ public enum ErrorCode {
 	REQUEST_REJECTED("rejected"),
 	ACCESS_REQUEST_FAILED("accessrequestfailed"),
 	UNKNOWN_PRINCIPAL("unknownprincipal"),
-	UNKNOWN_USER("unknownuser");
+	UNKNOWN_USER("unknownuser"),
+	STATE_NOT_FOUND("sessionexpired"),;
 
 	private final String label;
 

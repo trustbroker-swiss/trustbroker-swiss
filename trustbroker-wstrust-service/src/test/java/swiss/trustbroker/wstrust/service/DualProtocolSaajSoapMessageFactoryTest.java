@@ -28,9 +28,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.ws.soap.SoapVersion;
 import org.springframework.ws.soap.saaj.SaajSoapMessage;
 import org.springframework.ws.soap.saaj.SaajSoapMessageFactory;
@@ -40,21 +40,21 @@ import org.springframework.ws.transport.TransportInputStream;
 @ContextConfiguration(classes = DualProtocolSaajSoapMessageFactory.class)
 class DualProtocolSaajSoapMessageFactoryTest {
 
-	@MockBean
+	@MockitoBean
 	@Qualifier("1.1")
 	private SaajSoapMessageFactory mockFactory11;
 
-	@MockBean
+	@MockitoBean
 	@Qualifier("1.2")
 	private SaajSoapMessageFactory mockFactory12;
 
-	@MockBean
+	@MockitoBean
 	private TransportInputStream stream;
 
-	@MockBean
+	@MockitoBean
 	private Iterator<String> iterator;
 
-	@MockBean
+	@MockitoBean
 	private SaajSoapMessage soapMessage;
 
 	@Autowired

@@ -50,8 +50,7 @@ import org.opensaml.saml.saml2.core.LogoutResponse;
 import org.opensaml.saml.saml2.core.NameID;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
-import swiss.trustbroker.api.qoa.dto.QualityOfAuthentication;
-import swiss.trustbroker.api.qoa.service.QualityOfAuthenticationService;
+import swiss.trustbroker.api.saml.dto.DestinationType;
 import swiss.trustbroker.audit.dto.OidcAuditData;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.audit.service.InboundAuditMapper;
@@ -75,6 +74,9 @@ import swiss.trustbroker.federation.xmlconfig.SloProtocol;
 import swiss.trustbroker.federation.xmlconfig.SloResponse;
 import swiss.trustbroker.federation.xmlconfig.SsoGroup;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.mapping.dto.CustomQoa;
+import swiss.trustbroker.mapping.dto.QoaConfig;
+import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.saml.dto.SsoParticipant;
 import swiss.trustbroker.saml.dto.SsoParticipants;
 import swiss.trustbroker.sessioncache.dto.SsoSessionParticipant;
@@ -186,7 +188,7 @@ public class SsoService {
 
 	private final AuditService auditService;
 
-	private final QualityOfAuthenticationService qoaService;
+	private final QoaMappingService qoaService;
 
 	private final StateCacheService stateCacheService;
 
@@ -591,14 +593,15 @@ public class SsoService {
 		return name.replaceAll("[^a-zA-Z0-9._-]", "_");
 	}
 
-	String getQoaLevelFromContextClassesOrAuthLevel(StateData idpStateData) {
-		var qoa = findHighestQoaFromContextClasses(getIdpAssertedContextClassesFromState(idpStateData).stream()).orElse(null);
+	CustomQoa getQoaLevelFromContextClassesOrAuthLevel(StateData idpStateData, QoaConfig qoaConfig) {
+		var qoa =
+				findHighestQoaFromContextClasses(getCpAssertedContextClassesFromState(idpStateData).stream(), qoaConfig).orElse(null);
 		log.debug("QOA {} extracted from CP response", qoa);
 		// fallback to config when CP does not send a context class
 		if (qoa == null && idpStateData.getCpResponse() != null) {
 			var authLevel = idpStateData.getCpResponse().getAuthLevel();
 			if (authLevel != null) {
-				qoa = qoaService.extractQoaLevelFromAuthLevel(authLevel);
+				qoa = qoaService.extractQoaLevelFromAuthLevel(authLevel, qoaConfig);
 				log.debug("QOA {} used from CP config", qoa);
 			}
 		}
@@ -607,10 +610,10 @@ public class SsoService {
 			qoa = qoaService.getDefaultLevel();
 			log.debug("QOA {} used as minimal fallback", qoa);
 		}
-		return qoa.getName();
+		return qoa;
 	}
 
-	private static List<String> getIdpAssertedContextClassesFromState(StateData stateData) {
+	private static List<String> getCpAssertedContextClassesFromState(StateData stateData) {
 		var contextClasses = (stateData.getCpResponse() == null) ? null : stateData.getCpResponse().getContextClasses();
 		if (contextClasses == null) {
 			// avoid returning null
@@ -620,26 +623,26 @@ public class SsoService {
 	}
 
 	// valid QoA levels are all above unknown allowing SSO so if i.e. CP send Kerberos we treat it as 40
-	private Optional<QualityOfAuthentication> findHighestQoaFromContextClasses(Stream<String> contextClasses) {
+	private Optional<CustomQoa> findHighestQoaFromContextClasses(Stream<String> contextClasses, QoaConfig qoaConfig) {
 		return contextClasses
-				.map(qoaService::extractQoaLevel)
-				.filter(QualityOfAuthentication::isRegular)
+				.map(contextClass -> qoaService.extractQoaLevel(contextClass, qoaConfig))
+				.filter(CustomQoa::isRegular)
 				.min(SsoService::sortHighestQoaFirst);
 	}
 
-	private static int sortHighestQoaFirst(QualityOfAuthentication qoa1, QualityOfAuthentication qoa2) {
-		return qoa2.getLevel() - qoa1.getLevel();
+	private static int sortHighestQoaFirst(CustomQoa qoa1, CustomQoa qoa2) {
+		return qoa2.getOrder() - qoa1.getOrder();
 	}
 
 	// Comparable.compareTo semantics
-	private int compareQoaLevel(String expectedQoa, String assuredQoa) {
+	private static int compareQoaLevel(CustomQoa expectedQoa, CustomQoa assuredQoa) {
 		if (expectedQoa == null) {
 			return assuredQoa == null ? 0 : -1;
 		}
 		if (assuredQoa == null) {
 			return 1;
 		}
-		return qoaService.extractQoaLevel(expectedQoa).getLevel() - qoaService.extractQoaLevel(assuredQoa).getLevel();
+		return expectedQoa.getOrder() - assuredQoa.getOrder();
 	}
 
 	// AuthnRequest side decision
@@ -648,7 +651,9 @@ public class SsoService {
 		var qoaSufficient = true; // assume we can login with SSO per default
 
 		// request based decision (including DEBUG logging for request side)
-		if (!isQoaEnoughForSso(relyingParty, requestQoas, knownQoa)) {
+		List<CustomQoa> rpQoas = qoaService.extractQoaLevels(requestQoas, relyingParty.getQoaConfig());
+		var knowQoaLevel = qoaService.extractQoaLevel(knownQoa.orElse(null), claimsParty.getQoaConfig());
+		if (!isQoaEnoughForSso(relyingParty, rpQoas, knowQoaLevel, knownQoa)) {
 			qoaSufficient = false;
 		}
 		// no required QoAs => treat as all possible QoAs
@@ -658,7 +663,7 @@ public class SsoService {
 				qoaSufficient = true;
 			}
 			else {
-				qoaSufficient = !stateQoaSmaller(claimsParty, knownQoa.get(), requestQoas, sessionId);
+				qoaSufficient = !stateQoaSmaller(claimsParty, knownQoa.get(), rpQoas, sessionId);
 			}
 		}
 
@@ -674,24 +679,23 @@ public class SsoService {
 	// Check on SSO capability can be used both sides:
 	// - AuthnRequest: SSO is possible with _all_ QoA levels (including StrongestPossible except if session QoA is already known)
 	// - Response: SSO is signaled when CP sends a known QoA that is sufficient for the RP
-	boolean isQoaEnoughForSso(RelyingParty relyingParty, List<String> qoas, Optional<String> knownQoa) {
+	boolean isQoaEnoughForSso(RelyingParty relyingParty, List<CustomQoa> qoas,
+			CustomQoa knownQoaLevel, Optional<String> knownQoa) {
 		var ssoPossible = false;
 		var ssoMinQoaLevel = getSsoMinQoaLevel(relyingParty);
-		var knownQoaLevel = qoaService.extractQoaLevel(knownQoa.orElse(null));
 		for (var requestQoa : qoas) {
-			var requestQoALevel = qoaService.extractQoaLevel(requestQoa);
 			// consider strongest and unknown
-			if (!requestQoALevel.isRegular()) {
-				ssoPossible |= (requestQoALevel.isStrongestPossible() &&
-						(knownQoa.isEmpty() || knownQoaLevel.getLevel() >= ssoMinQoaLevel));
+			if (!requestQoa.isRegular()) {
+				ssoPossible |= (qoaService.isStrongestPossible(requestQoa.getName()) &&
+						(knownQoa.isEmpty() || knownQoaLevel.getOrder() >= ssoMinQoaLevel));
 			}
 			// consider real QoA
 			else {
-				ssoPossible |= requestQoALevel.getLevel() >= ssoMinQoaLevel;
+				ssoPossible |= requestQoa.getOrder() >= ssoMinQoaLevel;
 			}
 		}
 		ssoPossible |= qoas.isEmpty(); // no requested QOAs are treated as all of them
-		if (!ssoPossible && knownQoaLevel.getLevel() >= ssoMinQoaLevel) {
+		if (!ssoPossible && knownQoaLevel.getOrder() >= ssoMinQoaLevel) {
 			ssoPossible = true;
 		}
 		if (relyingParty.isSsoEnabled()) {
@@ -706,25 +710,25 @@ public class SsoService {
 		return relyingParty != null ? relyingParty.getSsoMinQoaLevel(globalSsoMinQoaLevel) : globalSsoMinQoaLevel;
 	}
 
-	private boolean stateQoaSmaller(ClaimsParty claimsParty, String stateQoa, List<String> requestQoas,
+	private boolean stateQoaSmaller(ClaimsParty claimsParty, String stateQoa, List<CustomQoa> requestQoas,
 			String sessionId) {
-		var stateQoaLevel = qoaService.extractQoaLevel(stateQoa);
-		for (String requestQoa : requestQoas) {
-			var requestQoALevel = qoaService.extractQoaLevel(requestQoa);
+		var stateQoaLevel = qoaService.extractQoaLevel(stateQoa, claimsParty.getQoaConfig());
+		for (CustomQoa requestQoALevel : requestQoas) {
 
-			if (requestQoALevel.isStrongestPossible()) {
+			if (qoaService.isStrongestPossible(requestQoALevel.getName())) {
 				var cpAuthLevel = claimsParty.getStrongestPossibleAuthLevelWithFallback();
 				if (cpAuthLevel == null) {
 					log.error("Requested strongest possible Qoa, but cpIssuerId={} has no AuthLevel defined => no SSO on sessionId={}",
 							claimsParty.getId(), sessionId);
 					return true;
 				}
-				requestQoALevel = qoaService.extractQoaLevelFromAuthLevel(cpAuthLevel);
+
+				requestQoALevel = qoaService.extractQoaLevelFromAuthLevel(cpAuthLevel, claimsParty.getQoaConfig());
 				log.debug("Requested strongest possible Qoa, cpIssuerId={} AuthLevel={} equals Qoa={} on sessionId={}",
 						claimsParty.getId(), cpAuthLevel, requestQoALevel, sessionId);
 			}
 
-			if (requestQoALevel.isRegular() && stateQoaLevel.getLevel() >= requestQoALevel.getLevel()) {
+			if (requestQoALevel.isRegular() && stateQoaLevel.getOrder() >= requestQoALevel.getOrder()) {
 				log.info("State Qoa level={} >= request Qoa level={} => SSO on sessionId={}",
 						stateQoaLevel, requestQoALevel, sessionId);
 				return false;
@@ -737,7 +741,7 @@ public class SsoService {
 
 	private SsoSessionOperation qoaLevelSufficient(ClaimsParty claimsParty, RelyingParty relyingParty,
 			List<String> requestedContextClasses, StateData stateData) {
-		var authnQoas = extractValidQoasFromContextClasses(requestedContextClasses);
+		var authnQoas = extractValidQoasFromContextClasses(requestedContextClasses, relyingParty.getQoaConfig());
 
 		if (authnQoas.isEmpty()) {
 			log.info("No QOA requested in Authn context classes on ssoSessionId={} - can join SSO session", stateData.getId());
@@ -747,12 +751,12 @@ public class SsoService {
 		var sessionQoa = Optional.ofNullable(stateData.getSsoState().getSsoQoa());
 		if (sessionQoa.isEmpty()) {
 			// should not happen as this is checked when the session is established
-			var contextClasses = getIdpAssertedContextClassesFromState(stateData);
+			var contextClasses = getCpAssertedContextClassesFromState(stateData);
 			if (contextClasses.isEmpty()) {
 				log.warn("No QOA stored in ssoSessionId={} - STEPUP required for SSO", stateData.getId());
 				return SsoSessionOperation.STEPUP;
 			}
-			sessionQoa = findHighestQoaInState(contextClasses);
+			sessionQoa = findHighestQoaInState(contextClasses, claimsParty.getQoaConfig());
 		}
 
 		if (!isQoaLevelSufficient(claimsParty, relyingParty, authnQoas, sessionQoa, stateData.getId())) {
@@ -765,20 +769,20 @@ public class SsoService {
 		return SsoSessionOperation.JOIN;
 	}
 
-	private List<String> extractValidQoasFromContextClasses(List<String> contextClasses) {
+	private List<String> extractValidQoasFromContextClasses(List<String> contextClasses, QoaConfig qoaConfig) {
 		if (contextClasses == null) {
 			return Collections.emptyList();
 		}
 		return contextClasses.stream()
-				.filter(authnContextClassRef -> qoaService.extractQoaLevel(authnContextClassRef).isRegular())
+				.filter(authnContextClassRef -> qoaService.extractQoaLevel(authnContextClassRef, qoaConfig).isRegular())
 				.toList();
 	}
 
-	private Optional<String> findHighestQoaInState(List<String> contextClasses) {
-		var max = qoaService.getUnspecifiedLevel().getLevel();
+	private Optional<String> findHighestQoaInState(List<String> contextClasses, QoaConfig qoaConfig) {
+		var max = qoaService.getUnspecifiedLevel().getOrder();
 		Optional<String> maxlevel = Optional.empty();
 		for (String contextClass : contextClasses) {
-			var level = qoaService.extractQoaLevel(contextClass).getLevel();
+			var level = qoaService.extractQoaLevel(contextClass,qoaConfig).getOrder();
 			if (level > max) {
 				maxlevel = Optional.of(contextClass);
 				max = level;
@@ -985,14 +989,14 @@ public class SsoService {
 		return result;
 	}
 
-	public void establishImplicitSso(RelyingParty relyingParty, StateData stateData) {
+	public void establishImplicitSso(RelyingParty relyingParty, ClaimsParty claimsParty, StateData stateData) {
 		if (stateData.isSsoEstablished()) {
 			log.debug("Session={} is already SSO, no implicit SSO needed", stateData.getId());
 			return;
 		}
 		var ssoGroup = createImplicitSsoGroup(relyingParty);
 		log.info("Implicit ssoGroup={} for rpIssuerId={} and session={}", ssoGroup, relyingParty.getId(), stateData.getId());
-		establishSso(relyingParty, stateData, ssoGroup, true);
+		establishSso(relyingParty, claimsParty, stateData, ssoGroup, true);
 	}
 
 	private SsoGroup createImplicitSsoGroup(RelyingParty relyingParty) {
@@ -1012,13 +1016,14 @@ public class SsoService {
 		return id.replaceAll("[^A-Za-z0-9.]", ".");
 	}
 
-	public void establishSso(RelyingParty relyingParty, StateData stateData, SsoGroup ssoGroup) {
-		establishSso(relyingParty, stateData, ssoGroup, false);
+	public void establishSso(RelyingParty relyingParty, ClaimsParty claimsParty, StateData stateData, SsoGroup ssoGroup) {
+		establishSso(relyingParty, claimsParty, stateData, ssoGroup, false);
 	}
 
-	private void establishSso(RelyingParty relyingParty, StateData stateData, SsoGroup ssoGroup, boolean implicitSsoGroup) {
+	private void establishSso(RelyingParty relyingParty, ClaimsParty claimsParty, StateData stateData, SsoGroup ssoGroup,
+			boolean implicitSsoGroup) {
 		updateSubjectNameIdInSession(stateData);
-		if (!updateQoaInSession(relyingParty, stateData) && !implicitSsoGroup) {
+		if (!updateQoaInSession(relyingParty, claimsParty, stateData) && !implicitSsoGroup) {
 			if (stateData.isSsoEstablished()) {
 				log.info("Letting rpIssuerId={} join the ssoSessionId={} despite too low QOA",
 						relyingParty.getId(), stateData.getId());
@@ -1104,18 +1109,19 @@ public class SsoService {
 		log.info("Device info completed for session {} / authnRequest {} / issuer {}", ssoStateData.getId(), authReqId, rpIssuerId);
 	}
 
-	boolean updateQoaInSession(RelyingParty relyingParty, StateData ssoStateData) {
+	boolean updateQoaInSession(RelyingParty relyingParty, ClaimsParty claimsParty, StateData ssoStateData) {
 		var ssoState = ssoStateData.initializedSsoState();
-		var cpQoa = getQoaLevelFromContextClassesOrAuthLevel(ssoStateData);
-		int diff = compareQoaLevel(cpQoa, ssoState.getSsoQoa());
-		if (!isQoaEnoughForSso(relyingParty, List.of(cpQoa), Optional.ofNullable(ssoState.getSsoQoa()))) {
+		var cpQoa = getQoaLevelFromContextClassesOrAuthLevel(ssoStateData, claimsParty.getQoaConfig());
+		var ssoQoa = qoaService.extractQoaLevel(ssoState.getSsoQoa(), claimsParty.getQoaConfig());
+		int diff = compareQoaLevel(cpQoa, ssoQoa);
+		if (!isQoaEnoughForSso(relyingParty, List.of(cpQoa), ssoQoa, Optional.ofNullable(ssoState.getSsoQoa()))) {
 			log.info("Perform session SSO for rpIssuer={} with ssoMinQoa={} based on sessionQoa={} ignoring cpKnownQoa={} diff={}",
 					relyingParty.getId(), getSsoMinQoaLevel(relyingParty), ssoState.getSsoQoa(), cpQoa, diff);
 			return false;
 		}
 		log.info("Perform CP SSO for rpIssuer={} with ssoMinQoa={} based on sessionQoa={} applying cpKnownQoa={} diff={}",
 				relyingParty.getId(), getSsoMinQoaLevel(relyingParty), ssoState.getSsoQoa(), cpQoa, diff);
-		ssoState.setSsoQoa(cpQoa);
+		ssoState.setSsoQoa(cpQoa != null ? cpQoa.getName() : null);
 		return true;
 	}
 
@@ -1145,7 +1151,8 @@ public class SsoService {
 											   .assertionConsumerServiceUrl(acsUrl)
 											   .build();
 		ssoStateData.addSsoParticipant(participant);
-		log.info("Added participant to SSO session={}: participant={}", ssoStateData.getId(), participant);
+		log.info("Added participant to SSO session={} rpIssuerId={} cpIssuerId={} cpResponseIssuer={}",
+				ssoStateData.getId(), rpIssuerId, cpIssuerId, ssoStateData.getCpResponse().getIssuer());
 	}
 
 	private int getSsoGroupTimeoutSecs(SsoGroup ssoGroup, ToIntFunction<SsoGroup> func) {
@@ -1317,16 +1324,16 @@ public class SsoService {
 	}
 
 	public String computeSamlSingleLogoutUrl(String requestReferrer, RelyingParty relyingParty) {
-		return computeOidcSingleLogoutUrl(null, requestReferrer, relyingParty, SloProtocol.SAML2);
+		return computeSingleLogoutUrl(null, requestReferrer, relyingParty, SloProtocol.SAML2);
 	}
 
 	public String computeOidcSingleLogoutUrl(String oidcRedirectUrl, String requestReferrer, RelyingParty relyingParty) {
-		return computeOidcSingleLogoutUrl(oidcRedirectUrl, requestReferrer, relyingParty, SloProtocol.OIDC);
+		return computeSingleLogoutUrl(oidcRedirectUrl, requestReferrer, relyingParty, SloProtocol.OIDC);
 	}
 
-	private String computeOidcSingleLogoutUrl(String oidcRedirectUrl, String requestReferrer, RelyingParty relyingParty,
+	private String computeSingleLogoutUrl(String oidcRedirectUrl, String requestReferrer, RelyingParty relyingParty,
 			SloProtocol protocol) {
-		String sloDestinationUrl = oidcRedirectUrl;
+		var sloDestinationUrl = oidcRedirectUrl;
 		if (sloDestinationUrl == null) {
 			// Client did not send a callback URL (SAML never sends one, OIDC in some cases does not send a redirect_uri)
 			// sloUrl config: Use configured value from RelyingParty setup xml
@@ -1579,6 +1586,7 @@ public class SsoService {
 				.mapFrom(httpServletRequest)
 				.mapFrom(response)
 				.build();
+		auditDto.setSide(DestinationType.RP.getLabel());
 		auditService.logInboundSamlFlow(auditDto);
 	}
 
@@ -1591,6 +1599,7 @@ public class SsoService {
 				.mapFrom(relyingParty)
 				.mapFrom(oidcAuditData)
 				.build();
+		auditDto.setSide(DestinationType.RP.getLabel());
 		auditService.logInboundSamlFlow(auditDto);
 	}
 

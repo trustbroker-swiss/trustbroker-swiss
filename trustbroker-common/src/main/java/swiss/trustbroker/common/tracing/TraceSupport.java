@@ -147,27 +147,27 @@ public class TraceSupport {
 
 	private static String getW3cTraceParentFromRequestId(HttpServletRequest request, String headerName) {
 		var ret = WebUtil.getHeader(headerName, request);
-		// make sure we are not spaming our log facility
-		if (ret != null && !ret.matches(HTTP_RREQUST_REGEXP)) {
+		if (ret == null) {
+			return null;
+		}
+		// make sure we are not spamming our log facility
+		ret = ret.replace("-", ""); // accept also UUID notation (hex8-hex4-hex4-hex4-hex12)
+		if (!ret.matches(HTTP_RREQUST_REGEXP)) {
 			log.warn("Ignoring traceId from {}={} violating validation '{}'", headerName, ret, HTTP_RREQUST_REGEXP);
-			ret = null;
+			return null;
 		}
-		if (ret != null) {
-			// save original value for reference even though it's not OpenTelemetry compliant without parentSpan
-			MDC.put(W3C_TRACEPARENT, ret);
+		// save original value for reference even though it's not OpenTelemetry compliant without parentSpan
+		MDC.put(W3C_TRACEPARENT, ret);
+		var len = ret.length();
+		if (len > 32) {
+			log.debug("Truncating traceId from {}={} to 32 chars", headerName, ret);
+			ret = ret.substring(0, 32); // we accept hex uppercase and make it OpenTelemtry compliant
 		}
-		if (ret != null) {
-			var len = ret.length();
-			if (len > 32) {
-				log.debug("Truncating traceId from {}={} to 32 chars", headerName, ret);
-				ret = ret.substring(0, 32); // we accept hex uppercase and make it OpenTelemtry compliant
-			}
-			else if (len < 32) {
-				log.debug("Padding traceId from {}={} to 32 chars", headerName, ret);
-				ret = StringUtils.leftPad(ret, 32, "0");
-			}
-			ret = ret.toLowerCase();
+		else if (len < 32) {
+			log.debug("Padding traceId from {}={} to 32 chars", headerName, ret);
+			ret = StringUtils.leftPad(ret, 32, "0");
 		}
+		ret = ret.toLowerCase();
 		return ret;
 	}
 
@@ -203,7 +203,8 @@ public class TraceSupport {
 		MDC.put(XTB_CLIENTIP, WebUtil.getClientIp(request));
 	}
 
-	private static void setMdcTraceContext(String traceId) {
+	// For testing
+	public static void setMdcTraceContext(String traceId) {
 		MDC.put(XTB_TRACEID, traceId); // injected own traceparent (might be conversational or request based or generated)
 		MDC.put(XTB_PARENTID, traceId.substring(33)); // parent span only
 	}

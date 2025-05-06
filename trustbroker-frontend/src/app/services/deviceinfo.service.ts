@@ -92,9 +92,9 @@ export class DeviceInfoService {
 				return [Promise.resolve('noperm')];
 			}
 			return this.permissionsNames.map(name => this.getPermission(name as PermissionName));
-		} catch (ex) {
+		} catch (_ex) {
 			// NOSONAR
-			// console.debug('[DeviceInfoService] Could not fingerprint permissions', ex);
+			// console.debug('[DeviceInfoService] Could not fingerprint permissions', _ex);
 			return [Promise.resolve('failedperm')];
 		}
 	}
@@ -134,9 +134,9 @@ export class DeviceInfoService {
 				// could add more here, see e.g. https://browserleaks.com/webgl
 			}
 			return result;
-		} catch (ex) {
+		} catch (_ex) {
 			// NOSONAR
-			// console.debug('[DeviceInfoService] Could not fingerprint rendering context', ex);
+			// console.debug('[DeviceInfoService] Could not fingerprint rendering context', _ex);
 			return [Promise.resolve('failedctx')];
 		}
 	}
@@ -175,7 +175,7 @@ export class DeviceInfoService {
 			return this.getSha256Hash(data);
 		} catch (_ex) {
 			// NOSONAR
-			// console.debug('[DeviceInfoService] Could not hash fingerprint', ex);
+			// console.debug('[DeviceInfoService] Could not hash fingerprint', _ex);
 			return Promise.resolve('');
 		}
 	}

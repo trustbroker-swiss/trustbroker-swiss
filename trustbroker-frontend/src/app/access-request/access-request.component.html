@@ -21,15 +21,21 @@
 			<p [innerHTML]="'trustbroker.accessrequest.message.' + this.state | translate | safeMarkup"></p>
 		</div>
 		<div>
-			<button *ngIf="this.showContinueButton" mat-flat-button color="accent" (click)="initiateAccessRequest()" tabindex="1" type="submit" class="button-text">
-				<span>{{ "trustbroker.accessrequest.continue" | translate }}</span>
-			</button>
-			<button *ngIf="this.showAbortButton" mat-flat-button (click)="abortAccessRequest()" tabindex="1" type="submit" class="button-text mr-1">
-				<span>{{ "trustbroker.accessrequest.abort" | translate }}</span>
-			</button>
-			<button *ngIf="this.showLoginButton" mat-flat-button color="accent" (click)="completeAccessRequest()" tabindex="1" type="submit" class="button-text">
-				<span>{{ "trustbroker.accessrequest.login" | translate }}</span>
-			</button>
+			@if (this.showContinueButton) {
+				<button mat-flat-button color="accent" (click)="initiateAccessRequest()" tabindex="1" type="submit" class="button-text">
+					<span>{{ "trustbroker.accessrequest.continue" | translate }}</span>
+				</button>
+			}
+			@if (this.showAbortButton) {
+				<button mat-flat-button (click)="abortAccessRequest()" tabindex="1" type="submit" class="button-text mr-1">
+					<span>{{ "trustbroker.accessrequest.abort" | translate }}</span>
+				</button>
+			}
+			@if (this.showLoginButton) {
+				<button mat-flat-button color="accent" (click)="completeAccessRequest()" tabindex="1" type="submit" class="button-text">
+					<span>{{ "trustbroker.accessrequest.login" | translate }}</span>
+				</button>
+			}
 		</div>
 	</div>
 </main>

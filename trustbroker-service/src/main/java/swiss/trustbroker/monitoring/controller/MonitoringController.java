@@ -45,7 +45,6 @@ import swiss.trustbroker.saml.controller.AbstractSamlController;
 import swiss.trustbroker.saml.dto.UiObject;
 import swiss.trustbroker.saml.service.AssertionConsumerService;
 import swiss.trustbroker.saml.service.ClaimsProviderService;
-import swiss.trustbroker.saml.service.SamlOutputService;
 import swiss.trustbroker.util.ApiSupport;
 import swiss.trustbroker.util.SamlValidator;
 
@@ -62,16 +61,13 @@ public class MonitoringController extends AbstractSamlController {
 
 	private final ClaimsProviderService claimsProviderService;
 
-	private final SamlOutputService samlOutputService;
-
 	public MonitoringController(TrustBrokerProperties trustBrokerProperties, SamlValidator samlValidator,
 			RelyingPartySetupService relyingPartySetupService, AssertionConsumerService assertionConsumerService,
-			ClaimsProviderService claimsProviderService, SamlOutputService samlOutputService) {
+			ClaimsProviderService claimsProviderService) {
 		super(trustBrokerProperties, samlValidator);
 		this.relyingPartySetupService = relyingPartySetupService;
 		this.assertionConsumerService = assertionConsumerService;
 		this.claimsProviderService = claimsProviderService;
-		this.samlOutputService = samlOutputService;
 	}
 
 	/**
@@ -113,7 +109,7 @@ public class MonitoringController extends AbstractSamlController {
 		var stateData = assertionConsumerService.saveState(authnRequest, request, relyingParty,
 				Optional.empty(), SamlBinding.POST);
 		var rpRequest = assertionConsumerService.handleRpAuthnRequest(authnRequest, request, stateData);
-		var uiObjects = filterUiObjectsForCp(rpRequest.getUiObjects(), cpId);
+		var uiObjects = filterUiObjectsForCp(rpRequest.getUiObjects().getTiles(), cpId);
 		if (uiObjects.isEmpty()) {
 			log.error("Could not find CP matching cpId={} for RP rpId={}", cpId, rpId);
 			return MonitoringResponse.builder().numCp(0).status(Status.INVALID).build();
@@ -122,7 +118,7 @@ public class MonitoringController extends AbstractSamlController {
 			log.error("Found multiple CP matching cpId={} for RP rpId={}", cpId, rpId);
 			return MonitoringResponse.builder().numCp(uiObjects.size()).status(Status.INVALID).build();
 		}
-		claimsProviderService.sendSamlToCpWithMandatoryIds(samlOutputService, request, response, stateData,
+		claimsProviderService.sendSamlToCpWithMandatoryIds(request, response, stateData,
 				uiObjects.get(0).getUrn());
 
 		// redirect tp CP, no response

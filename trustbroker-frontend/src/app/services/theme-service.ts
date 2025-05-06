@@ -17,7 +17,7 @@ import { DOCUMENT } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Inject, Injectable } from '@angular/core';
 import { CookieService } from 'ngx-cookie-service';
-import { Observer, Subject } from 'rxjs';
+import { Observable, Observer, ReplaySubject } from 'rxjs';
 
 import { ApiService } from './api.service';
 import { CookieConfiguration } from '../model/CookieConfiguration';
@@ -29,6 +29,8 @@ import { HeaderButton } from '../shared/enums/HeaderButton';
 export class ThemeService {
 	public static readonly defaultTheme = new Theme('xtb-default', true, true, false, false, true, false, true, true, 10);
 
+	public readonly theme$: Observable<Theme>;
+
 	private static readonly variantSeparator = '-';
 
 	private themeCookie: CookieConfiguration;
@@ -38,8 +40,7 @@ export class ThemeService {
 	private features: GuiFeature[];
 
 	private defaultCookieParameters: boolean;
-
-	private readonly themeChangedSubject = new Subject();
+	private readonly themeChangedSubject = new ReplaySubject<Theme>();
 
 	constructor(
 		private readonly cookieService: CookieService,
@@ -56,6 +57,7 @@ export class ThemeService {
 		this.features = [GuiFeature.HEADER, GuiFeature.FOOTER];
 		this.defaultCookieParameters = true;
 		this.loadConfig();
+		this.theme$ = this.themeChangedSubject.asObservable();
 	}
 
 	public subscribe(observer: Partial<Observer<Theme>>) {

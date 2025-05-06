@@ -78,6 +78,8 @@ public class ScriptService {
 
 	private static final String SCRIPT_TYPE_ON_SAML_REQUEST = "OnRequest"; // validation hook
 
+	private static final String SCRIPT_TYPE_BEFORE_CP_REQUEST = "BeforeCpRequest"; // final RpRequest modifications
+
 	private static final String SCRIPT_TYPE_ON_CP_REQUEST = "OnCpRequest"; // outbound hook
 
 	private static final String SCRIPT_TYPE_BEFORE_RESPONSE = "BeforeResponse"; // after AccessRequest but before filtering
@@ -160,62 +162,80 @@ public class ScriptService {
 	// RP side script hooks
 
 	public void processHrdSelection(RpRequest rpRequest) {
-		var scripts = getScriptsByType(rpRequest.getRpIssuer(), rpRequest.getReferer(),	SCRIPT_TYPE_BEFORE_HRD, true);
+		var hook = SCRIPT_TYPE_BEFORE_HRD;
+		var scripts = getScriptsByType(rpRequest.getRpIssuer(), rpRequest.getReferer(), hook, true);
 		for (var script : scripts) {
-			processOnRequest(SCRIPT_TYPE_BEFORE_HRD, script, rpRequest, null);
+			processOnRequest(hook, script, rpRequest, null);
 		}
 	}
 
 	public void processRequestValidation(RpRequest rpRequest, RequestAbstractType samlRequest) {
-		var scripts = getScriptsByType(rpRequest.getRpIssuer(), rpRequest.getReferer(), SCRIPT_TYPE_ON_SAML_REQUEST, true);
+		var hook = SCRIPT_TYPE_ON_SAML_REQUEST;
+		var scripts = getScriptsByType(rpRequest.getRpIssuer(), rpRequest.getReferer(), hook, true);
 		for (var script : scripts) {
-			processOnRequest(SCRIPT_TYPE_ON_SAML_REQUEST, script, rpRequest, samlRequest);
+			processOnRequest(hook, script, rpRequest, samlRequest);
 		}
 	}
 
 	public void processCpBeforeIdm(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
-		var scripts = getScriptsByType(requestIssuer, referrer, SCRIPT_TYPE_BEFORE_IDM, false);
-		processAllSamlScripts(SCRIPT_TYPE_BEFORE_IDM, scripts, cpResponse, response, null);
+		var hook = SCRIPT_TYPE_BEFORE_IDM;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, false);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null);
 	}
 
 	public void processRpAfterIdm(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
-		var scripts = getScriptsByType(requestIssuer, referrer, SCRIPT_TYPE_AFTER_IDM, true);
-		processAllSamlScripts(SCRIPT_TYPE_AFTER_IDM, scripts, cpResponse, response, null);
+		var hook = SCRIPT_TYPE_AFTER_IDM;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null);
 	}
 
 	public void processBeforeResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
-		var scripts = getScriptsByType(requestIssuer, referrer, SCRIPT_TYPE_BEFORE_RESPONSE, true);
-		processAllSamlScripts(SCRIPT_TYPE_BEFORE_RESPONSE, scripts, cpResponse, response, null);
+		var hook = SCRIPT_TYPE_BEFORE_RESPONSE;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null);
 	}
 
 	public void processOnResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
-		var scripts = getScriptsByType(requestIssuer, referrer, SCRIPT_TYPE_ON_SAML_RESPONSE, true);
-		processAllSamlScripts(SCRIPT_TYPE_ON_SAML_RESPONSE, scripts, cpResponse, response, null);
+		var hook = SCRIPT_TYPE_ON_SAML_RESPONSE;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null);
 	}
 
 	// CP side script hooks
 
-	public void processRequestToCp(String cpIssuer, RequestAbstractType samlRequest) {
-		var scripts = getScriptsByType(cpIssuer, null, SCRIPT_TYPE_ON_CP_REQUEST, false);
+	public void processCpBeforeRequest(String cpIssuer, RpRequest rpRequest) {
+		var hook = SCRIPT_TYPE_BEFORE_CP_REQUEST;
+		var scripts = getScriptsByType(cpIssuer, null, hook, false);
 		for (var script : scripts) {
-			processOnRequest(SCRIPT_TYPE_ON_CP_REQUEST, script, null, samlRequest);
+			processOnRequest(hook, script, rpRequest, null);
+		}
+	}
+
+	public void processCpOnRequest(String cpIssuer, RequestAbstractType samlRequest) {
+		var hook = SCRIPT_TYPE_ON_CP_REQUEST;
+		var scripts = getScriptsByType(cpIssuer, null, hook, false);
+		for (var script : scripts) {
+			processOnRequest(hook, script, null, samlRequest);
 		}
 	}
 
 	public void processRpBeforeIdm(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
-		var scripts = getScriptsByType(requestIssuer, referrer, SCRIPT_TYPE_BEFORE_IDM, true);
-		processAllSamlScripts(SCRIPT_TYPE_BEFORE_IDM, scripts, cpResponse, response, null);
+		var hook = SCRIPT_TYPE_BEFORE_IDM;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null);
 	}
 
 	// OIDC script hooks
 	public void processRpOnToken(CpResponse cpResponse, String requestIssuer, String referrer) {
-		var scripts = getScriptsByType(requestIssuer, referrer, SCRIPT_TYPE_OIDC_ON_TOKEN, true);
-		processAllOidcScripts(SCRIPT_TYPE_OIDC_ON_TOKEN, scripts, cpResponse, null);
+		var hook = SCRIPT_TYPE_OIDC_ON_TOKEN;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
+		processAllOidcScripts(hook, scripts, cpResponse, null);
 	}
 
 	public void processRpOnUserInfo(CpResponse cpResponse, String requestIssuer, String referrer) {
-		var scripts = getScriptsByType(requestIssuer, referrer, SCRIPT_TYPE_OIDC_ON_USERINFO, true);
-		processAllOidcScripts(SCRIPT_TYPE_OIDC_ON_USERINFO, scripts, cpResponse, null);
+		var hook = SCRIPT_TYPE_OIDC_ON_USERINFO;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
+		processAllOidcScripts(hook, scripts, cpResponse, null);
 	}
 
 	void processAllOidcScripts(String hookType, List<Pair<String, CompiledScript>> scripts, CpResponse cpResponse,

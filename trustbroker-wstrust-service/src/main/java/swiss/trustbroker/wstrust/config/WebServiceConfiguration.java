@@ -51,6 +51,7 @@ import swiss.trustbroker.common.util.WSSConstants;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.WsTrustConfig;
 import swiss.trustbroker.exception.GlobalExceptionHandler;
+import swiss.trustbroker.util.ApiSupport;
 import swiss.trustbroker.wstrust.exception.DetailSoapFaultDefinitionExceptionResolver;
 import swiss.trustbroker.wstrust.exception.ServiceFaultException;
 import swiss.trustbroker.wstrust.service.CustomEndpointInterceptor;
@@ -75,17 +76,16 @@ public class WebServiceConfiguration extends WsConfigurerAdapter {
 	}
 
 	@Bean
+	@ConditionalOnProperty(value = "trustbroker.config.wstrust.enabled", havingValue = "true", matchIfMissing = true)
 	public ServletRegistrationBean<MessageDispatcherServlet> messageDispatcherServlet(ApplicationContext applicationContext) {
-		MessageDispatcherServlet servlet = new MessageDispatcherServlet();
+		var wsTrustConfig = trustBrokerProperties.getWstrust();
+		var servlet = new MessageDispatcherServlet();
 		servlet.setApplicationContext(applicationContext);
 		servlet.setTransformWsdlLocations(true);
-		String wsBasePath = trustBrokerProperties.getWstrust().getWsBasePath();
-		log.info("Serving WS-Trust tokens requests on: {}/13/issuedtokenmixedsymmetricbasic256", wsBasePath);
-		// NOTE: We do not implement the full list of potentially required ADFS wstrust REST endpoints
-		return new ServletRegistrationBean<>(servlet,
-				wsBasePath + "/13/issuedtokenmixedsymmetricbasic256", // migration support
-				"/api/v1/wstrust" // XTB API
-		);
+		var wsTrustApiPath = ApiSupport.WSTRUST_API;
+		var wsTrustCompatPath = wsTrustConfig.getWsBasePath() + "/13/issuedtokenmixedsymmetricbasic256";
+		log.info("Serving WS-Trust token requests on: {}", wsTrustApiPath);
+		return new ServletRegistrationBean<>(servlet, wsTrustApiPath, wsTrustCompatPath);
 	}
 
 	 @Bean
