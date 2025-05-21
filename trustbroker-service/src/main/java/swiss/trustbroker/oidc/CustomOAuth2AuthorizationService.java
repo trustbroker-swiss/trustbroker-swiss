@@ -53,7 +53,8 @@ public class CustomOAuth2AuthorizationService extends JdbcOAuth2AuthorizationSer
 	private static final String TOKEN_TABLE = "oauth2_authorization";
 
 	private static final String DELETE_EXPIRED_TOKENS = "DELETE FROM " + TOKEN_TABLE
-			+ " WHERE access_token_expires_at < ? AND authorization_code_expires_at < ? AND refresh_token_expires_at < ?";
+			+ " WHERE authorization_code_expires_at < ? AND ( access_token_expires_at < ? OR access_token_expires_at IS NULL )" +
+			" AND ( refresh_token_expires_at < ? OR refresh_token_expires_at IS NULL )";
 
 	private static final String DELETE_AUTHORIZATION_BY_CLIENTID_PRINCIPAL = "DELETE FROM " + TOKEN_TABLE
 			+ " WHERE registered_client_id = ? AND principal_name = ?";
