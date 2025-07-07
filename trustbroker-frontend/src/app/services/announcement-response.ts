@@ -15,12 +15,13 @@
 
 import { InternationalText } from './international-text';
 
-export class AnnouncementResponse {
+export interface AnnouncementResponse {
 	title: InternationalText;
 	message: InternationalText;
-	type: string;
+	type: 'INFORMATION' | 'MAINTENANCE' | 'INCIDENT';
 	applicationAccessible: boolean;
 	url: InternationalText;
 	phoneNumber: string;
 	emailAddress: string;
+	validTo?: string;
 }

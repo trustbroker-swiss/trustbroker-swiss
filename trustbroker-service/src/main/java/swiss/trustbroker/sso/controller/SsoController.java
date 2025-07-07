@@ -23,6 +23,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -80,6 +81,7 @@ public class SsoController extends AbstractSamlController {
 	// returns the active list if more than one group is active or if the logout failed
 	@DeleteMapping(path = "/api/v1/sso/rp/{rpId}")
 	@ResponseBody
+	@Transactional
 	public List<SsoParticipants> logoutSsoParticipantIfOnlyGroup(HttpServletRequest request, HttpServletResponse response,
 			@PathVariable(name = "rpId") String rpId) {
 		var relyingPartyId = ApiSupport.decodeUrlParameter(rpId);
@@ -95,6 +97,7 @@ public class SsoController extends AbstractSamlController {
 
 	// Selected a single SSO participant or group for logout
 	@DeleteMapping(path = "/api/v1/sso/group/{ssoGroupName}/{rpId}/{cpId}/{subjectNameId}")
+	@Transactional
 	public void logoutSsoParticipant(HttpServletRequest request, HttpServletResponse response,
 			@PathVariable(name = "ssoGroupName") String ssoGroupName, @PathVariable(name = "rpId") String rpId,
 			@PathVariable(name = "cpId") String cpId, @PathVariable(name = "subjectNameId") String subjId) {

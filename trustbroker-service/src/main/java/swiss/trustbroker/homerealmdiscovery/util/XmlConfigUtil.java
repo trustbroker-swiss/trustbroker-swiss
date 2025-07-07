@@ -47,6 +47,7 @@ import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.util.DirectoryUtil;
 import swiss.trustbroker.exception.GlobalExceptionHandler;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderDefinitions;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderMappings;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
 import swiss.trustbroker.federation.xmlconfig.PathReference;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
@@ -68,6 +69,7 @@ public class XmlConfigUtil {
 	// classes handled by this class
 	private static final List<Class<?>> SCHEMA_CLASSES = List.of(
 			ClaimsProviderDefinitions.class,
+			ClaimsProviderMappings.class,
 			ClaimsProviderSetup.class,
 			RelyingParty.class,
 			RelyingPartySetup.class,

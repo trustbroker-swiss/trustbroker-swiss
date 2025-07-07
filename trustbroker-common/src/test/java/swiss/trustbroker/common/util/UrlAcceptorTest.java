@@ -34,6 +34,7 @@ class UrlAcceptorTest {
 			"https://test.trustbroker.swiss,false",
 			"https://example.trustbroker.swiss/bar/,true",
 			"http://localhost,true",
+			"http://user1@localhost,false",
 			"https://localhost,true",
 			"https://localhost:5220,true",
 			"https://localhost:5220/,true",
@@ -104,6 +105,8 @@ class UrlAcceptorTest {
 			"https://localhost:443,https://localhost/.*,true",
 			"https://localhost,https://localhost:443/.*,true",
 			"https://127.0.0.1,https://localhost:443/.*,true",
+			"https://user@127.0.0.1,https://localhost:443/.*,false",
+			"https://user:pw@127.0.0.1,https://localhost:443/.*,false",
 			"https://localhost:80,https://localhost:443,false",
 			"https://localhost:80,https://localhost:0,true",
 			"https://localhost:80,https://localhost:.*/.*,true", // should not run into urlOkForAccess (URI.getPort is an int)

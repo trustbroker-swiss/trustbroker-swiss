@@ -18,8 +18,8 @@ package swiss.trustbroker.api.idm.service;
 /**
  * Backwards compatibility alias for <code>IdmQueryService</code>.
  *
- * @deprecated use IdmQueryService
  * @see IdmQueryService
+ * @deprecated use IdmQueryService
  */
 @Deprecated(since = "1.9.0", forRemoval = true)
 public interface IdmService extends IdmQueryService {

@@ -45,6 +45,8 @@ public class Flow implements Serializable {
 
 	public static final String RELOGIN_FLAG = "relogin";
 
+	public static final String LINK_FLAG = "link";
+
 	public static final String SUPPORT_FLAG = "support";
 
 	/**
@@ -62,7 +64,7 @@ public class Flow implements Serializable {
 	private String namespacePrefix;
 
 	/**
-	 * Show error page including support info section.
+	 * Show error page including a support info section.
 	 */
 	@XmlAttribute
 	@Builder.Default
@@ -83,7 +85,16 @@ public class Flow implements Serializable {
 	private Boolean appContinue = Boolean.FALSE;
 
 	/**
-	 * Redirect to (application specific) URL instead of showing an error page.
+	 * Show error page including a link to <code>appUrl</code>.
+	 *
+	 * @since 1.10.0
+	 */
+	@XmlAttribute
+	@Builder.Default
+	private Boolean link = Boolean.FALSE;
+
+	/**
+	 * Redirect to (application-specific) URL instead of showing an error page.
 	 *
 	 * @since 1.8.0
 	 */
@@ -91,7 +102,7 @@ public class Flow implements Serializable {
 	private String appRedirectUrl;
 
 	/**
-	 * Show link to further information on the error page (general error information on the application or specific to this
+	 * Show a link to further information on the error page (general error information on the application or specific to this
 	 * error code).
 	 */
 	@XmlAttribute
@@ -110,7 +121,7 @@ public class Flow implements Serializable {
 	private String supportPhone;
 
 	public boolean showErrorPage() {
-		return doShowSupportInfo() || doReLogin() || doAppContinue() || doAppRedirect();
+		return doShowSupportInfo() || doReLogin() || doAppContinue() || doAppRedirect() || doLink();
 	}
 
 	public boolean doAppRedirect() { return appRedirectUrl != null; }
@@ -126,6 +137,9 @@ public class Flow implements Serializable {
 		if (doAppContinue()) {
 			flags.add(CONTINUE_FLAG);
 		}
+		if (doLink()) {
+			flags.add(LINK_FLAG);
+		}
 		return flags;
 	}
 
@@ -139,5 +153,9 @@ public class Flow implements Serializable {
 
 	private boolean doAppContinue() {
 		return Boolean.TRUE.equals(appContinue);
+	}
+
+	private boolean doLink() {
+		return Boolean.TRUE.equals(link);
 	}
 }

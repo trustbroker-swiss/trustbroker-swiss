@@ -36,7 +36,7 @@ class ApiSupportTest {
 
 	private static final String PERIMETER_URL = "http://localhost:8080";
 
-	private static final String OIDC_PERIMETER_URL = "http://localhost:6060";
+	private static final String OIDC_PERIMETER_URL = "http://auth-server:8080";
 
 	private static final String GROUP_NAME = "SSO1";
 

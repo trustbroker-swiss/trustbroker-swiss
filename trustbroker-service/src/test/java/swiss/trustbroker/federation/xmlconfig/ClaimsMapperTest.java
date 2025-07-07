@@ -19,6 +19,11 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -40,11 +45,113 @@ class ClaimsMapperTest {
 				{ "", "" },
 				{ "text", "text" },
 				{ Boolean.TRUE, Boolean.TRUE },
+				{ "01.01.70", "01.01.70" },
+				{ "1970-01-01", 0l },
+				{ "1970-01-01Z", 0l },
+				{ "1970-01-01T01:00:00+01:00[Europe/Paris]", 0l },
 				{ "1970-01-01T00:00:00Z", 0l },
 				{ "2001-09-09T01:46:40Z", 1_000_000_000l },
 				{ "2001-09-09T02:46:40+01:00[Europe/Paris]", 1_000_000_000l },
 				{ Instant.ofEpochMilli(1_000_000_000_000l), 1_000_000_000l },
 				{ new Date(1_000_000_000_000l), 1_000_000_000l },
+				{ "01.01.1970", 0l }, // time zone ignored for date
+				{ "01.01.1970 00:00:00", Long.valueOf(-getStartOfEpochZoneoffset().getTotalSeconds()) }
+		};
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void mapObjectTimeIso(Object input, Object expected) {
+		assertThat(ClaimsMapper.TIME_ISO.map(input), is(expected));
+	}
+
+	static Object[][] mapObjectTimeIso() {
+		var startOfEpochZoneoffset = getStartOfEpochZoneoffset();
+		var localStartOfEpoch = LocalDate.of(1970, 1, 1)
+										 .atStartOfDay()
+										 .toInstant(startOfEpochZoneoffset)
+										 .toString();
+		return new Object[][] {
+				{ null, null },
+				{ "", "" },
+				{ "text", "text" },
+				{ Boolean.TRUE, Boolean.TRUE},
+				{ "01.01.70", "01.01.70" },
+				{ "1970-01-01", "1970-01-01T00:00:00Z" },
+				{ "1970-01-01Z", "1970-01-01T00:00:00Z" },
+				{ "1970-01-01T01:00:00+01:00[Europe/Paris]", "1970-01-01T00:00:00Z" },
+				{ "1970-01-01T00:00:00Z", "1970-01-01T00:00:00Z" },
+				{ "2001-09-09T01:46:40Z", "2001-09-09T01:46:40Z" },
+				{ "2001-09-09T02:46:40+01:00[Europe/Paris]", "2001-09-09T01:46:40Z" },
+				{ Instant.ofEpochMilli(1_000_000_000_000l), "2001-09-09T01:46:40Z" },
+				{ new Date(1_000_000_000_000l), "2001-09-09T01:46:40Z" },
+				{ "01.01.1970", "1970-01-01T00:00:00Z" }, // time zone ignored
+				{ "01.01.1970 00:00:00", localStartOfEpoch },
+		};
+	}
+
+	private static ZoneOffset getStartOfEpochZoneoffset() {
+		var localDateTimeStartOfEpoch = LocalDateTime.of(1970, 1, 1, 0, 0, 0);
+		return ZoneOffset.systemDefault().getRules().getOffset(localDateTimeStartOfEpoch);
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void mapObjectDateIso(Object input, Object expected) {
+		assertThat(ClaimsMapper.DATE_ISO.map(input), is(expected));
+	}
+
+	static Object[][] mapObjectDateIso() {
+		var localStartDayOfEpoch = DateTimeFormatter.ISO_DATE.format(LocalDate.of(1970, 1, 1)
+																			  .atStartOfDay()
+																			  .atOffset(OffsetDateTime.now().getOffset())
+																			  .atZoneSameInstant(ZoneOffset.UTC));
+		return new Object[][] {
+				{ null, null },
+				{ "", "" },
+				{ "text", "text" },
+				{ Boolean.TRUE, Boolean.TRUE},
+				{ "01.01.70", "01.01.70" },
+				{ "1970-01-01", "1970-01-01Z" },
+				{ "1970-01-01Z", "1970-01-01Z" },
+				{ "1970-01-01T01:00:00+01:00[Europe/Paris]", "1970-01-01Z" },
+				{ "1970-01-01T00:00:00Z", "1970-01-01Z" },
+				{ "2001-09-09T01:46:40Z", "2001-09-09Z" },
+				{ "2001-09-09T02:46:40+01:00[Europe/Paris]", "2001-09-09Z" },
+				{ Instant.ofEpochMilli(1_000_000_000_000l), "2001-09-09Z" },
+				{ new Date(1_000_000_000_000l), "2001-09-09Z" },
+				{ "01.01.1970", "1970-01-01Z" }, // time zone ignored
+				{ "01.01.1970 00:00:00", localStartDayOfEpoch }
+		};
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void mapObjectDateLocal(Object input, Object expected) {
+		assertThat(ClaimsMapper.DATE_LOCAL.map(input), is(expected));
+	}
+
+	static Object[][] mapObjectDateLocal() {
+		var localStartDayOfEpoch = ClaimsMapper.LOCAL_DATE_FORMATTER.format(LocalDate.of(1970, 1, 1)
+																			  .atStartOfDay()
+																			  .atOffset(OffsetDateTime.now().getOffset())
+																			  .atZoneSameInstant(ZoneOffset.UTC));
+		return new Object[][] {
+				{ null, null },
+				{ "", "" },
+				{ "text", "text" },
+				{ Boolean.TRUE, Boolean.TRUE},
+				{ "01.01.70", "01.01.70" },
+				{ "1970-01-01", "1970-01-01" },
+				{ "1970-01-01Z", "1970-01-01" },
+				{ "1970-01-01T01:00:00+01:00[Europe/Paris]", "1970-01-01" },
+				{ "1970-01-01T00:00:00Z", "1970-01-01" },
+				{ "2001-09-09T01:46:40Z", "2001-09-09" },
+				{ "2001-09-09T02:46:40+01:00[Europe/Paris]", "2001-09-09" },
+				{ Instant.ofEpochMilli(1_000_000_000_000l), "2001-09-09" },
+				{ new Date(1_000_000_000_000l), "2001-09-09" },
+				{ "01.01.1970", "1970-01-01" }, // time zone ignored
+				{ "01.01.1970 00:00:00", localStartDayOfEpoch }
 		};
 	}
 

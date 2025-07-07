@@ -25,7 +25,7 @@ public enum ErrorCode {
 	ACCESS_REQUEST_FAILED("accessrequestfailed"),
 	UNKNOWN_PRINCIPAL("unknownprincipal"),
 	UNKNOWN_USER("unknownuser"),
-	STATE_NOT_FOUND("sessionexpired"),;
+	STATE_NOT_FOUND("sessionexpired");
 
 	private final String label;
 

@@ -23,7 +23,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import lombok.AllArgsConstructor;
@@ -43,19 +42,19 @@ import swiss.trustbroker.common.util.DirectoryUtil;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.service.XmlConfigStatusService;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderDefinitions;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.RelyingPartySetup;
 import swiss.trustbroker.federation.xmlconfig.SignerKeystore;
+import swiss.trustbroker.federation.xmlconfig.SignerStore;
 import swiss.trustbroker.federation.xmlconfig.SignerTruststore;
 import swiss.trustbroker.federation.xmlconfig.SsoGroupSetup;
+import swiss.trustbroker.homerealmdiscovery.service.WebResourceProvider;
 import swiss.trustbroker.homerealmdiscovery.util.ClaimsProviderUtil;
 import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
 import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.oidc.ClientConfigInMemoryRepository;
-import swiss.trustbroker.oidc.client.service.AuthorizationCodeFlowService;
+import swiss.trustbroker.oidc.client.service.OidcMetadataCacheService;
 import swiss.trustbroker.script.service.ScriptService;
 
 @Service
@@ -89,7 +88,9 @@ public class AppConfigService {
 
 	private final XmlConfigStatusService xmlConfigStatusService;
 
-	private final AuthorizationCodeFlowService authorizationCodeFlowService;
+	private final OidcMetadataCacheService oidcMetadataCacheService;
+
+	private final WebResourceProvider resourceProvider;
 
 	public int checkAndUpdate() {
 		var changed = mustUpdateFiles();
@@ -104,6 +105,9 @@ public class AppConfigService {
 			// load scripts, this MUST be last as the refresh will swap the script registry, and we are not transactional here
 			scriptService.activateRefresh();
 			updateMetrics();
+			resourceProvider.flushCache();
+			// OIDC remote calls at the end
+			oidcMetadataCacheService.triggerRefreshConfigurations();
 		}
 		return changed;
 	}
@@ -114,29 +118,8 @@ public class AppConfigService {
 		metricsService.gauge(MetricsService.CONFIG_STATUS_LABEL + "rp", configStatus.getRelyingParties().size());
 	}
 
-	public void checkClaimAndRpMatch(ClaimsProviderDefinitions claimsProviderDefinitions,
-			ClaimsProviderSetup claimsProviderSetup, RelyingPartySetup relyingPartySetup, SsoGroupSetup ssoGroupSetup) {
-		checkCpConfigIntegrity(claimsProviderDefinitions, claimsProviderSetup);
-
+	public void checkClaimAndRpMatch(RelyingPartySetup relyingPartySetup, SsoGroupSetup ssoGroupSetup) {
 		checkRpSsoIntegrity(relyingPartySetup, ssoGroupSetup);
-	}
-
-	static void checkCpConfigIntegrity(ClaimsProviderDefinitions claimsProviderDefinitions,
-			ClaimsProviderSetup claimsProviderSetup) {
-		var claimIdsInSetup = claimsProviderSetup.getClaimsParties().stream()
-				.filter(ClaimsParty::isValid)
-				.map(ClaimsParty::getId)
-				.collect(Collectors.toSet());
-		for (ClaimsProvider claimsProvider : claimsProviderDefinitions.getClaimsProviders()) {
-			if (claimsProvider.getId() == null) {
-				log.error("Missing ID for ClaimProvider with cpDescription={}", claimsProvider.getDescription());
-			}
-			else if (!claimIdsInSetup.contains(claimsProvider.getId())) {
-				log.error("Missing or invalid ClaimsProviderSetup for ClaimProvider with cpId={}", claimsProvider.getId());
-				ClaimsProviderUtil.addInvalidClaimsParty(claimsProviderSetup, claimsProvider.getId(), null,
-						"Missing SetupCP.xml for ClaimsProvider referenced by ClaimsProviderDefinitions");
-			}
-		}
 	}
 
 	static void checkRpSsoIntegrity(RelyingPartySetup relyingPartySetup, SsoGroupSetup ssoGroupSetup) {
@@ -215,7 +198,8 @@ public class AppConfigService {
 		if (relyingPartySetup != null) {
 			Collection<RelyingParty> claimRules = relyingPartySetup.getRelyingParties();
 			RelyingPartySetupUtil.loadRelyingParty(claimRules, trustBrokerProperties.getConfigurationPath()
-							+ CONFIG_CACHE_DEFINITION_SUBPATH, newConfigPath, trustBrokerProperties, idmQueryServices, scriptService);
+							+ CONFIG_CACHE_DEFINITION_SUBPATH, newConfigPath, trustBrokerProperties, idmQueryServices,
+					scriptService, claimsProviderSetup, claimsProviderDefinitions);
 			checkAndLoadRelyingPartyCertificates(relyingPartySetup);
 			checkRpSsoIntegrity(relyingPartySetup, ssoGroupSetup);
 			filterInvalidRelyingParties(relyingPartySetup);
@@ -270,23 +254,13 @@ public class AppConfigService {
 		var credentials = checkAndLoadTrustCredential(signerTruststore, claimsParty.getId(), claimsParty.getSubPath());
 		claimsParty.setCpTrustCredential(credentials);
 
-		var encryptionTruststore = claimsParty.getCertificates().getEncryptionTruststore();
-		List<Credential> encryptionTrustCreds = new ArrayList<>();
-		if (encryptionTruststore != null) {
-			encryptionTrustCreds.addAll(
-					checkAndLoadTrustCredential(encryptionTruststore, claimsParty.getId(), claimsParty.getSubPath()));
-		}
-
 		var encryptionKeystore = claimsParty.getCertificates().getEncryptionKeystore();
-		if (encryptionKeystore != null && encryptionTrustCreds.isEmpty()) {
-			var credential = checkAndLoadCert(encryptionKeystore, claimsParty.getId(), claimsParty.getSubPath());
-			encryptionTrustCreds.add(credential);
-			log.info("Using EncryptionKeystore as a Truststore for claim={}. Check and replace "
-					+ "ClaimParty.Certificates.EncryptionKeystore with ClaimParty.Certificates.EncryptionTruststore",
-					claimsParty.getId());
+		if (encryptionKeystore != null) {
+			var keystoreCredential = checkAndLoadCert(encryptionKeystore, claimsParty.getId(), claimsParty.getSubPath());
+			List<Credential> decryptionCredentials = new ArrayList<>();
+			decryptionCredentials.add(keystoreCredential);
+			claimsParty.setCpDecryptionCredentials(decryptionCredentials);
 		}
-
-		claimsParty.setCpEncryptionTrustCredentials(encryptionTrustCreds);
 
 		if (claimsParty.getCertificates().getArtifactResolutionKeystore() != null) {
 			log.warn("cpIssuerId={} is using deprecated Certificates.ArtifactResolutionKeystore={}"
@@ -297,6 +271,17 @@ public class AppConfigService {
 			log.warn("cpIssuerId={} is using deprecated Certificates.ArtifactResolutionTruststore={}"
 							+ " - change to BackendKTruststore",
 					claimsParty.getId(), claimsParty.getCertificates().getArtifactResolutionTruststore().getCertPath());
+		}
+
+		if (claimsParty.getCertificates().getBackendKeystore() != null) {
+			var backendCredential = checkAndLoadCert(claimsParty.getCertificates().getBackendKeystore(),
+					claimsParty.getId(), claimsParty.getSubPath());
+			claimsParty.setCpBackendClientCredential(backendCredential);
+		}
+		if (claimsParty.getCertificates().getBackendTruststore() != null) {
+			var backendTrustCredentials = checkAndLoadTrustCredential(claimsParty.getCertificates().getBackendTruststore(),
+					claimsParty.getId(), claimsParty.getSubPath());
+			claimsParty.setCpBackendTrustCredentials(backendTrustCredentials);
 		}
 	}
 
@@ -345,10 +330,17 @@ public class AppConfigService {
 		}
 		relyingParty.setRpTrustCredentials(credentials);
 
-		var encryptionKeystore = rpCerts.getEncryptionKeystore();
-		if (encryptionKeystore != null) {
-			var encryptionCredential = checkAndLoadCert(encryptionKeystore, relyingParty.getId(), relyingParty.getSubPath());
-			relyingParty.setRpEncryptionCred(encryptionCredential);
+		var encryptionTruststore = rpCerts.getEncryptionTruststore();
+		if (encryptionTruststore != null) {
+			var truststoreCredentials =
+					checkAndLoadTrustCredential(encryptionTruststore, relyingParty.getId(), relyingParty.getSubPath());
+			if (!truststoreCredentials.isEmpty()) {
+				if (truststoreCredentials.size() > 1) {
+					log.info("EncryptionTruststore has multiple certs for rpIssuerId={}. Picking first one.",
+							relyingParty.getId());
+				}
+				relyingParty.setRpEncryptionCredential(truststoreCredentials.get(0));
+			}
 		}
 	}
 
@@ -357,12 +349,7 @@ public class AppConfigService {
 			throw new TechnicalException(String.format("Certificate invalid: Missing SignerTruststore for urn=%s", urn));
 		}
 		checkCertPath(signerTruststore.getCertPath(), urn);
-		return loadTrustCredential(
-				signerTruststore.getCertPath(),
-				signerTruststore.getPassword(),
-				signerTruststore.getCertType(),
-				signerTruststore.getAlias(),
-				subPath);
+		return loadTrustCredential(signerTruststore, subPath);
 	}
 
 	private void loadSloSignerCertificates(RelyingParty relyingParty) {
@@ -382,31 +369,29 @@ public class AppConfigService {
 			throw new TechnicalException(String.format("Certificate invalid: Missing Signer Keystore for urn=%s", urn));
 		}
 		checkCertPath(signerKeystore.getCertPath(), urn);
-		return checkAndLoadCert(
-				signerKeystore.getCertPath(),
-				signerKeystore.getPassword(),
-				signerKeystore.getCertType(),
-				signerKeystore.getAlias(),
-				signerKeystore.getKeyPath(),
-				subPath);
+		return checkAndLoadCert(signerKeystore, subPath);
 	}
 
-	@SuppressWarnings("java:S2209") // credential reader should be a service
-	private Credential checkAndLoadCert(String certPath, String password, String certType, String alias, String keyPath,
-			String subPath) {
-		var basePath = resolvePath(certPath, subPath);
-		certPath = basePath + certPath;
-		if (keyPath != null) {
+	private Credential checkAndLoadCert(SignerStore store, String subPath) {
+		resolveStorePaths(store, subPath);
+		return CredentialReader.getCredential(store.getResolvedCertPath(), store.getCertType(),
+				store.getPassword(), store.getAlias(), store.getResolvedKeyPath());
+	}
+
+	private List<Credential> loadTrustCredential(SignerStore store, String subPath) {
+		resolveStorePaths(store, subPath);
+		return CredentialReader.readTrustCredentials(
+				store.getResolvedCertPath(), store.getCertType(), store.getPassword(), store.getAlias());
+	}
+
+	private void resolveStorePaths(SignerStore store, String subPath) {
+		var basePath = resolvePath(store.getCertPath(), subPath);
+		var resolvedCertPath = basePath + store.getCertPath();
+		store.setResolvedCertPath(resolvedCertPath);
+		if (store.getKeyPath() != null) {
 			// key is always loaded from the same path as cert
-			keyPath = basePath + keyPath;
+			store.setResolvedKeyPath(basePath + store.getKeyPath());
 		}
-		return CredentialReader.getCredential(certPath, certType, password, alias, keyPath);
-	}
-
-	private List<Credential> loadTrustCredential(String certPath, String password, String certType, String alias, String subPath) {
-		var basePath = resolvePath(certPath, subPath);
-		certPath = basePath + certPath;
-		return CredentialReader.readTrustCredentials(certPath, certType, password, alias);
 	}
 
 	private String resolvePath(String certPath, String subPath) {

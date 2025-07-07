@@ -18,6 +18,9 @@ package swiss.trustbroker.common.saml.util;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.shibboleth.shared.codec.Base64Support;
 import net.shibboleth.shared.codec.DecodingException;
@@ -28,6 +31,15 @@ import swiss.trustbroker.common.util.StringUtil;
 
 @Slf4j
 public class Base64Util {
+
+	@Getter
+	@AllArgsConstructor(access = AccessLevel.PRIVATE)
+	public enum Base64Encoding {
+		CHUNKED(Base64Support.CHUNKED),
+		UNCHUNKED(Base64Support.UNCHUNKED);
+
+		private final boolean chunked;
+	}
 
 	private Base64Util() {
 	}
@@ -41,13 +53,13 @@ public class Base64Util {
 		}
 	}
 
-	public static String encode(String stringData, boolean unchunked) {
-		return encode(stringData.getBytes(StandardCharsets.UTF_8), unchunked);
+	public static String encode(String stringData, Base64Encoding encoding) {
+		return encode(stringData.getBytes(StandardCharsets.UTF_8), encoding);
 	}
 
-	public static String encode(byte[] bytes, boolean unchunked) {
+	public static String encode(byte[] bytes, Base64Encoding encoding) {
 		try {
-			return Base64Support.encode(bytes, unchunked);
+			return Base64Support.encode(bytes, encoding.isChunked());
 		}
 		catch (EncodingException | ConstraintViolationException e) {
 			throw new TechnicalException(String.format("Message encoding exception=%s", e.getMessage()), e);

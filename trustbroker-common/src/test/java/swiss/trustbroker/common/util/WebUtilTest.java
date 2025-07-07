@@ -18,11 +18,13 @@ package swiss.trustbroker.common.util;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 
+import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.hc.client5.http.utils.DateUtils;
 import org.hamcrest.CoreMatchers;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -30,6 +32,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import swiss.trustbroker.common.dto.CookieParameters;
 
 class WebUtilTest {
@@ -148,14 +151,15 @@ class WebUtilTest {
 
 	@ParameterizedTest
 	@CsvSource(value = {
-			"persistentCookie,sessionId1,300,true,true,domain.org,/foo,null,persistentCookie,sessionId1,300,true,true,domain.org,/foo",
-			"sessionCookie,sessionId2,null,false,false,null,null,LAX,sessionCookie,sessionId2,-1,false,false,null,/",
-			"sessionCookie,sessionId2,-1,false,false,null,,STRICT,sessionCookie,sessionId2,-1,false,false,null,/",
-			"sessionCookie,sessionId2,-1,false,false,,/path/to/app,NONE,sessionCookie,sessionId2,-1,false,false,null,/path/to/app"
+			"persistentCookie,sessionId1,300,true,true,domain.org,/foo,null,persistentCookie,sessionId1,300,true,true,domain.org,/foo,null",
+			"sessionCookie,sessionId2,null,false,false,null,null,Lax,sessionCookie,sessionId2,-1,false,false,null,/,Lax",
+			"sessionCookie,sessionId2,-1,false,false,null,,Strict,sessionCookie,sessionId2,-1,false,false,null,/,Strict",
+			"sessionCookie,sessionId2,-1,false,false,,/path/to/app,None,sessionCookie,sessionId2,-1,false,false,null,/path/to/app,None",
+			"sessionCookie,sessionId2,-1,false,false,,/path,Dynamic,sessionCookie,sessionId2,-1,false,false,null,/path,null"
 	}, nullValues = "null")
 	void testCreateCookie(String name, String sessionId, Integer lifeTime, boolean secure, boolean httpOnly, String domain,
 			String path, String sameSite, String expectedName, String expectedSessionId, Integer expectedLifeTime,
-			boolean expectedSecure, boolean expectedHttpOnly, String expectedDomain, String expectedPath) {
+			boolean expectedSecure, boolean expectedHttpOnly, String expectedDomain, String expectedPath, String expectedSameSite) {
 		var params = CookieParameters.builder()
 									 .name(name)
 									 .value(sessionId)
@@ -174,7 +178,7 @@ class WebUtilTest {
 		assertThat(cookie.isHttpOnly(), is(expectedHttpOnly));
 		assertThat(cookie.getDomain(), is(expectedDomain));
 		assertThat(cookie.getPath(), is(expectedPath));
-		assertThat(cookie.getAttribute(WebUtil.COOKIE_SAME_SITE), is(sameSite));
+		assertThat(cookie.getAttribute(WebUtil.COOKIE_SAME_SITE), is(expectedSameSite));
 	}
 
 	@ParameterizedTest
@@ -271,6 +275,46 @@ class WebUtilTest {
 		var noIp = new MockHttpServletRequest();
 		assertThat(WebUtil.getGatewayIp(noIp), is("127.0.0.1"));
 		assertThat(WebUtil.getClientIp(noIp), is("127.0.0.1/SRA"));
+	}
+
+	@ParameterizedTest
+	@CsvSource(value = {
+			"null,0,0,1000",
+			"\"E199\",500,60,1000"
+	}, nullValues = "null")
+	void testAddCacheHeaders(String etag, int lastModifiedSecs, int maxAgeSecs, int nowSecs) {
+		var response = new MockHttpServletResponse();
+		var lastModified = Instant.ofEpochSecond(lastModifiedSecs);
+		var expectedLastModified = lastModified != null ? DateUtils.formatStandardDate(lastModified) : null;
+		var expectedPragma = maxAgeSecs > 0 ? "" : WebUtil.PRAGMA_NO_CACHE;
+		var now = Instant.ofEpochSecond(nowSecs);
+		var expires = Instant.ofEpochSecond(nowSecs + maxAgeSecs);
+		var expectedExpires = maxAgeSecs == 0 ? "0" : DateUtils.formatStandardDate(expires);
+		var expectedCacheControl = maxAgeSecs == 0 ? WebUtil.CACHE_CONTROL_NO_CACHE : WebUtil.CACHE_CONTROL_MAX_AGE + maxAgeSecs;
+
+		WebUtil.addCacheHeaders(response, maxAgeSecs, etag, lastModified, now);
+
+		assertThat(response.getHeader(HttpHeaders.ETAG), is(etag));
+		assertThat(response.getHeader(HttpHeaders.LAST_MODIFIED), is(expectedLastModified));
+		assertThat(response.getHeader(HttpHeaders.PRAGMA), is(expectedPragma));
+		assertThat(response.getHeader(HttpHeaders.EXPIRES), is(expectedExpires));
+		assertThat(response.getHeader(HttpHeaders.CACHE_CONTROL), is(expectedCacheControl));
+	}
+
+	@ParameterizedTest
+	@CsvSource(value = {
+			"null;null;0;0;false",
+			"\"E20AB\";\"B123\",\"E20AB\";0;0;true", // etag match
+			"\"E20AB\";\"B123\",\"E20AB\";1000;100;true", // etag match wins
+			"\"E20AB\";null;100;200;true", // modified since match
+			"null;\"E20AB\";100;50;false", // modified since mismatch
+	}, nullValues = "null", delimiter = ';')
+	void testIsCached(String etag, String ifNoneMatch, int cacheTimeSecs, int ifModifiedSinceSecs, boolean expected) {
+		var cacheTime = Instant.ofEpochSecond(cacheTimeSecs);
+		var modified = Instant.ofEpochSecond(ifModifiedSinceSecs);
+		var ifModifiedSince = ifModifiedSinceSecs == 0 ? null : DateUtils.formatStandardDate(modified);
+
+		assertThat(WebUtil.isCached(etag, ifNoneMatch, cacheTime, ifModifiedSince), is(expected));
 	}
 
 }

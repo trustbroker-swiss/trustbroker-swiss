@@ -33,7 +33,6 @@ import org.opensaml.saml.saml2.core.Response;
 import org.opensaml.security.credential.Credential;
 import org.opensaml.security.x509.X509Credential;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.api.idm.dto.IdmRequests;
 import swiss.trustbroker.api.idm.service.IdmQueryService;
 import swiss.trustbroker.common.exception.RequestDeniedException;
@@ -42,18 +41,16 @@ import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
-import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
-import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.AuthorizedApplication;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
-import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
-import swiss.trustbroker.federation.xmlconfig.Definition;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderMappings;
+import swiss.trustbroker.federation.xmlconfig.CounterParty;
 import swiss.trustbroker.federation.xmlconfig.HomeName;
 import swiss.trustbroker.federation.xmlconfig.IdmLookup;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
-import swiss.trustbroker.federation.xmlconfig.Signature;
 import swiss.trustbroker.federation.xmlconfig.SsoGroup;
 import swiss.trustbroker.homerealmdiscovery.util.RelyingPartyUtil;
 import swiss.trustbroker.mapping.dto.QoaConfig;
@@ -71,14 +68,6 @@ public class RelyingPartySetupService {
 	private final TrustBrokerProperties trustBrokerProperties;
 
 	private final List<IdmQueryService> idmQueryServices;
-
-	public long getRelyingPartiesCount() {
-		return relyingPartiesMapping.getRelyingPartySetup().getRelyingParties().size();
-	}
-
-	public long getClaimsPartiesCount() {
-		return relyingPartiesMapping.getClaimsProviderSetup().getClaimsParties().size();
-	}
 
 	public RelyingParty getRelyingPartyByIssuerIdOrReferrer(String issuerId, String refererUrl, boolean tryOnly) {
 		var relyingParty = getRelyingPartyById(issuerId);
@@ -236,7 +225,7 @@ public class RelyingPartySetupService {
 		var claimsParty = getClaimsProviderByArtifactSourceId(sourceId);
 		if (claimsParty.isEmpty()) {
 			log.debug("No CP found for sourceId={} - fallback to refererUrl={}", sourceId, refererUrl);
-			claimsParty = getClaimByReferer(refererUrl);
+			claimsParty = getClaimsProviderSetupByReferer(refererUrl);
 		}
 		return claimsParty;
 	}
@@ -294,15 +283,7 @@ public class RelyingPartySetupService {
 		).toList();
 	}
 
-	private RelyingParty getFirstRelyingParty() {
-		var relyingParties = relyingPartiesMapping.getRelyingPartySetup().getRelyingParties();
-		if (CollectionUtils.isEmpty(relyingParties)) {
-			throw new TechnicalException("No RelyingParty found in RelyingPartySetup configuration");
-		}
-		return relyingParties.get(0);
-	}
-
-	public Optional<ClaimsParty> getClaimsProviderSetupById(String id) {
+	public Optional<ClaimsParty> getClaimsProviderSetupByIssuerId(String id) {
 		return relyingPartiesMapping.getClaimsProviderSetup().getClaimsParties().stream().filter(
 				claimsParty -> claimsParty.getId().equalsIgnoreCase(id)
 		).findFirst();
@@ -333,39 +314,22 @@ public class RelyingPartySetupService {
 		return sb.toString().replace(",]", "]");
 	}
 
-	public ClaimsParty getClaimsProviderSetupByUrn(String claimURN, String refererUrl) {
-		return getClaimsProviderSetupByIssuerId(claimURN, refererUrl);
-	}
-
 	public ClaimsParty getClaimsProviderSetupByIssuerId(String issuerId, String refererUrl) {
 		return getClaimsProviderSetupByIssuerId(issuerId, refererUrl, false);
 	}
 
-	public SecurityPolicies getSecurityPoliciesByRpIssuerId(String issuerId, String refererUrl, boolean tryOnly) {
-		var relyingParty = getRelyingPartyByIssuerIdOrReferrer(issuerId, refererUrl, tryOnly);
-		return getSecurityPolicies(relyingParty);
-	}
-
-	private static SecurityPolicies getSecurityPolicies(RelyingParty relyingParty) {
-		if (relyingParty != null) {
-			return relyingParty.getSecurityPolicies();
-		}
-		return null;
-	}
-
-	public SecurityPolicies getSecurityPoliciesByCpIssuerId(String issuerId, String refererUrl, boolean tryOnly) {
-		var claimsParty = getClaimsProviderSetupByIssuerId(issuerId, refererUrl, tryOnly);
-		if (claimsParty != null) {
-			return claimsParty.getSecurityPolicies();
+	private static SecurityPolicies getSecurityPolicies(CounterParty counterParty) {
+		if (counterParty != null) {
+			return counterParty.getSecurityPolicies();
 		}
 		return null;
 	}
 
 	public ClaimsParty getClaimsProviderSetupByIssuerId(String issuerId, String refererUrl, boolean tryOnly) {
-		Optional<ClaimsParty> claimsParty = getClaimsProviderSetupById(issuerId);
+		Optional<ClaimsParty> claimsParty = getClaimsProviderSetupByIssuerId(issuerId);
 		if (claimsParty.isEmpty()) {
 			log.debug("Could not find ClaimsParty by cpId={}, falling back to referer={} instead", issuerId, refererUrl);
-			claimsParty = getClaimByReferer(refererUrl);
+			claimsParty = getClaimsProviderSetupByReferer(refererUrl);
 		}
 		if (claimsParty.isEmpty() && !tryOnly) {
 			var msg = String.format(
@@ -377,15 +341,14 @@ public class RelyingPartySetupService {
 		return claimsParty.orElse(null);
 	}
 
-	public String getHomeName(String issuerId, String referrer, List<Assertion> assertions, CpResponse cpResponseDTO) {
+	public String getHomeName(ClaimsParty claimsParty, List<Assertion> assertions, CpResponse cpResponseDTO) {
 		OpenSamlUtil.checkAssertionsLimitations(assertions, Collections.emptyList(), "HomeRealm selection");
 
-		ClaimsParty claimsProviderSetupByIssuerId = getClaimsProviderSetupByIssuerId(issuerId, referrer);
 		var configHomeName = "";
 		var messageHomeName = "";
 
 		// Get homeName from configured HomeName reference, otherwise use configured constant value
-		var homeName = claimsProviderSetupByIssuerId.getHomeName();
+		var homeName = claimsParty.getHomeName();
 		if (homeName != null) {
 			configHomeName = homeName.getName();
 			messageHomeName = getHomeNameFromCpResponse(homeName, cpResponseDTO);
@@ -407,24 +370,11 @@ public class RelyingPartySetupService {
 		return messageHomeName;
 	}
 
-	// AuthLevel from config, override from CP assertion
-	public String getCpAuthLevel(String issuerId, String referrer) {
-		return getClaimsProviderSetupByIssuerId(issuerId, referrer).getAuthLevel();
-	}
-
-	public String getClaimOriginalIssuer(String claimURN, String referrer) {
-		return getClaimsProviderSetupByIssuerId(claimURN, referrer).getOriginalIssuer();
-	}
-
-	public Signature getClaimSignature(String claimURN, String referrer) {
-		return getClaimsProviderSetupByIssuerId(claimURN, referrer).getSignature();
-	}
-
-	private Optional<ClaimsParty> getClaimByReferer(String refererUrl) {
+	private Optional<ClaimsParty> getClaimsProviderSetupByReferer(String refererUrl) {
 		Optional<ClaimsParty> claimsParty = Optional.empty();
 		List<String> refererIds = RelyingPartyUtil.getIdsFromReferer(refererUrl);
 		for (String id : refererIds) {
-			claimsParty = getClaimsProviderSetupById(id);
+			claimsParty = getClaimsProviderSetupByIssuerId(id);
 			if (claimsParty.isPresent()) {
 				break;
 			}
@@ -436,56 +386,17 @@ public class RelyingPartySetupService {
 		return claimsParty;
 	}
 
-	public Optional<IdmLookup> getIdmLookUp(String issuerId, String refererUrl) {
-		var relyingParty = getRelyingPartyByIssuerIdOrReferrer(issuerId, refererUrl);
+	public Optional<IdmLookup> getIdmLookUp(RelyingParty relyingParty) {
 		var idmLookup = relyingParty.getIdmLookup();
 		if (idmLookup == null) {
-			log.info("RelyingParty '{}' derived from issuer='{}' / referer='{}' has no IDMLookup",
-					relyingParty.getId(), issuerId, refererUrl);
+			log.info("RelyingParty id='{}' has no IDMLookup", relyingParty.getId());
 		}
 		return Optional.ofNullable(idmLookup);
 	}
 
-	public List<Definition> getRpAttributesDefinitions(String requestIssuer, String refererUrl) {
-		var attributesSelection = getRelyingPartyByIssuerIdOrReferrer(requestIssuer, refererUrl).getAttributesSelection();
-		if (attributesSelection != null && attributesSelection.getDefinitions() != null) {
-			return Collections.unmodifiableList(attributesSelection.getDefinitions());
-		}
-
-		return Collections.emptyList();
-	}
-
-	public List<Definition> getCpAttributeDefinitions(String cpIssuer, String referrer) {
-		var cpAttributes = getClaimsProviderSetupByIssuerId(cpIssuer, referrer).getAttributesSelection();
-		if (cpAttributes != null && cpAttributes.getDefinitions() != null) {
-			return Collections.unmodifiableList(cpAttributes.getDefinitions());
-		}
-		return Collections.emptyList();
-	}
-
-	public ConstAttributes getConstantAttributes(String issuerId, String refererUrl) {
-		return getRelyingPartyByIssuerIdOrReferrer(issuerId, refererUrl).getConstAttributes();
-	}
-
-	public AcWhitelist getAcWhiteList(String issuerId, String refererUrl) {
-		return getRelyingPartyByIssuerIdOrReferrer(issuerId, refererUrl).getAcWhitelist();
-	}
-
-	public List<Credential> getRelyingTrustCredentials(String issuerId, String refererUrl) {
-		return getRelyingPartyByIssuerIdOrReferrer(issuerId, refererUrl).getRpTrustCredentials();
-	}
-
-	public List<Credential> getClaimTrustCred(String urn, String refererUrl) {
-		return getClaimsProviderSetupByIssuerId(urn, refererUrl).getCpTrustCredential();
-	}
-
-	public List<Credential> getClaimEncryptionTrustCredentials(String urn, String refererUrl) {
-		return getClaimsProviderSetupByIssuerId(urn, refererUrl).getCpEncryptionTrustCredentials();
-	}
-
-	public List<Credential> getCpsEncryptionTrustCredentials() {
+	public List<Credential> getAllCpDecryptionCredentials() {
 		if (relyingPartiesMapping.getClaimsProviderSetup() == null) {
-			log.warn("RelyingPartiesMapping.ClaimsProviderSetup not initialized, CP side encryption data missing");
+			log.warn("RelyingPartiesMapping.ClaimsProviderSetup not initialized, CP side decryption data missing");
 			return Collections.emptyList();
 		}
 		List<ClaimsParty> claimsParties = relyingPartiesMapping.getClaimsProviderSetup().getClaimsParties();
@@ -493,10 +404,10 @@ public class RelyingPartySetupService {
 		TreeSet<Credential> credentials = new TreeSet<>((Credential cred1, Credential cred2)
 				-> getCredSubjectName(cred1).compareTo((getCredSubjectName(cred2))));
 
-		for (ClaimsParty claimsParty : claimsParties) {
-			List<Credential> cpEncryptionTrustCredentials = claimsParty.getCpEncryptionTrustCredentials();
-			if (cpEncryptionTrustCredentials != null && !cpEncryptionTrustCredentials.isEmpty()) {
-				credentials.addAll(cpEncryptionTrustCredentials);
+		for (var claimsParty : claimsParties) {
+			var cred = claimsParty.getCpDecryptionCredentials();
+			if (cred != null) {
+				credentials.addAll(cred);
 			}
 		}
 		return credentials.stream().toList();
@@ -506,52 +417,19 @@ public class RelyingPartySetupService {
 		return ((X509Credential) credential).getEntityCertificate().getSubjectX500Principal().getName();
 	}
 
-	public List<Credential> getRpsEncryptionCredentials() {
-		if (relyingPartiesMapping.getRelyingPartySetup() == null) {
-			log.warn("RelyingPartiesMapping.RelyingPartySetup not initialized, RP side encryption data missing");
-			return Collections.emptyList();
-		}
-		List<RelyingParty> relyingPartySetup = relyingPartiesMapping.getRelyingPartySetup().getRelyingParties();
-
-		TreeSet<Credential> credentials = new TreeSet<>((Credential cred1, Credential cred2)
-				-> getCredSubjectName(cred1).compareTo((getCredSubjectName(cred2))));
-
-		for (RelyingParty relyingParty : relyingPartySetup) {
-			var cred = relyingParty.getEncryptionCred();
-			if (cred != null) {
-				credentials.add(cred);
-			}
-		}
-
-		return credentials.stream().toList();
-	}
-
-	public Credential getRelyingPartySigner(String issuerId, String refererUrl) {
-		return getRelyingPartyByIssuerIdOrReferrer(issuerId, refererUrl).getRpSigner();
-	}
-
-	public Credential getFirstRelyingPartySigner() {
-		return getFirstRelyingParty().getRpSigner();
-	}
-
-	public Signature getRelyingPartySignature(String issuerId, String refererUrl) {
-		return getRelyingPartyByIssuerIdOrReferrer(issuerId, refererUrl).getSignature();
-	}
-
 	// SetupRP.ClientName is required to handle the %clientname% in assertion attributes (see replaceClientNameInUri)
-	public String getRpClientName(String issuerId, String refererUrl) {
-		String clientName = getRelyingPartyByIssuerIdOrReferrer(issuerId, refererUrl).getClientName();
+	public String getRpClientName(RelyingParty relyingParty) {
+		var clientName = relyingParty.getClientName();
 		if (clientName == null) {
-			log.debug("RP with id={} and referer={} has no ClientName. Configure one even if not needed."
+			log.debug("RP with id={} has no ClientName. Configure one even if not needed."
 							+ " HINT: Check SetupRP.ClientName and Definition entries in SetupRP/ProfileRP containing "
-							+ "%clientname%.", issuerId, refererUrl);
+							+ "%clientname%.", relyingParty.getId());
 			clientName = "SetupRP.ClientName-Missing";
 		}
 		return clientName;
 	}
 
-	public String getRpClientExtId(String issuerId, String refererUrl) {
-		var relyingParty = getRelyingPartyByIssuerIdOrReferrer(issuerId, refererUrl, false);
+	public String getRpClientExtId(RelyingParty relyingParty) {
 		if (relyingParty.getClientExtId() != null) {
 			return relyingParty.getClientExtId();
 		}
@@ -572,28 +450,6 @@ public class RelyingPartySetupService {
 			}
 		}
 		return Optional.empty();
-	}
-
-	public boolean disableAcUrl(String claimURN, String referrer) {
-		return getClaimsProviderSetupByIssuerId(claimURN, referrer).isDisableACUrl();
-	}
-
-	public AttributesSelection getPropertiesAttrSelection(String requestIssuer, String refererUrl) {
-		var attributesSelection = getRelyingPartyByIssuerIdOrReferrer(requestIssuer, refererUrl).getPropertiesSelection();
-		if (attributesSelection != null && attributesSelection.getDefinitions() != null) {
-			return attributesSelection;
-		}
-
-		return null;
-	}
-
-	public AttributesSelection getClaimsSelection(String requestIssuer, String refererUrl) {
-		var claimsSelection = getRelyingPartyByIssuerIdOrReferrer(requestIssuer, refererUrl).getClaimsSelection();
-		if (claimsSelection != null && claimsSelection.getDefinitions() != null) {
-			return claimsSelection;
-		}
-
-		return null;
 	}
 
 	public SsoGroup getSsoGroupConfig(String ssoGroupName) {
@@ -632,24 +488,23 @@ public class RelyingPartySetupService {
 		).longValue(); // default is not null
 	}
 
-	public long getTokenLifetime(String issuerId, String refererUrl) {
-		return getTokenLifetime(getRelyingPartyByIssuerIdOrReferrer(issuerId, refererUrl));
-	}
-
 	public SecurityPolicies getPartySecurityPolicies(SAMLObject message) {
 		if (message instanceof Response samlResponse && samlResponse.getIssuer() != null) {
-			return getSecurityPoliciesByCpIssuerId(samlResponse.getIssuer().getValue(), null, true);
+			var claimsParty = getClaimsProviderSetupByIssuerId(samlResponse.getIssuer().getValue(), null, true);
+			return getSecurityPolicies(claimsParty);
 		}
 		if (message instanceof RequestAbstractType samlRequest && samlRequest.getIssuer() != null) {
-			return getSecurityPoliciesByRpIssuerId(samlRequest.getIssuer().getValue(), null, true);
+			var relyingParty = getRelyingPartyByIssuerIdOrReferrer(samlRequest.getIssuer().getValue(), null, true);
+			return getSecurityPolicies(relyingParty);
 		}
 		if (message instanceof LogoutResponse logoutResponse && logoutResponse.getIssuer() != null) {
-			return getSecurityPoliciesByRpIssuerId(logoutResponse.getIssuer().getValue(), null, true);
+			var relyingParty = getRelyingPartyByIssuerIdOrReferrer(logoutResponse.getIssuer().getValue(), null, true);
+			return getSecurityPolicies(relyingParty);
 		}
 		return null;
 	}
 
-	public QoaConfig getQoaConfiguration(StateData spStateData, String rpIssuerId, String refererUrl,
+	public QoaConfig getQoaConfiguration(StateData spStateData, RelyingParty relyingParty,
 			TrustBrokerProperties trustBrokerProperties) {
 		if (spStateData != null && spStateData.getOidcClientId() != null) {
 			var oidcClientConfigById =
@@ -661,6 +516,22 @@ public class RelyingPartySetupService {
 				}
 			}
 		}
-		return getRelyingPartyByIssuerIdOrReferrer(rpIssuerId, refererUrl).getQoaConfig();
+		return relyingParty.getQoaConfig();
+	}
+
+	public ClaimsProvider getClaimsProviderById(RelyingParty relyingParty, String cpId) {
+		ClaimsProviderMappings claimsProviderMappings = relyingParty.getClaimsProviderMappings();
+		if (claimsProviderMappings == null || claimsProviderMappings.getClaimsProviderList() == null) {
+			throw new TechnicalException(String.format(
+					"Missing mapping in RelyingParty=%s for cpIssuer='%s'", relyingParty.getId(), cpId));
+		}
+		Optional<ClaimsProvider> claimsProvider =
+				claimsProviderMappings.getClaimsProviderList().stream().filter(
+						cp -> cp.getId().equalsIgnoreCase(cpId)).findFirst();
+		if (claimsProvider.isEmpty()) {
+			throw new TechnicalException(String.format(
+					"Missing mapping RelyingParty=%s for cpIssuer='%s'", relyingParty.getId(), cpId));
+		}
+		return claimsProvider.get();
 	}
 }

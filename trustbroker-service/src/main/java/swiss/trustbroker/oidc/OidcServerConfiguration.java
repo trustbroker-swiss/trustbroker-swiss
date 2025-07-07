@@ -39,12 +39,14 @@ import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.oauth2.core.oidc.OidcUserInfo;
 import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationService;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationServerMetadataClaimNames;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationValidator;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.oauth2.server.authorization.oidc.OidcProviderConfiguration;
+import org.springframework.security.oauth2.server.authorization.oidc.OidcProviderMetadataClaimNames;
 import org.springframework.security.oauth2.server.authorization.oidc.authentication.OidcUserInfoAuthenticationContext;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -63,8 +65,6 @@ import swiss.trustbroker.oidc.pkce.PublicClientRefreshTokenAuthenticationProvide
 import swiss.trustbroker.script.service.ScriptService;
 
 @Configuration
-// Specifications: https://openid.net/developers/specs/
-// XTB: http://auth-server:6060/.well-known/openid-configuration
 @AllArgsConstructor
 @Slf4j
 public class OidcServerConfiguration {
@@ -151,7 +151,7 @@ public class OidcServerConfiguration {
 			);
 		}
 
-		// customize /logout handling copuling it with XTB multi-session handling during federated login
+		// customize /logout handling coupling it with XTB multi-session handling during federated login
 		authServerConfigurer.oidc(oidc -> oidc.providerConfigurationEndpoint(providerConfigurationEndpoint ->
 				providerConfigurationEndpoint.providerConfigurationCustomizer(customizeProviderConfigurationEndpoint())
 		));
@@ -212,6 +212,37 @@ public class OidcServerConfiguration {
 				OidcConfigurationUtil.addClaimToProviderConfiguration(providerConfiguration, "check_session_iframe",
 						oidcProperties.getSessionIFrameEndpoint());
 			}
+			// other optional configurations
+			OidcConfigurationUtil.addClaimToProviderConfiguration(providerConfiguration,
+					OAuth2AuthorizationServerMetadataClaimNames.TLS_CLIENT_CERTIFICATE_BOUND_ACCESS_TOKENS,
+					oidcProperties.isTlsClientCertificateBoundAccessTokens());
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					OAuth2AuthorizationServerMetadataClaimNames.GRANT_TYPES_SUPPORTED,
+					oidcProperties.getGrantTypes());
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					OAuth2AuthorizationServerMetadataClaimNames.RESPONSE_TYPES_SUPPORTED,
+					oidcProperties.getResponseTypes());
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					OAuth2AuthorizationServerMetadataClaimNames.SCOPES_SUPPORTED,
+					oidcProperties.getScopes());
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					OAuth2AuthorizationServerMetadataClaimNames.TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED,
+					oidcProperties.getTokenEndpointAuthMethods());
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					OAuth2AuthorizationServerMetadataClaimNames.INTROSPECTION_ENDPOINT_AUTH_METHODS_SUPPORTED,
+					oidcProperties.getIntrospectionEndpointAuthMethods());
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					OAuth2AuthorizationServerMetadataClaimNames.REVOCATION_ENDPOINT_AUTH_METHODS_SUPPORTED,
+					oidcProperties.getRevocationEndpointAuthMethods());
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					OidcProviderMetadataClaimNames.SUBJECT_TYPES_SUPPORTED,
+					oidcProperties.getSubjectTypes());
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					OAuth2AuthorizationServerMetadataClaimNames.CODE_CHALLENGE_METHODS_SUPPORTED,
+					oidcProperties.getCodeChallengeMethods());
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					OidcProviderMetadataClaimNames.ID_TOKEN_SIGNING_ALG_VALUES_SUPPORTED,
+					oidcProperties.getIdTokenSigningAlgorithms());
 		};
 	}
 

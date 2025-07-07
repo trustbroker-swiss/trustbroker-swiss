@@ -68,11 +68,11 @@ public interface SamlHttpTestBase {
 		return extractSamlPostMessage(bodyStr, SamlIoUtil.SAML_REQUEST_NAME, RequestAbstractType.class);
 	}
 
-	default StatusResponseType extractSamlPostResponse(String bodyStr)  {
+	default StatusResponseType extractSamlPostResponse(String bodyStr) {
 		return extractSamlPostMessage(bodyStr, SamlIoUtil.SAML_RESPONSE_NAME, StatusResponseType.class);
 	}
 
-	default String extractSamlArtifactValue(String bodyStr)  {
+	default String extractSamlArtifactValue(String bodyStr) {
 		return extractHtmlFormValue(bodyStr, SamlIoUtil.SAML_ARTIFACT_NAME);
 	}
 

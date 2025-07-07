@@ -68,6 +68,7 @@ import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.Certificates;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.FeatureEnum;
@@ -110,7 +111,7 @@ class RuleDefinitionUtilTest {
 
 	private final static String GLOBAL_QUERY = "GLOBAL";
 
-	private IdmQueryService idmQueryService = new SortingIdmService();
+	private final IdmQueryService idmQueryService = new SortingIdmService();
 
 	@MockitoBean
 	private ScriptService scriptService;
@@ -420,10 +421,11 @@ class RuleDefinitionUtilTest {
 	void mergeClaimsNullTest() {
 		RelyingParty claimRule = null;
 		RelyingParty baseClaimRule = new RelyingParty();
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 
 		List<IdmQueryService> idmQueryServices = List.of(idmQueryService);
 		TechnicalException exception = assertThrows(TechnicalException.class, () ->
-				RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, idmQueryServices)
+				RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, idmQueryServices, claimsProviderSetup)
 		);
 
 		assertEquals("RelyingParty is missing", exception.getInternalMessage());
@@ -433,7 +435,8 @@ class RuleDefinitionUtilTest {
 	void mergeClaimsBaseNullTest() {
 		RelyingParty claimRule = new RelyingParty();
 		RelyingParty baseClaimRule = null;
-		RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, List.of(idmQueryService));
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
+		RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, List.of(idmQueryService), claimsProviderSetup);
 
 		assertNotNull(claimRule);
 	}
@@ -442,7 +445,8 @@ class RuleDefinitionUtilTest {
 	void mergeClaimsLookupNullTest() {
 		RelyingParty claimRule = new RelyingParty();
 		RelyingParty baseClaimRule = givenClaimWithLookup();
-		RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, List.of(idmQueryService));
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
+		RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, List.of(idmQueryService), claimsProviderSetup);
 
 		assertNotNull(claimRule);
 		assertNotNull(claimRule.getIdmLookup());
@@ -452,8 +456,9 @@ class RuleDefinitionUtilTest {
 	@Test
 	void mergeClaimsIdmLookupMergeTest() {
 		RelyingParty claimRule = givenClaimWithLookup();
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 		RelyingParty baseClaimRule = givenBaseClaimWithLookup();
-		RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, List.of(idmQueryService));
+		RelyingPartySetupUtil.mergeRelyingParty(claimRule, baseClaimRule, List.of(idmQueryService), claimsProviderSetup);
 
 		assertNotNull(claimRule);
 		assertNotNull(claimRule.getIdmLookup());
@@ -464,8 +469,9 @@ class RuleDefinitionUtilTest {
 	@Test
 	void loadBaseClaimNoBaseTest() {
 		Collection<RelyingParty> claimRules = givenClaimRulesWithoutBase();
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 		RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
-				CACHE_DEFINITION_PATH,null, List.of(idmQueryService), scriptService);
+				CACHE_DEFINITION_PATH,null, List.of(idmQueryService), scriptService, claimsProviderSetup, null);
 
 		assertNotNull(claimRules);
 	}
@@ -473,11 +479,12 @@ class RuleDefinitionUtilTest {
 	@Test
 	void loadBaseClaimBaseDoesNotExistTest() {
 		Collection<RelyingParty> claimRules = givenClaimRulesWithBaseNotFound();
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 		assertDoesNotThrow(() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
-				CACHE_DEFINITION_PATH, null, List.of(idmQueryService), scriptService));
+				CACHE_DEFINITION_PATH, null, List.of(idmQueryService), scriptService, claimsProviderSetup, null));
 		assertDoesNotThrow(
 				() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
-						CACHE_DEFINITION_PATH, null, List.of(idmQueryService), scriptService));
+						CACHE_DEFINITION_PATH, null, List.of(idmQueryService), scriptService, claimsProviderSetup, null));
 		claimRules.forEach(rp -> assertEquals(FeatureEnum.INVALID, rp.getEnabled(), "RP " + rp.getId()));
 	}
 
@@ -494,9 +501,10 @@ class RuleDefinitionUtilTest {
 	void loadBaseClaimMergeTest() {
 		List<RelyingParty> claimRules = givenClaimRulesWithBase();
 		String definitionPath = baseRuleFilePath();
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 
 		RelyingPartySetupUtil.loadRelyingParty(claimRules, definitionPath, CACHE_PATH,
-				null, List.of(idmQueryService), scriptService);
+				null, List.of(idmQueryService), scriptService, claimsProviderSetup, null);
 
 		assertNotNull(claimRules);
 		assertNull(claimRules.get(0).getConstAttributes());
@@ -507,9 +515,11 @@ class RuleDefinitionUtilTest {
 	@Test
 	void loadBaseClaimBaseInCache() {
 		List<RelyingParty> claimRules = loadRulesWithCacheFromFile();
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 		String newCacheDefinition = baseCacheRuleFilePath();
+
 		RelyingPartySetupUtil.loadRelyingParty(claimRules, baseRuleFilePath(), newCacheDefinition, null,
-				List.of(idmQueryService), scriptService);
+				List.of(idmQueryService), scriptService, claimsProviderSetup, null);
 
 		RelyingParty testRp = claimRules.get(0);
 
@@ -544,11 +554,12 @@ class RuleDefinitionUtilTest {
 	@Test
 	void loadBaseClaimFromFileAndMergeWithBaseTest() {
 		var relyingParties = loadRelyingParties();
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 
 		var properties = new TrustBrokerProperties();
 		properties.setGlobalProfilesPath("profiles");
 		RelyingPartySetupUtil.loadRelyingParty(relyingParties, baseRuleFilePath(), "cache/", properties,
-				List.of(idmQueryService), scriptService);
+				List.of(idmQueryService), scriptService, claimsProviderSetup, null);
 		assertEquals(TestConstants.VALID_TEST_RPS, relyingParties.size());
 
 		validateTestRp(relyingParties, "urn:test:SAMPLERP");
@@ -644,8 +655,9 @@ class RuleDefinitionUtilTest {
 		rp.setOidc(givenOidcClient(List.of(cUrl)));
 		var claimRules = List.of(rp);
 		var definitionPath = baseRuleFilePath();
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 		assertDoesNotThrow(() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, definitionPath, CACHE_PATH,
-				null, List.of(idmQueryService), scriptService));
+				null, List.of(idmQueryService), scriptService, claimsProviderSetup, null));
 		assertThat(rp.getEnabled(), is(expectedEnabled));
 	}
 

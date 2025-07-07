@@ -20,6 +20,7 @@ import java.util.List;
 
 import lombok.Builder;
 import lombok.Data;
+import org.apache.commons.collections.CollectionUtils;
 import org.opensaml.security.credential.Credential;
 import swiss.trustbroker.common.config.RegexNameValue;
 import swiss.trustbroker.federation.xmlconfig.QoaComparison;
@@ -58,7 +59,7 @@ public class ResponseParameters {
 
 	private String recipientId;
 
-	private boolean setOriginalIssuerIfEmpty;
+	private List<String> requireOriginalIssuerClaims;
 
 	private List<String> dropDuplicatedAttributeFromOriginalIssuer;
 
@@ -86,6 +87,7 @@ public class ResponseParameters {
 	private String skinnyAssertionStyle;
 
 	public boolean isAccessRequest() {
-		return homeNameIssuerMapping != null && !homeNameIssuerMapping.isEmpty();
+		return CollectionUtils.isNotEmpty(homeNameIssuerMapping);
 	}
+
 }

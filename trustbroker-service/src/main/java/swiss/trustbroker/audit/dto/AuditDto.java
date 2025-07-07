@@ -112,6 +112,8 @@ public class AuditDto {
 
 	private String cpNameId; // incoming CP side principal
 
+	private String mappedNameId; // CP side principal after subject mappings
+
 	// HTTP request attributes
 
 	private String clientIP; // X-Forwarded-For, not reliable and may be issues in K8S
@@ -147,6 +149,8 @@ public class AuditDto {
 	private String authLevel; // response only
 
 	private String ctxClasses; // response only, better than authLevel because that's just config mostly
+
+	private String scopes; // OIDC scopes
 
 	private String issuer; // from message (authnrequest or response) in the end ourselves
 

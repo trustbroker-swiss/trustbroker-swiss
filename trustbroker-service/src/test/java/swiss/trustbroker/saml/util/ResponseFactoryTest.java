@@ -40,6 +40,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -89,7 +90,9 @@ import swiss.trustbroker.common.saml.util.SamlIoUtil;
 import swiss.trustbroker.common.saml.util.SamlUtil;
 import swiss.trustbroker.common.saml.util.SkinnySamlUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.SamlProperties;
 import swiss.trustbroker.config.dto.SecurityChecks;
+import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.Definition;
@@ -571,14 +574,14 @@ class ResponseFactoryTest extends SamlTestBase {
 
 	@ParameterizedTest
 	@CsvSource(value = {
-			"null,null,null,null,true",
-			"null,null,null,null,false",
-			"null,customFederationServiceIssuerId1,null,null,false",
-			"customIssuerId1,customFederationServiceIssuerId1,customRecipientId1,null,false",
-			"customIssuerId2,null,customRecipientId2,null,false"
+			"null,null,null,true",
+			"null,null,null,false",
+			"null,customFederationServiceIssuerId1,null,false",
+			"customIssuerId1,customFederationServiceIssuerId1,customRecipientId1,false",
+			"customIssuerId2,null,customRecipientId2,false"
 	}, nullValues = "null")
 	void createAssertion(String customIssuerId, String customFederationServiceIssuerId, String customRecipientId,
-			String customNameId, boolean delegateOrigin) {
+			boolean delegateOrigin) {
 		// RP request
 		var rpIssuerId = "rp1";
 		var recipientId = "https://localhost:1234/acs";
@@ -601,8 +604,11 @@ class ResponseFactoryTest extends SamlTestBase {
 								 .spStateData(spStateData)
 								 .ssoSessionId(sessionIndex)
 								 .build();
+		var relyingParty = RelyingParty.builder().id(rpIssuerId).build();
+		doReturn(relyingParty).when(relyingPartySetupService)
+					.getRelyingPartyByIssuerIdOrReferrer(rpIssuerId, null);
 		doReturn(new QoaConfig(null, rpIssuerId))
-				.when(relyingPartySetupService).getQoaConfiguration(spStateData, rpIssuerId, null, trustBrokerProperties);
+				.when(relyingPartySetupService).getQoaConfiguration(spStateData, relyingParty, trustBrokerProperties);
 
 		// manipulated CP response
 		Map<Definition, List<String>> cpAttributes = new LinkedHashMap<>();
@@ -661,24 +667,34 @@ class ResponseFactoryTest extends SamlTestBase {
 													 .delegateOrigin(delegateOrigin)
 													 .build()
 							 )
+							 .attributesSelection(
+									 AttributesSelection.builder()
+														.definitions(List.of(homeName, userProperty, userExtId))
+														.build()
+							 )
 							 .build();
 		var cp = ClaimsParty.builder()
 							.id(cpIssuerId)
 							.originalIssuer(cpIssuerId)
 							.build();
 
+		// originalIssuer injection
+		var allOriginalIssuerAnnotated = new ArrayList<>(List.of(CoreAttributeName.AUTH_LEVEL.getNamespaceUri()));
+		allOriginalIssuerAnnotated.addAll(
+				cpResponse.getAttributes().keySet().stream().map(Definition::getNamespaceUri).toList());
+		allOriginalIssuerAnnotated.addAll(
+				cpResponse.getUserDetails().keySet().stream().map(Definition::getNamespaceUri).toList());
+
 		// configuration
 		var clientName = "clientName1";
 		var federationServiceIssuerId = "federation.trustbroker.swiss"; // global setting
 		doReturn(rp).when(relyingPartySetupService)
 					.getRelyingPartyByIssuerIdOrReferrer(rpIssuerId, null);
+		doReturn(new QoaConfig(null, rpIssuerId)).when(relyingPartySetupService)
+												 .getQoaConfiguration(spStateData, rp, trustBrokerProperties);
 		doReturn(cp).when(relyingPartySetupService)
 					.getClaimsProviderSetupByIssuerId(cpIssuerId, null);
-		doReturn(clientName).when(relyingPartySetupService)
-							.getRpClientName(rpIssuerId, null);
-		doReturn(List.of(homeName, userProperty, userExtId))
-				.when(relyingPartySetupService)
-				.getRpAttributesDefinitions(rpIssuerId, null);
+		doReturn(clientName).when(relyingPartySetupService).getRpClientName(rp);
 		doReturn(SecurityChecks.builder()
 							   .doSignAssertions(true)
 							   .build()).when(trustBrokerProperties)
@@ -702,7 +718,7 @@ class ResponseFactoryTest extends SamlTestBase {
 												   .rpIssuerId(rpIssuerId)
 												   .recipientId(customRecipientId)
 												   .issuerId(customIssuerId)
-												   .setOriginalIssuerIfEmpty(true)
+												   .requireOriginalIssuerClaims(allOriginalIssuerAnnotated)
 												   .homeNameIssuerMapping(homeNameOriginalIssuerMapping)
 												   .build();
 
@@ -760,12 +776,38 @@ class ResponseFactoryTest extends SamlTestBase {
 		}
 	}
 
-	static Object[][] createNameId() {
-		return new Object[][]{
-				{ null, null },
-				{ CpResponse.builder().nameId("name1").build(), null },
-				{ CpResponse.builder().nameId("name1").nameIdFormat("format1").build(),  },
-		};
+	@Test
+	void filterCpAttributesTest() {
+		CpResponse cpResponse = givenCpResponseWithAttr();
+		List<Definition> cpAttributeDefinitions = Collections.emptyList();
+		var samlProperties = new SamlProperties();
+		samlProperties.setDropAttrSelectionIfNoFilter(true);
+
+		ResponseFactory.filterCpAttributes(cpResponse, cpAttributeDefinitions, samlProperties);
+		assertThat(cpResponse.getAttributes(), is(not(nullValue())));
+		assertThat(cpResponse.getAttributes().size(), is(0));
+
+		cpResponse = givenCpResponseWithAttr();
+		cpAttributeDefinitions = List.of(Definition.ofNames(CoreAttributeName.EMAIL));
+		ResponseFactory.filterCpAttributes(cpResponse, cpAttributeDefinitions, samlProperties);
+		assertThat(cpResponse.getAttributes(), is(not(nullValue())));
+		assertThat(cpResponse.getAttributes().size(), is(1));
+
+		cpResponse = givenCpResponseWithAttr();
+		cpAttributeDefinitions = Collections.emptyList();
+		samlProperties.setDropAttrSelectionIfNoFilter(false);
+		ResponseFactory.filterCpAttributes(cpResponse, cpAttributeDefinitions, samlProperties);
+		assertThat(cpResponse.getAttributes(), is(not(nullValue())));
+		assertThat(cpResponse.getAttributes().size(), is(2));
+	}
+
+	private static CpResponse givenCpResponseWithAttr() {
+		Map<Definition, List<String>> map = new HashMap<>();
+		map.put(Definition.ofNames(CoreAttributeName.EMAIL), List.of("email"));
+		map.put(Definition.ofNames(CoreAttributeName.NAME), List.of("name"));
+		return CpResponse.builder()
+				.attributes(map)
+				.build();
 	}
 
 	private static void validateSubject(Subject subject, String nameId, String nameIdFormat, String inResponseTo, String recipient) {

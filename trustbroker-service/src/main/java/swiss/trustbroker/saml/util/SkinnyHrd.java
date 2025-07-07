@@ -40,14 +40,14 @@ public class SkinnyHrd {
 		var pageContent = new StringBuilder();
 
 		for (var uiObject : uiObjects) {
-			if (pageContent.length() > 0) {
+			if (!pageContent.isEmpty()) {
 				pageContent.append(ENTRY_SEPARATOR);
 			}
 			// ID is most important
 			var urn = ApiSupport.encodeUrlParameter(uiObject.getUrn() != null ? uiObject.getUrn() : DEFAULT_CPURN);
 			pageContent.append(urn).append(ATTRIBUTE_SEPARATOR);
 			// visibility attributes
-			var longTitle = uiObject.getTileTitle().replace(" ", "_");
+			var longTitle = uiObject.getDescription().replace(" ", "_");
 			pageContent.append(longTitle).append(ATTRIBUTE_SEPARATOR);
 			var shortTitle = uiObject.getShortcut() != null ? uiObject.getShortcut() : longTitle.substring(0, 2);
 			pageContent.append(shortTitle);

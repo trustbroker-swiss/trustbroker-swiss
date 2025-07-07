@@ -85,7 +85,6 @@
             "caughtErrorsIgnorePattern": "^_"
           }
         ],
-        "dot-notation": "error",
         "eqeqeq": [
           "error",
           "smart"

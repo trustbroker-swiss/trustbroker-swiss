@@ -124,17 +124,25 @@ public class GitService {
 	}
 
 	private boolean isNewCommitOnRemote(TransportConfigCallback transportConfig, String gitRepoUrl, String gitBranch) {
-		String remoteLastCommit = getRemoteLastCommit(transportConfig, gitRepoUrl, gitBranch);
-		String commitId = System.getProperty(LAST_COMMIT_ID);
+		var remoteLastCommit = getRemoteLastCommit(transportConfig, gitRepoUrl, gitBranch);
+		var commitId = getLastCommit();
 		if (commitId == null || commitId.isEmpty()) {
 			log.info("{} was not saved, running in veto mode", LAST_COMMIT_ID);
 			return false;
 		}
-		boolean newCommit = !remoteLastCommit.equals(commitId);
+		var newCommit = !remoteLastCommit.equals(commitId);
 		if (newCommit) {
-			System.setProperty(LAST_COMMIT_ID, remoteLastCommit);
+			saveLastCommit(remoteLastCommit);
 		}
 		return newCommit;
+	}
+
+	private static void saveLastCommit(String remoteLastCommit) {
+		System.setProperty(LAST_COMMIT_ID, remoteLastCommit);
+	}
+
+	private static String getLastCommit() {
+		return System.getProperty(LAST_COMMIT_ID);
 	}
 
 	public static String getConfigCachePath() {
@@ -255,8 +263,8 @@ public class GitService {
 	}
 
 	private void saveCommitId(TransportConfigCallback transportConfig, String gitUrl, String configBranch) {
-		String remoteLastCommit = getRemoteLastCommit(transportConfig, gitUrl, configBranch);
-		System.setProperty(LAST_COMMIT_ID, remoteLastCommit);
+		var remoteLastCommit = getRemoteLastCommit(transportConfig, gitUrl, configBranch);
+		saveLastCommit(remoteLastCommit);
 	}
 
 	@Traced
@@ -416,7 +424,7 @@ public class GitService {
 	private void checkCredentialBootstrapHttp(String gitUrl) {
 		var token = BootstrapProperties.getGitToken();
 		if (log.isDebugEnabled()) {
-			if (new File(token).exists()) {
+			if (token != null && new File(token).exists()) {
 				log.debug("Using GIT token from file={} to access repo={}", token, gitUrl);
 			}
 			else {

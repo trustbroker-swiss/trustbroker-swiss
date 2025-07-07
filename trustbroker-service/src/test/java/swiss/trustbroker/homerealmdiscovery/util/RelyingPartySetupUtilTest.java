@@ -21,10 +21,11 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -32,6 +33,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.apache.commons.beanutils.BeanUtils;
 import org.junit.jupiter.api.Test;
@@ -47,8 +49,10 @@ import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.AuthorizationGrantType;
 import swiss.trustbroker.federation.xmlconfig.AuthorizationGrantTypes;
 import swiss.trustbroker.federation.xmlconfig.AuthorizedApplication;
+import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderMappings;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
 import swiss.trustbroker.federation.xmlconfig.ClientAuthenticationMethod;
 import swiss.trustbroker.federation.xmlconfig.ClientAuthenticationMethods;
 import swiss.trustbroker.federation.xmlconfig.Definition;
@@ -63,58 +67,8 @@ class RelyingPartySetupUtilTest {
 
 	@Test
 	void mergeClaimsProviderMappings() {
-		var profileClaimsProviderMappings = ClaimsProviderMappings
-				.builder()
-				.claimsProviderList(List.of(
-						ClaimsProviderRelyingParty.builder()
-												  .id("P1enabled")
-												  .enabled(true)
-												  .order(100)
-												  .clientNetworks("N1,N2")
-												  .build(),
-						ClaimsProviderRelyingParty.builder()
-												  .id("P2disabled")
-												  .enabled(false)
-												  .order(200)
-												  .clientNetworks("N1,N2")
-												  .build(),
-						ClaimsProviderRelyingParty.builder()
-												  .id("P3network")
-												  .enabled(false)
-												  .order(300)
-												  .clientNetworks("N1,N2")
-												  .build()
-				))
-				.build();
-		var claimsProviderMappings = ClaimsProviderMappings
-				.builder()
-				.claimsProviderList(List.of(
-						ClaimsProviderRelyingParty.builder()
-												  .id("P1enabled")
-												  .relyingPartyAlias("alias1")
-												  .build(),
-						ClaimsProviderRelyingParty.builder()
-												  .id("P2disabled")
-												  .enabled(false)
-												  .build(),
-						ClaimsProviderRelyingParty.builder()
-												  .id("P3network")
-												  .enabled(true)
-												  .clientNetworks("N3")
-												  .build(),
-						ClaimsProviderRelyingParty.builder()
-												  .id("R1enabled")
-												  .enabled(true)
-												  .order(1)
-												  .clientNetworks("N4")
-												  .build(),
-						ClaimsProviderRelyingParty.builder()
-												  .id("R2disabled")
-												  .enabled(false)
-												  .order(999)
-												  .build()
-				))
-				.build();
+		var profileClaimsProviderMappings = givenProfileMappings();
+		var claimsProviderMappings = givenRelyingPartyMappings();
 		var relyingParty = RelyingParty
 				.builder()
 				.id("TestRP")
@@ -122,38 +76,132 @@ class RelyingPartySetupUtilTest {
 				.claimsProviderMappings(claimsProviderMappings)
 				.build();
 
-		RelyingPartySetupUtil.mergeClaimsProviderMappings(relyingParty, profileClaimsProviderMappings);
+		var claimProviderSetup = givenClaimsProviderSetup(claimsProviderMappings, profileClaimsProviderMappings);
+		RelyingPartySetupUtil.mergeClaimsProviderMappings(relyingParty, profileClaimsProviderMappings, claimProviderSetup, false);
 
 		// all enabled CPs from profile and setup were combined with overrides from setup, no disabled ones anymore
 		var mappings = relyingParty.getClaimsProviderMappings();
 		assertThat(mappings, is(notNullValue()));
 		var mappingList = relyingParty.getClaimsProviderMappings().getClaimsProviderList();
 		assertThat(mappingList, is(notNullValue()));
-		assertThat(mappingList.size(), is(4));
+		assertThat(mappingList.size(), is(7));
 		// SetupRP with alias copied
-		assertThat(mappingList.get(0).getId(), is("P1enabled"));
-		assertThat(mappingList.get(0).getClientNetworks(), is(nullValue()));
-		assertThat(mappingList.get(0).getRelyingPartyAlias(), is("alias1"));
-		assertThat(mappingList.get(0).getEnabled(), is(nullValue())); // null is treated as enabled
-		assertThat(mappingList.get(0).getOrder(), is(nullValue())); // null is treated as not relevant to clients
+		assertMapping(mappingList.get(0), "P1enabled", null, null, "alias1", null);
 		// ProfileRP merged
-		assertThat(mappingList.get(1).getId(), is("P3network"));
-		assertThat(mappingList.get(1).getEnabled(), is(true));
-		assertThat(mappingList.get(1).getOrder(), is(300));
-		assertThat(mappingList.get(1).getClientNetworks(), is("N3"));
-		assertThat(mappingList.get(1).getRelyingPartyAlias(), is(nullValue()));
+		assertMapping(mappingList.get(1), "P3network", true, "N3", null,  300);
 		// SetupRP copied
-		assertThat(mappingList.get(2).getId(), is("R1enabled"));
-		assertThat(mappingList.get(2).getClientNetworks(), is("N4"));
-		assertThat(mappingList.get(2).getRelyingPartyAlias(), is(nullValue()));
-		assertThat(mappingList.get(2).getEnabled(), is(true));
-		assertThat(mappingList.get(2).getOrder(), is(1));
+		assertMapping(mappingList.get(2), "R1enabled", true, "N4", null, 1);
 		// ProfileRP added
-		assertThat(mappingList.get(3).getId(), is("P1enabled"));
-		assertThat(mappingList.get(3).getEnabled(), is(true));
-		assertThat(mappingList.get(3).getOrder(), is(100));
-		assertThat(mappingList.get(3).getClientNetworks(), is("N1,N2"));
-		assertThat(mappingList.get(3).getRelyingPartyAlias(), is(nullValue()));
+		assertMapping(mappingList.get(5), "P1enabled", true, "N1,N2", null, 100);
+		// Alias match
+		assertThat(mappingList.get(3).getId(), is("P4network"));
+		assertThat(mappingList.get(3).getRelyingPartyAlias(), is("alias"));
+		assertThat(mappingList.get(4).getId(), is("P5network"));
+		assertThat(mappingList.get(6).getId(), is("P5network"));
+	}
+
+	private static ClaimsProviderMappings givenRelyingPartyMappings() {
+		return ClaimsProviderMappings
+				.builder()
+				.claimsProviderList(List.of(
+						ClaimsProvider.builder()
+									  .id("P1enabled")
+									  .relyingPartyAlias("alias1")
+									  .build(),
+						ClaimsProvider.builder()
+									  .id("P2disabled")
+									  .enabled(false)
+									  .build(),
+						ClaimsProvider.builder()
+									  .id("P3network")
+									  .enabled(true)
+									  .clientNetworks("N3")
+									  .build(),
+						ClaimsProvider.builder()
+									  .id("R1enabled")
+									  .enabled(true)
+									  .order(1)
+									  .clientNetworks("N4")
+									  .build(),
+						ClaimsProvider.builder()
+									  .id("R2disabled")
+									  .enabled(false)
+									  .order(999)
+									  .build(),
+						ClaimsProvider.builder()
+									  .id("P4network")
+									  .order(300)
+									  .clientNetworks("N1,N2")
+									  .relyingPartyAlias("alias")
+									  .build(),
+						ClaimsProvider.builder()
+									  .id("P5network")
+									  .order(300)
+									  .clientNetworks("N1,N2")
+									  .relyingPartyAlias("alias2")
+									  .build()
+				))
+				.build();
+	}
+
+	private static ClaimsProviderMappings givenProfileMappings() {
+		return ClaimsProviderMappings
+				.builder()
+				.claimsProviderList(List.of(
+						ClaimsProvider.builder()
+									  .id("P1enabled")
+									  .enabled(true)
+									  .order(100)
+									  .clientNetworks("N1,N2")
+									  .build(),
+						ClaimsProvider.builder()
+									  .id("P2disabled")
+									  .enabled(false)
+									  .order(200)
+									  .clientNetworks("N1,N2")
+									  .build(),
+						ClaimsProvider.builder()
+									  .id("P3network")
+									  .enabled(false)
+									  .order(300)
+									  .clientNetworks("N1,N2")
+									  .build(),
+						ClaimsProvider.builder()
+									  .id("P4network")
+									  .order(300)
+									  .clientNetworks("N1,N2")
+									  .relyingPartyAlias("alias")
+									  .build(),
+						ClaimsProvider.builder()
+									  .id("P5network")
+									  .order(300)
+									  .clientNetworks("N1,N2")
+									  .relyingPartyAlias("alias1")
+									  .build()
+				))
+				.build();
+	}
+
+	private static void assertMapping(ClaimsProvider mapping, String id, Boolean enabled, String networks, String rpAlias,
+			Integer order) {
+		assertThat(mapping.getId(), is(id));
+		assertThat(mapping.getClientNetworks(), is(networks));
+		assertThat(mapping.getRelyingPartyAlias(), is(rpAlias));
+		assertThat(mapping.getEnabled(), is(enabled)); // null is treated as enabled
+		assertThat(mapping.getOrder(), is(order)); // null is treated as not relevant to clients
+	}
+
+	private ClaimsProviderSetup givenClaimsProviderSetup(ClaimsProviderMappings claimsProviderMappings, ClaimsProviderMappings profileClaimsProviderMappings) {
+		var claimsProviderSetup = new ClaimsProviderSetup();
+		List<ClaimsParty> claimParty1 = claimsProviderMappings.getClaimsProviderList().stream()
+				.map(claimsProvider -> ClaimsParty.builder().id(claimsProvider.getId()).build())
+				.collect(Collectors.toList());
+		List<ClaimsParty> claimParty2 = profileClaimsProviderMappings.getClaimsProviderList().stream()
+				.map(claimsProvider -> ClaimsParty.builder().id(claimsProvider.getId()).build())
+				.collect(Collectors.toList());
+		claimParty1.addAll(claimParty2);
+		claimsProviderSetup.setClaimsParties(claimParty1);
+		return claimsProviderSetup;
 	}
 
 	@Test
@@ -276,17 +324,23 @@ class RelyingPartySetupUtilTest {
 		var baseRelyingParty = new RelyingParty();
 		assertDoesNotThrow(() -> RelyingPartySetupUtil.mergeQoaLevels(relyingParty, baseRelyingParty));
 
-		// base profile
-		var expectedQoa = givenQoa(null, SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED);
+		// use base profile
+		var expectedQoa = givenQoa(null, null, SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED);
+		var rpOoa = givenQoa(null, true, null);
+		var mergedQoa = givenQoa(null, true, SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED);
 		baseRelyingParty.setQoa(expectedQoa);
 		RelyingPartySetupUtil.mergeQoaLevels(relyingParty, baseRelyingParty);
-		var actualQoa = relyingParty.getQoa();
-		assertThat(actualQoa, is(expectedQoa));
+		assertThat(relyingParty.getQoa(), is(expectedQoa));
+
+		// merge
+		relyingParty.setQoa(rpOoa);
+		RelyingPartySetupUtil.mergeQoaLevels(relyingParty, baseRelyingParty);
+		assertThat(relyingParty.getQoa(), is(mergedQoa));
 
 		// preserve
-		baseRelyingParty.setQoa(givenQoa(2, SamlContextClass.SMART_CARD_PKI));
+		baseRelyingParty.setQoa(givenQoa(2, null, SamlContextClass.SMART_CARD_PKI));
 		RelyingPartySetupUtil.mergeQoaLevels(relyingParty, baseRelyingParty);
-		assertThat(relyingParty.getQoa(), is(expectedQoa));
+		assertThat(relyingParty.getQoa(), is(mergedQoa));
 	}
 
 	@Test
@@ -463,17 +517,132 @@ class RelyingPartySetupUtilTest {
 		return definitions;
 	}
 
-	private Qoa givenQoa(Integer order, String qoaClass) {
+	private Qoa givenQoa(Integer order, Boolean enforce, String qoaClass) {
 		List<AcClass> classes = new ArrayList<>();
-		classes.add(AcClass.builder().order(order).contextClass(qoaClass).build());
-		Qoa qoa = new Qoa();
-		qoa.setClasses(classes);
-		return qoa;
+		if (qoaClass != null || order != null) {
+			classes.add(AcClass.builder()
+							   .order(order)
+							   .contextClass(qoaClass)
+							   .build());
+		}
+		return Qoa.builder()
+				  .classes(classes)
+				  .enforce(enforce)
+				  .build();
 	}
 
 	private static RelyingParty createRelyingPartyWithAccessRequest() {
 		var ar = AccessRequest.builder().enabled(true).build();
 		return RelyingParty.builder().id("rpId").accessRequest(ar).build();
+	}
+
+	private ArrayList<ClaimsProvider> givenClaimsProviders() {
+		ArrayList<ClaimsProvider> claimsProviders = new ArrayList<>();
+		claimsProviders.add(ClaimsProvider.builder().id("id1").clientNetworks("cn1").build());
+		claimsProviders.add(ClaimsProvider.builder().id("id2").clientNetworks("cn2").build());
+		return claimsProviders;
+	}
+
+	private static List<ClaimsProvider> givenClaimsProviderDefinitions() {
+		return List.of(
+				ClaimsProvider.builder().id("id1").img("img1").build(),
+				ClaimsProvider.builder().id("id2").img("img2").build(),
+				ClaimsProvider.builder().id(null).img("img2").build()
+		);
+	}
+
+	@Test
+	void getCpDefinitionByIdTest() {
+		var claimsProviderDef = givenClaimsProviderDefinitions();
+		assertFalse(RelyingPartySetupUtil.getCpDefinitionById("cpId", claimsProviderDef).isPresent());
+		assertTrue(RelyingPartySetupUtil.getCpDefinitionById("id1", claimsProviderDef).isPresent());
+		assertTrue(RelyingPartySetupUtil.getCpDefinitionById("id2", claimsProviderDef).isPresent());
+		assertFalse(RelyingPartySetupUtil.getCpDefinitionById(null, claimsProviderDef).isPresent());
+	}
+
+	@Test
+	void getRpClaimsMappingTest() {
+		var baseClaimsProvider1 = ClaimsProvider.builder().id("id1").img("img1").build();
+		List<ClaimsProvider> claimsProviders = givenClaimsProviders();
+		assertFalse(RelyingPartySetupUtil.getRpClaimsMapping(baseClaimsProvider1, claimsProviders, false).isEmpty());
+
+		var baseClaimsProvider2 = ClaimsProvider.builder().id("id1").img("img1").relyingPartyAlias("rpAlias").build();
+		assertTrue(RelyingPartySetupUtil.getRpClaimsMapping(baseClaimsProvider2, claimsProviders, false).isEmpty());
+
+		var baseClaimsProvider3 = ClaimsProvider.builder().id("id3").img("img1").relyingPartyAlias("rpAlias3").build();
+		claimsProviders.add(baseClaimsProvider3);
+		assertFalse(RelyingPartySetupUtil.getRpClaimsMapping(baseClaimsProvider3, claimsProviders, false).isEmpty());
+	}
+
+	@Test
+	void mergeEnabledClaimsProvidersTest() {
+		var rpCpMappings = ClaimsProviderMappings.builder()
+				.claimsProviderList(
+						List.of(ClaimsProvider.builder().id("rpCp1").build(), ClaimsProvider.builder().id("rpCp2").build()))
+				.build();
+		var relyingParty = RelyingParty.builder().id("rpId")
+				.claimsProviderMappings(rpCpMappings)
+				.build();
+
+		var baseCpMappingList = List.of(ClaimsProvider.builder().id("baseCp1").build(),
+				ClaimsProvider.builder().id("baseCp2").img("imgBase2").build(),
+				// Cp with existing Cp definition
+				ClaimsProvider.builder().id("id1").build(),
+				// Cp with existing Cp definition
+				ClaimsProvider.builder().id("id2").img("imgBase").build());
+
+		// profile overrides
+		var baseCpMappings = ClaimsProviderMappings.builder()
+				.claimsProviderList(baseCpMappingList)
+				.build();
+		var profileCpSetup = givenClaimsProviderSetup(rpCpMappings, baseCpMappings);
+		RelyingPartySetupUtil.mergeEnabledClaimsProviders(relyingParty, baseCpMappingList, profileCpSetup, false);
+
+		// default overrides
+		var claimsProviderMappings = ClaimsProviderMappings
+				.builder()
+				.enabled(true)
+				.claimsProviderList(givenClaimsProviderDefinitions())
+				.build();
+		var defaultCpSetup = givenClaimsProviderSetup(rpCpMappings, claimsProviderMappings);
+		RelyingPartySetupUtil.mergeClaimsProviderMappings(relyingParty, claimsProviderMappings, defaultCpSetup, true);
+
+		var resultedMappings = relyingParty.getClaimsProviderMappings();
+		assertNotNull(resultedMappings);
+		var resultCpList = resultedMappings.getClaimsProviderList();
+		assertNotNull(resultCpList);
+		assertEquals(6, resultCpList.size());
+		// Rp Cp configuration
+		assertNotNull(getCpById("rpCp1", resultCpList));
+		assertNull(getCpById("rpCp1", resultCpList).getImg());
+		// Base Cp configuration
+		assertNotNull(getCpById("baseCp1", resultCpList));
+		assertNull(getCpById("baseCp1", resultCpList).getImg());
+		// Cp with UI configuration
+		assertNotNull(getCpById("baseCp2", resultCpList));
+		assertNotNull(getCpById("baseCp2", resultCpList).getImg());
+		assertNotNull(getCpById("id1", resultCpList));
+		assertNotNull(getCpById("id1", resultCpList).getImg());
+		// Image from ClaimsProviderDefinitions
+		assertEquals("img1", getCpById("id1", resultCpList).getImg());
+		assertNotNull(getCpById("id2", resultCpList));
+		assertNotNull(getCpById("id2", resultCpList).getImg());
+		// Image from Base Cp configuration
+		assertEquals("imgBase", getCpById("id2", resultCpList).getImg());
+	}
+
+	private ClaimsProvider getCpById(String rpCp1, List<ClaimsProvider> resultCpList) {
+		return resultCpList.stream()
+				.filter(cp -> cp.getId().equals(rpCp1))
+				.findFirst().orElse(null);
+	}
+
+	@Test
+	void isValidClaimsProviderMappingsTest() {
+		var claimsProviders = givenClaimsProviders();
+		assertTrue(RelyingPartySetupUtil.isValidClaimsProviderMappings(claimsProviders, "claimsProviderDef"));
+		claimsProviders.add(ClaimsProvider.builder().id("id1").build());
+		assertFalse(RelyingPartySetupUtil.isValidClaimsProviderMappings(claimsProviders, "claimsProviderDef"));
 	}
 
 }

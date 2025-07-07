@@ -14,9 +14,11 @@
 -->
 <footer class="portal-footer">
 	<div class="ob-footer-item ob-footer-item-info">
-		<p [innerHTML]="'trustbroker.footer.info.left' | translate | safeMarkup"></p>
+		<!-- data-test is for automated tests -->
+		<p data-test="footer.info.left" [innerHTML]="'trustbroker.footer.info.left' | translate | safeMarkup"></p>
 	</div>
 	<div class="ob-footer-item ob-footer-item-links">
-		<p [innerHTML]="'trustbroker.footer.info.right' | translate | safeMarkup"></p>
+		<!-- data-test is for automated tests -->
+		<p data-test="footer.info.right" [innerHTML]="'trustbroker.footer.info.right' | translate | safeMarkup"></p>
 	</div>
 </footer>

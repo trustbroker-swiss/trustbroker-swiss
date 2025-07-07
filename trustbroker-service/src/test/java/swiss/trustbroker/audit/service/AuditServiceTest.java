@@ -69,7 +69,7 @@ class AuditServiceTest {
 	void testLogInboundAuthnRequest() {
 		// DEBUG AuthnRequest from RP
 		AuditDto auditDto = buildDto(EventType.AUTHN_REQUEST);
-		auditService.logInboundSamlFlow(auditDto);
+		auditService.logInboundFlow(auditDto);
 		verify(mockLogger, times(1)).log(eq(EventType.AUTHN_REQUEST), eq(true), startsWith("AuthnRequest:"));
 		verify(mockLogger, times(1)).log(eq(EventType.AUTHN_REQUEST), eq(true), contains("event=authnrequest"));
 	}
@@ -87,7 +87,7 @@ class AuditServiceTest {
 	void testLogInboundSamlResponse() {
 		// DEBUG Response from CP
 		AuditDto auditDto = buildDto(EventType.RESPONSE);
-		auditService.logInboundSamlFlow(auditDto);
+		auditService.logInboundFlow(auditDto);
 		verify(mockLogger, times(1)).log(eq(EventType.RESPONSE), eq(true), startsWith("AuthnResponse:"));
 		verify(mockLogger, times(1)).log(eq(EventType.RESPONSE), eq(true), contains("event=response"));
 	}

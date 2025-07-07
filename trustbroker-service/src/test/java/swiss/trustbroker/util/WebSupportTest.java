@@ -16,6 +16,7 @@
 package swiss.trustbroker.util;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,6 +32,7 @@ import jakarta.servlet.http.Cookie;
 import net.shibboleth.shared.net.URLBuilder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
@@ -40,7 +42,11 @@ import org.springframework.web.servlet.view.UrlBasedViewResolver;
 import swiss.trustbroker.common.config.RegexNameValue;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.tracing.TraceSupport;
+import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.ArtifactResolution;
 import swiss.trustbroker.config.dto.NetworkConfig;
+import swiss.trustbroker.config.dto.OidcProperties;
+import swiss.trustbroker.config.dto.SamlProperties;
 
 @SpringBootTest(classes = WebSupport.class)
 class WebSupportTest {
@@ -51,6 +57,26 @@ class WebSupportTest {
 
 	private static final String TEST_URL_WITH_QUERY = TEST_URL + '?' + TEST_QUERY;
 
+	private static final String SAML_HOST = "https://saml.localdomain";
+
+	private static final String SAML_PATH = "/saml";
+
+	private static final String SAML_URL = SAML_HOST + SAML_PATH;
+
+	private static final String OIDC_HOST = "https://oidc.localdomain";
+
+	private static final String OIDC_PATH = "/oidc";
+
+	private static final String OIDC_URL = OIDC_HOST + OIDC_PATH;
+
+	private static final String OIDC_LOGOUT_PATH = "/oidc/logout";
+
+	private static final String OIDC_LOGOUT_URL = OIDC_HOST + OIDC_LOGOUT_PATH;
+
+	private static final String OIDC_IFRAME_PATH = "/oidc/iframe";
+
+	private static final String OIDC_IFRAME_URL = OIDC_HOST + OIDC_IFRAME_PATH;
+
 
 	@Test
 	void getUniqueQueryParameter() throws Exception {
@@ -60,17 +86,14 @@ class WebSupportTest {
 		assertThat(WebSupport.getUniqueQueryParameter(urlBuilder, "four"), is(nullValue()));
 	}
 
-	@Test
-	void getViewRedirectResponse() {
-		var url = "test";
+	@ParameterizedTest
+	@CsvSource(value = {
+		"test," + UrlBasedViewResolver.REDIRECT_URL_PREFIX + "test",
+		"null,null"
+	}, nullValues = "null")
+	void getViewRedirectResponse(String url, String expected) {
 		var result = WebSupport.getViewRedirectResponse(url);
-		assertThat(result, is(UrlBasedViewResolver.REDIRECT_URL_PREFIX + url));
-	}
-
-	@Test
-	void getViewRedirectResponseNull() {
-		var result = WebSupport.getViewRedirectResponse(null); // NOSONAR
-		assertThat(result, is(nullValue()));
+		assertThat(result, is(expected));
 	}
 
 	@Test
@@ -96,24 +119,24 @@ class WebSupportTest {
 
 		// no network injection
 		var request = new MockHttpServletRequest();
-		assertThat(WebSupport.getClientNetworkOnIntranet(request, network), is(nullValue()));
+		assertThat(WebSupport.getClientNetwork(request, network), is(nullValue()));
 
 		// intranet access, no injection
 		request = new MockHttpServletRequest();
 		request.addHeader(network.getNetworkHeader(), network.getIntranetNetworkName());
-		assertThat(WebSupport.getClientNetworkOnIntranet(request, network), is(network.getIntranetNetworkName()));
+		assertThat(WebSupport.getClientNetwork(request, network), is(network.getIntranetNetworkName()));
 
 		// internet access, injection ignored
 		request = new MockHttpServletRequest();
 		request.addHeader(network.getNetworkHeader(), network.getInternetNetworkName());
 		request.addHeader(network.getTestNetworkHeader(), network.getIntranetNetworkName());
-		assertThat(WebSupport.getClientNetworkOnIntranet(request, network), is(network.getInternetNetworkName()));
+		assertThat(WebSupport.getClientNetwork(request, network), is(network.getInternetNetworkName()));
 
 		// intranet access, injection working
 		request = new MockHttpServletRequest();
 		request.addHeader(network.getNetworkHeader(), network.getIntranetNetworkName());
 		request.addHeader(network.getTestNetworkHeader(), network.getInternetNetworkName());
-		assertThat(WebSupport.getClientNetworkOnIntranet(request, network), is(network.getInternetNetworkName()));
+		assertThat(WebSupport.getClientNetwork(request, network), is(network.getInternetNetworkName()));
 	}
 
 	@Test
@@ -276,6 +299,37 @@ class WebSupportTest {
 						false
 				}
 		};
+	}
+
+	@Test
+	void getOwnOrigins() {
+		var properties = givenProperties();
+		var result = WebSupport.getOwnOrigins(properties);
+		assertThat(result, containsInAnyOrder(SAML_HOST, OIDC_HOST));
+	}
+
+	@Test
+	void getOwnPerimeterPaths() {
+		var properties = givenProperties();
+		var result = WebSupport.getOwnPerimeterPaths(properties);
+		assertThat(result, containsInAnyOrder(SAML_PATH, OIDC_PATH, OIDC_IFRAME_PATH));
+	}
+
+	private static TrustBrokerProperties givenProperties() {
+		var properties = new TrustBrokerProperties();
+		// ignored:OIDC_LOGOUT_PATH
+		properties.setSloDefaultOidcDestinationPath(TEST_URL + "/slo/destination");
+		var saml = new SamlProperties();
+		saml.setConsumerUrl(SAML_URL);
+		// ignored:
+		saml.setArtifactResolution(ArtifactResolution.builder().serviceUrl(TEST_URL + "/arp").build());
+		properties.setSaml(saml);
+		var oidc = new OidcProperties();
+		oidc.setPerimeterUrl(OIDC_URL);
+		oidc.setEndSessionEndpoint(OIDC_LOGOUT_URL);
+		oidc.setSessionIFrameEndpoint(OIDC_IFRAME_URL);
+		properties.setOidc(oidc);
+		return properties;
 	}
 
 }

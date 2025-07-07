@@ -27,7 +27,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -57,9 +56,12 @@ import swiss.trustbroker.audit.service.InboundAuditMapper;
 import swiss.trustbroker.common.dto.CookieParameters;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.saml.dto.SamlBinding;
 import swiss.trustbroker.common.saml.util.Base64Util;
 import swiss.trustbroker.common.saml.util.SamlFactory;
+import swiss.trustbroker.common.saml.util.SamlIoUtil;
 import swiss.trustbroker.common.saml.util.SamlUtil;
+import swiss.trustbroker.common.saml.util.VelocityUtil;
 import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.StringUtil;
@@ -84,6 +86,7 @@ import swiss.trustbroker.sessioncache.dto.SsoState;
 import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.sessioncache.service.StateCacheService;
 import swiss.trustbroker.sso.dto.SloNotification;
+import swiss.trustbroker.sso.dto.SloResponseParameters;
 
 @Service
 @Slf4j
@@ -166,8 +169,6 @@ public class SsoService {
 		private List<Cookie> cookiesToExpire = new ArrayList<>();
 	}
 
-	static final String VELOCITY_PARAM_XTB_HTTP_METHOD = "XTBHttpMethod";
-
 	static final String VELOCITY_PARAM_XTB_SLO_NOTIFICATIONS = "XTBSloNotifications";
 
 	static final String VELOCITY_PARAM_XTB_SLO_MAX_WAIT = "XTBSloMaxWaitMillis";
@@ -177,8 +178,6 @@ public class SsoService {
 	static final String VELOCITY_PARAM_XTB_SLO_WAIT_FOR_COUNT = "XTBSloWaitForCount";
 
 	static final String VELOCITY_PARAM_XTB_CONSOLE_DEBUG = "XTBSloConsoleDebug";
-
-	static final String VELOCITY_PARAM_ACTION = "action"; // from OpenSaml
 
 	static final String SSO_DISPLAY_OIDC_MARKER = " (OIDC)";
 
@@ -236,16 +235,17 @@ public class SsoService {
 	}
 
 	public Cookie generateCookie(StateData stateData) {
+		var isSecureTransport = trustBrokerProperties.isSecureBrowserHeaders();
 		var subjectNameId = stateData.getSubjectNameId();
 		var ssoState = stateData.getSsoState();
 		var sessionId = stateData.getId();
-		var sameSite = calculateCookieSameSiteFlag(ssoState);
+		var sameSite = isSecureTransport ? calculateCookieSameSiteFlag(ssoState): null;
 		var sessionLifeTime = trustBrokerProperties.isUseSessionCookieForSso() ? null : ssoState.getMaxSessionTimeSecs();
 		var params = ssoState.isImplicitSsoGroup() ? getCookieSsoGroupName(ssoState.getSsoGroupName()) :
 				SsoCookieNameParams.of(ssoState.getSsoGroupName(), stateData.getCpIssuer(), subjectNameId);
 		return generateCookie(
 				params,
-				sessionId, sessionLifeTime, trustBrokerProperties.isSecureBrowserHeaders(), sameSite);
+				sessionId, sessionLifeTime, isSecureTransport, sameSite);
 	}
 
 	String calculateCookieSameSiteFlag(SsoState ssoState) {
@@ -970,13 +970,15 @@ public class SsoService {
 		var lifecycle = stateData.getLifecycle();
 		var responseParticipants = ssoState.getSsoParticipants().stream().map(
 				participant -> {
-					var id = participant.getRpIssuerId();
-					if (id == null) {
-						id = participant.getOidcClientId() + SSO_DISPLAY_OIDC_MARKER;
-					}
-					var cp = relyingPartyDefinitions.getClaimsProviderById(participant.getCpIssuerId());
-					return new SsoParticipant(id,
-							cp.getId(), cp.getButton(), cp.getImg(), cp.getShortcut(), cp.getColor());
+					var rpIssuerId = participant.getRpIssuerId();
+					var oidcClientId = participant.getOidcClientId();
+					var rp = participant.getRpIssuerId() != null ?
+							relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuerId, null, true) :
+							relyingPartyDefinitions.getRelyingPartyByOidcClientId(oidcClientId, null, trustBrokerProperties, true);
+					var cp = relyingPartySetupService.getClaimsProviderById(rp, participant.getCpIssuerId());
+					return new SsoParticipant(
+							rpIssuerId != null ? rpIssuerId : oidcClientId + SsoService.SSO_DISPLAY_OIDC_MARKER,
+							cp.getId(), cp.getImg(), cp.getShortcut(), cp.getColor());
 				}).collect(Collectors.toSet());
 		var result = SsoParticipants.builder()
 				.ssoGroupName(ssoState.getSsoGroupName())
@@ -1067,10 +1069,13 @@ public class SsoService {
 		if (ssoStateData.getCpResponse() == null) {
 			// this would be a bug
 			throw new TechnicalException(
-					String.format("Cannot set subjectNameId in ssoSessionId=%s due to missing IDP response",ssoStateData.getId()));
+					String.format("Cannot set subjectNameId in ssoSessionId=%s due to missing CP response",ssoStateData.getId()));
 		}
 		var originalNameId = ssoStateData.getCpResponse().getOriginalNameId();
-		if (ssoStateData.getSubjectNameId() != null && !ssoStateData.getSubjectNameId().equals(originalNameId)) {
+		var mappedNameId = ssoStateData.getCpResponse().getMappedNameId();
+		if (ssoStateData.getSubjectNameId() != null &&
+				!ssoStateData.getSubjectNameId().equals(originalNameId) &&
+				!ssoStateData.getSubjectNameId().equals(mappedNameId)) {
 			// this would be a bug, the match needs to be checked before
 			throw new TechnicalException(String.format(
 							"Cannot change in ssoSessionId=%s from subjectNameId=%s to originalNameId=%s",
@@ -1166,7 +1171,7 @@ public class SsoService {
 			String claimUrn) {
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(
 				stateDataByAuthnReq.getRpIssuer(), stateDataByAuthnReq.getRpReferer());
-		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByUrn(claimUrn, stateDataByAuthnReq.getReferer());
+		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(claimUrn, stateDataByAuthnReq.getReferer());
 		var ssoState = findValidStateFromCookies(relyingParty, claimsParty, cookies);
 		if (ssoState.isEmpty()) {
 			return SsoSessionOperation.IGNORE;
@@ -1388,23 +1393,25 @@ public class SsoService {
 		var result = new SloNotification(sloResponse);
 		var url = calculatedSloUrl != null ? calculatedSloUrl : sloResponse.getUrl();
 		if (sloResponse.getProtocol() == SloProtocol.SAML2) {
+			if (sloResponse.getBinding() == SamlBinding.ARTIFACT) {
+				throw new TechnicalException(String.format("Artifact binding not supported for LogoutResponse url=%s", url));
+			}
 			var sloIssuer = getSloIssuerWithFallback(sloResponse.getIssuer());
 			var logoutRequest = SamlFactory.createLogoutRequest(sloIssuer, url, nameId);
-			if (relyingParty.requireSignedLogoutRequest()) {
-				var sloSigner = sloResponse.getSloSigner();
-				if (sloSigner == null) {
-					log.debug("No signer for SAML LogoutRequest for sloUrl={}, using RP signer", url);
-					sloSigner = relyingParty.getRpSigner();
-				}
-				var signatureParameters = relyingParty.getSignatureParametersBuilder()
-						.credential(sloSigner)
-						.skinnyAssertionNamespaces(trustBrokerProperties.getSkinnyAssertionNamespaces())
-						.build();
-				SamlFactory.signSignableObject(logoutRequest, signatureParameters);
-				log.debug("Signed SAML LogoutRequest for sloUrl={}", url);
-			}
-			result.setSamlLogoutRequest(SamlUtil.encode(logoutRequest));
 			result.setSamlRelayState(SamlUtil.generateRelayState());
+			if (sloResponse.getBinding() == SamlBinding.REDIRECT) {
+				// encoded data needed for REDIRECT signature
+				result.setSamlLogoutRequest(SamlIoUtil.encodeSamlRedirectData(logoutRequest));
+				result.setSamlHttpMethod(HttpMethod.GET.name());
+			}
+			if (relyingParty.requireSignedLogoutNotificationRequest()) {
+				setSignatureParameters(relyingParty, sloResponse, url, logoutRequest, result);
+			}
+			if (sloResponse.getBinding() == SamlBinding.POST) {
+				// signature needed for POST encoding
+				result.setSamlLogoutRequest(SamlUtil.encode(logoutRequest));
+				result.setSamlHttpMethod(HttpMethod.POST.name());
+			}
 		}
 		else if (sloResponse.getProtocol() == SloProtocol.OIDC) {
 			url = appendFrontchannelLogoutQueryString(url, sloResponse.getIssuer(), oidcSessionId);
@@ -1415,6 +1422,32 @@ public class SsoService {
 		}
 		result.setEncodedUrl(HTMLEncoder.encodeForHTMLAttribute(url));
 		return result;
+	}
+
+	private void setSignatureParameters(RelyingParty relyingParty, SloResponse sloResponse, String url,
+			LogoutRequest logoutRequest, SloNotification result) {
+		var sloSigner = sloResponse.getSloSigner();
+		if (sloSigner == null) {
+			log.debug("No signer for SAML LogoutRequest for sloUrl={}, using RP signer", url);
+			sloSigner = relyingParty.getRpSigner();
+		}
+		var signatureParameters = relyingParty.getSignatureParametersBuilder()
+											  .credential(sloSigner)
+											  .skinnyAssertionNamespaces(trustBrokerProperties.getSkinnyAssertionNamespaces())
+											  .build();
+		if (sloResponse.getBinding() == SamlBinding.POST) {
+			SamlFactory.signSignableObject(logoutRequest, signatureParameters);
+		}
+		else if (sloResponse.getBinding() == SamlBinding.REDIRECT) {
+			var signatureAlgorithm =
+					SamlIoUtil.getSamlRedirectSignatureAlgorithmWithDefault(signatureParameters.getSignatureAlgorithm());
+			var signature = SamlIoUtil.buildEncodedSamlRedirectSignature(logoutRequest,
+					signatureParameters.getCredential(), signatureAlgorithm,
+					result.getSamlRelayState(), result.getSamlLogoutRequest());
+			result.setSamlRedirectSignature(signature);
+			result.setSamlRedirectSignatureAlgorithm(WebUtil.urlEncodeValue(signatureAlgorithm));
+		}
+		log.debug("Signed SAML LogoutRequest for sloUrl={}", url);
 	}
 
 	private String appendFrontchannelLogoutQueryString(String url, String rpSloIssuer, String oidcSessionId) {
@@ -1429,7 +1462,7 @@ public class SsoService {
 		return rpSloIssuer;
 	}
 
-	Collection<SloNotification> createSloNotifications(RelyingParty relyingParty, String referer,
+	Map<SloResponse, SloNotification> createSloNotifications(RelyingParty relyingParty, String referer,
 			Set<SsoSessionParticipant> sessionParticipants, NameID nameId, String oidcSessionId) {
 		Map<SloResponse, SloNotification> responseMap = new HashMap<>();
 		// add notifications SLO URLs configured for RP (ACS URL considered for session participant)
@@ -1455,8 +1488,7 @@ public class SsoService {
 				log.error("Missing RP for ssoSessionParticipant={}", participant);
 			}
 		}
-		// null values are the RESPONSE entries - remove them
-		return responseMap.values().stream().filter(Objects::nonNull).toList();
+		return responseMap;
 	}
 
 	static String getSsoSessionParticipantAcsUrl(RelyingParty relyingParty,
@@ -1509,7 +1541,7 @@ public class SsoService {
 				}
 			}
 
-			for (SloResponse response : sso.getSloResponse()) {
+			for (var response : sso.getSloResponse()) {
 				addSloNotificationsForResponse(
 						relyingParty, acsUrl, initiatingRp, nameId, oidcSessionId, responseMap, response);
 			}
@@ -1521,7 +1553,15 @@ public class SsoService {
 		var protocol = oidcSessionId == null ? SloProtocol.SAML2 : SloProtocol.OIDC;
 		if (initiatingRp && response.isResponse(protocol)) {
 			// RESPONSE for RP initiating the SLO gets LogoutResponse already, no notification
-			responseMap.put(response, null);
+			SloNotification notification = null;
+			if (response.getProtocol() == SloProtocol.SAML2 && response.getBinding() == SamlBinding.REDIRECT) {
+				var calculatedSloUrl = calculateSloUrlForAcsUrl(relyingParty, response.getUrl(), acsUrl, response.matchAcUrl());
+				if (calculatedSloUrl != null) {
+					notification = new SloNotification(response);
+					notification.setEncodedUrl(HTMLEncoder.encodeForHTMLAttribute(calculatedSloUrl));
+				}
+			}
+			responseMap.put(response, notification);
 		}
 		// there will be only a few notifications, iteration in loop does not hurt
 		if (response.isNotification(protocol) && responseMap.keySet().stream().noneMatch(response::isSameExceptMode)) {
@@ -1587,7 +1627,7 @@ public class SsoService {
 				.mapFrom(response)
 				.build();
 		auditDto.setSide(DestinationType.RP.getLabel());
-		auditService.logInboundSamlFlow(auditDto);
+		auditService.logInboundFlow(auditDto);
 	}
 
 	public void auditLogoutRequestFromRp(HttpServletRequest httpServletRequest, LogoutRequest logoutRequest,
@@ -1600,7 +1640,7 @@ public class SsoService {
 				.mapFrom(oidcAuditData)
 				.build();
 		auditDto.setSide(DestinationType.RP.getLabel());
-		auditService.logInboundSamlFlow(auditDto);
+		auditService.logInboundFlow(auditDto);
 	}
 
 	void ensureSsoState(StateData ssoStateData) {
@@ -1641,10 +1681,12 @@ public class SsoService {
 	 * @param oidcRedirectUrl optional, null for logout initiated via SAML
 	 * @return parameters for rendering SLO velocity template.
 	 */
-	public Map<String, Object> buildSloVelocityParameters(RelyingParty relyingParty, String referer,
+	public SloResponseParameters buildSloResponseParameters(RelyingParty relyingParty, String referer,
 			Set<SsoSessionParticipant> sloNotifications, NameID nameId, String oidcSessionId, String oidcRedirectUrl) {
 		Map<String, Object> velocityParams = new HashMap<>();
-		var notifications = createSloNotifications(relyingParty, referer, sloNotifications, nameId, oidcSessionId);
+		var responseMap = createSloNotifications(relyingParty, referer, sloNotifications, nameId, oidcSessionId);
+		// null values are the RESPONSE entries
+		var notifications = getNotifications(responseMap);
 		// velocity parameters
 		// first wait minWait, then if not yet completed 100ms until all are except notify-try are completed
 		var maxWait = notifications.isEmpty() ? -1 : trustBrokerProperties.getSloNotificationTimoutMillis();
@@ -1658,11 +1700,35 @@ public class SsoService {
 		velocityParams.put(VELOCITY_PARAM_XTB_SLO_WAIT_FOR_COUNT, notifications.size());
 		velocityParams.put(VELOCITY_PARAM_XTB_SLO_NOTIFICATIONS, notifications);
 		velocityParams.put(VELOCITY_PARAM_XTB_CONSOLE_DEBUG, log.isDebugEnabled());
-		if (oidcRedirectUrl != null) {
-			velocityParams.put(VELOCITY_PARAM_XTB_HTTP_METHOD, HttpMethod.GET.name());
-			velocityParams.put(VELOCITY_PARAM_ACTION, oidcRedirectUrl);
+		var redirectUrl = oidcRedirectUrl;
+		if (redirectUrl == null) {
+			var responseRedirectUrl = getRedirectResponse(responseMap);
+			if (responseRedirectUrl.isPresent()) {
+				redirectUrl = responseRedirectUrl.get();
+			}
 		}
-		return velocityParams;
+		if (redirectUrl != null) {
+			velocityParams.put(VelocityUtil.VELOCITY_PARAM_XTB_HTTP_METHOD, HttpMethod.GET.name());
+			velocityParams.put(VelocityUtil.VELOCITY_PARAM_ACTION, redirectUrl);
+		}
+		return new SloResponseParameters(velocityParams, redirectUrl != null);
+	}
+
+	private static List<SloNotification> getNotifications(Map<SloResponse, SloNotification> responseMap) {
+		return responseMap.entrySet()
+				.stream()
+				.filter(entry -> entry.getKey().getMode().isNotification())
+				.map(Map.Entry::getValue)
+				.toList();
+	}
+
+	private static Optional<String> getRedirectResponse(Map<SloResponse, SloNotification> responseMap) {
+		return responseMap.entrySet()
+				.stream()
+				.filter(entry -> entry.getKey().getMode().isResponse()
+						&& entry.getValue() != null && entry.getValue().getEncodedUrl() != null)
+				.map(entry -> entry.getValue().getEncodedUrl())
+				.findFirst();
 	}
 
 }

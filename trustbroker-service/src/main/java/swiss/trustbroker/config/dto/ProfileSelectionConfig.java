@@ -24,6 +24,11 @@ import lombok.NoArgsConstructor;
 
 /**
  * Profile selection configuration.
+ * <br>
+ * Potentially breaking changes:
+ * <ul>
+ *     <li>With 1.10.0 value of attributes changed to Object to allow nested structures.</li>
+ * </ul>
  *
  * @see swiss.trustbroker.api.profileselection.service.ProfileSelectionService
  */
@@ -36,6 +41,6 @@ public class ProfileSelectionConfig {
 	/**
 	 * Custom attributes that might be needed by the implementation.
  	 */
-	private Map<String, String> attributes;
+	private Map<String, Object> attributes;
 
 }

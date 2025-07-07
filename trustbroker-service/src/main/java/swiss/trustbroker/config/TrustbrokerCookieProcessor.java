@@ -50,11 +50,13 @@ public class TrustbrokerCookieProcessor extends Rfc6265CookieProcessor {
 
 	private String calculateSameSiteForUrl() {
 		var request = HttpExchangeSupport.getRunningHttpRequest();
-		if (request == null) {
+		if (request == null || !request.isSecure()) {
+			log.debug("Request is not secure, use SameSite={}", defaultSameSite);
 			return defaultSameSite;
 		}
 		var redirectUri = OidcSessionSupport.getRedirectUri(request);
 		if (redirectUri == null) {
+			log.debug("Request cannot be checked against redirect_uri, use SameSite={}", defaultSameSite);
 			return defaultSameSite;
 		}
 		var sameSiteFlag = WebUtil.getCookieSameSite(perimeterUrl, redirectUri);

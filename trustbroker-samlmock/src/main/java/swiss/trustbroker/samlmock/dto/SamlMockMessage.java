@@ -17,5 +17,6 @@ package swiss.trustbroker.samlmock.dto;
 
 import org.opensaml.core.xml.XMLObject;
 
-public record SamlMockMessage <T extends XMLObject> (T message, String relayState) {
+public record SamlMockMessage<T extends XMLObject>(T message, String relayState) {
+
 }

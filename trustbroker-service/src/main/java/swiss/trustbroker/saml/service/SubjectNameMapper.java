@@ -89,6 +89,7 @@ class SubjectNameMapper {
 			if (nameIdFormat == null) {
 				nameIdFormat = cpResponse.getNameIdFormat();
 			}
+			cpResponse.setMappedNameId(nameId);
 			cpResponse.setNameId(nameId);
 			cpResponse.setNameIdFormat(nameIdFormat);
 			log.info("Change federation principal from cpIssuer={} cpNameId={} to {} issuer={} rpNameId={}"

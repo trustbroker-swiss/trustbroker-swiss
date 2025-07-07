@@ -13,38 +13,31 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Component, Input, OnInit } from '@angular/core';
-import { TranslateService } from '@ngx-translate/core';
+import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 
 import { AlertType } from './AlertType';
 import { Theme } from '../../model/Theme';
-import { InternationalText } from '../../services/international-text';
 import { LanguageService } from '../../services/language.service';
 import { ThemeService } from '../../services/theme-service';
+import { AnnouncementWithCookieName } from '../announcements.component';
+import { MatCheckbox, MatCheckboxChange } from '@angular/material/checkbox';
+import { ObCheckboxDirective } from '@oblique/oblique';
+import { ActivatedRoute } from '@angular/router';
+import { Configuration } from '../../model/Configuration';
+import { CookieService } from '../../services/cookie-service';
 
 @Component({
 	selector: 'app-announcement',
 	templateUrl: './announcement.component.html',
-	styleUrls: ['./announcement.component.scss']
+	styleUrls: ['./announcement.component.scss'],
+	standalone: true,
+	changeDetection: ChangeDetectionStrategy.OnPush,
+	imports: [ObCheckboxDirective, TranslatePipe, MatCheckbox]
 })
 export class AnnouncementComponent implements OnInit {
-	@Input()
-	announcementType: string;
-
-	@Input()
-	announcementTitle: InternationalText;
-
-	@Input()
-	announcementMessage: InternationalText;
-
-	@Input()
-	announcementUrl: InternationalText;
-
-	@Input()
-	announcementPhoneNumber: string;
-
-	@Input()
-	announcementEmailAddress: string;
+	@Input({ required: true })
+	announcement: AnnouncementWithCookieName;
 
 	@Input()
 	theme: Theme = ThemeService.defaultTheme;
@@ -54,9 +47,13 @@ export class AnnouncementComponent implements OnInit {
 	alertType: string;
 	contactUrl: string;
 
+	private readonly config: Configuration = this.route.snapshot.data['config'];
+
 	constructor(
-		public readonly languageService: LanguageService,
-		private readonly translateService: TranslateService
+		private readonly languageService: LanguageService,
+		private readonly translateService: TranslateService,
+		private readonly cookieService: CookieService,
+		private readonly route: ActivatedRoute
 	) {}
 
 	ngOnInit(): void {
@@ -68,20 +65,35 @@ export class AnnouncementComponent implements OnInit {
 
 	// Low amount of announcements/application
 	updateText(currentLang: string) {
-		this.title = this.announcementTitle[currentLang];
-		this.message = this.announcementMessage[currentLang];
-		if (this.announcementUrl != null) {
-			this.contactUrl = this.announcementUrl[currentLang];
+		this.title = this.announcement.title[currentLang];
+		this.message = this.announcement.message[currentLang];
+		if (this.announcement.url) {
+			this.contactUrl = this.announcement.url[currentLang];
 		}
 	}
 
 	setAlertType() {
-		if (this.announcementType === 'MAINTENANCE') {
+		if (this.announcement.type === 'MAINTENANCE') {
 			this.alertType = AlertType.warning;
-		} else if (this.announcementType === 'INCIDENT') {
+		} else if (this.announcement.type === 'INCIDENT') {
 			this.alertType = AlertType.error;
 		} else {
 			this.alertType = AlertType.info;
+		}
+	}
+
+	updateCookie(event: MatCheckboxChange) {
+		if (event.checked) {
+			this.cookieService.set(
+				{
+					...this.config.announcementCookie,
+					name: this.announcement.cookieName
+				},
+				'read',
+				this.announcement.validTo
+			);
+		} else {
+			this.cookieService.delete(this.announcement.cookieName, this.config.announcementCookie.path);
 		}
 	}
 }

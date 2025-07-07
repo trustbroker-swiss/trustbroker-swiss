@@ -31,8 +31,7 @@ import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
-import swiss.trustbroker.config.dto.NetworkConfig;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.oidc.session.HttpExchangeSupport;
 
 /**
@@ -41,17 +40,18 @@ import swiss.trustbroker.oidc.session.HttpExchangeSupport;
 @Slf4j
 public class HrdSupport {
 
-	public static final String HTTP_HRD_HINT_HEADER = "urltester"; // test framework signaling CP ID via HTTP header
-
-	public static final String HTTP_HRD_HINT_PARAMETER = "hrd_hint"; // RP can do IDP pre-selection via HTTP query/post parameter
-
 	private HrdSupport() {
 	}
 
-	public static boolean requestFromTestApplication(HttpServletRequest request, NetworkConfig networkConfig) {
-		return (WebUtil.getCookie(HTTP_HRD_HINT_HEADER, request) != null
-				|| WebUtil.getHeader(HTTP_HRD_HINT_HEADER, request) != null)
-				&& WebSupport.isClientOnIntranet(request, networkConfig);
+	public static boolean requestFromTestApplication(HttpServletRequest request, TrustBrokerProperties properties) {
+		return (getHrdHintTestCookie(request, properties) != null
+				|| getHrdHintTestHeader(request, properties) != null)
+				&& allowHrdHintTest(request, properties);
+	}
+
+	private static boolean allowHrdHintTest(HttpServletRequest request, TrustBrokerProperties properties) {
+		return Boolean.TRUE.equals(properties.getHrdHintTestAllowedFromInternet())
+				|| WebSupport.isClientOnIntranet(request, properties.getNetwork());
 	}
 
 	private static boolean hasAutoLoginDisabled(HttpServletRequest request, TrustBrokerProperties properties) {
@@ -71,22 +71,22 @@ public class HrdSupport {
 			return null;
 		}
 
-		// Testing hint: HTTP urltester header signaling selected CP independent of network etc. required for automation
+		// Testing HRD hint: HTTP header or cookie signaling selected CP independent of network etc. required for automation
 		String cpSelection = null;
 
-		if (WebSupport.isClientOnIntranet(request, properties.getNetwork())) {
-			cpSelection = WebUtil.getCookie(HTTP_HRD_HINT_HEADER, request);
-			reason = updateReason(cpSelection, HTTP_HRD_HINT_HEADER + " cookie", reason);
+		if (allowHrdHintTest(request, properties)) {
+			cpSelection = getHrdHintTestCookie(request, properties);
+			reason = updateReason(cpSelection, properties.getHrdHintTestParameter() + " cookie", reason);
 			if (cpSelection == null) {
-				cpSelection = WebUtil.getHeader(HTTP_HRD_HINT_HEADER, request);
-				reason = updateReason(cpSelection, HTTP_HRD_HINT_HEADER + " header", reason);
+				cpSelection = getHrdHintTestHeader(request, properties);
+				reason = updateReason(cpSelection, properties.getHrdHintTestParameter() + " header", reason);
 			}
 		}
 
 		// CP (IDP) hint: idp=xyz is supported there as a REST hint by applications
-		if (cpSelection == null && WebUtil.getParameter(HTTP_HRD_HINT_PARAMETER, request) != null) {
-			cpSelection = StringUtil.clean(WebUtil.getParameter(HTTP_HRD_HINT_PARAMETER, request));
-			reason = updateReason(cpSelection, HTTP_HRD_HINT_PARAMETER + " parameter", reason);
+		if (cpSelection == null && getHrdHintParameter(request, properties) != null) {
+			cpSelection = StringUtil.clean(getHrdHintParameter(request, properties));
+			reason = updateReason(cpSelection, properties.getHrdHintParameter() + " parameter", reason);
 		}
 
 		// Testing hint: HTTP autoLogin cookie Disabling autoLogin behavior so testers can select CP manually
@@ -110,6 +110,35 @@ public class HrdSupport {
 
 		log.debug("HRD routing step 1 lead to cpSelection={} with reason={}", cpSelection, reason);
 		return cpSelection;
+	}
+
+	public static String getHrdHintParameter(HttpServletRequest request, TrustBrokerProperties properties) {
+		var hrdHintParameter = properties.getHrdHintParameter();
+		if (StringUtils.isEmpty(hrdHintParameter)) {
+			return null;
+		}
+		return WebUtil.getParameter(hrdHintParameter, request);
+	}
+
+	public static String getHrdHintTestCookie(HttpServletRequest request, TrustBrokerProperties properties) {
+		var hrdHintParameter = properties.getHrdHintTestParameter();
+		if (StringUtils.isEmpty(hrdHintParameter)) {
+			return null;
+		}
+		return WebUtil.getCookie(hrdHintParameter, request);
+	}
+
+	public static String getHrdHintTestHeader(HttpServletRequest request, TrustBrokerProperties properties) {
+		var hrdHintParameter = properties.getHrdHintTestParameter();
+		if (StringUtils.isEmpty(hrdHintParameter)) {
+			return null;
+		}
+		return WebUtil.getHeader(hrdHintParameter, request);
+	}
+
+	public static boolean isHrdHintTest(HttpServletRequest request, TrustBrokerProperties properties) {
+		return getHrdHintTestCookie(request, properties) != null
+				|| getHrdHintTestHeader(request, properties) != null;
 	}
 
 	private static boolean isGateWayIp(String[] clientIps, String gatewayIp) {
@@ -163,9 +192,9 @@ public class HrdSupport {
 		return cpSelection;
 	}
 
-	public static List<ClaimsProviderRelyingParty> reduceClaimsProviderMappings(
+	public static List<ClaimsProvider> reduceClaimsProviderMappings(
 			HttpServletRequest request, String rpIssuer, String applicationName,
-			String cpSelectionHint, List<ClaimsProviderRelyingParty> cpMappings,
+			String cpSelectionHint, List<ClaimsProvider> cpMappings,
 			TrustBrokerProperties trustBrokerProperties,
 			HrdService hrdService) {
 
@@ -199,17 +228,17 @@ public class HrdSupport {
 		return cpMappings;
 	}
 
-	// map elements if they are not ClaimsProviderRelyingParty (just type conversion)
-	private static List<ClaimsProviderRelyingParty> mapResultMappings(List<HrdClaimsProviderToRelyingPartyMapping> mappings) {
-		List<ClaimsProviderRelyingParty> result = new ArrayList<>(mappings.size());
+	// map elements if they are not ClaimsProvider (just type conversion)
+	private static List<ClaimsProvider> mapResultMappings(List<HrdClaimsProviderToRelyingPartyMapping> mappings) {
+		List<ClaimsProvider> result = new ArrayList<>(mappings.size());
 		for (var mapping : mappings) {
-			result.add(ClaimsProviderRelyingParty.of(mapping));
+			result.add(ClaimsProvider.of(mapping));
 		}
 		return result;
 	}
 
-	private static List<ClaimsProviderRelyingParty> filterMappingDuplicates(List<ClaimsProviderRelyingParty> cpMappings) {
-		var dedup = new LinkedHashMap<String, ClaimsProviderRelyingParty>(); // retain order
+	private static List<ClaimsProvider> filterMappingDuplicates(List<ClaimsProvider> cpMappings) {
+		var dedup = new LinkedHashMap<String, ClaimsProvider>(); // retain order
 		cpMappings.forEach(m -> {
 			var currentEntry = dedup.get(m.getId());
 			if (currentEntry == null || m.getRelyingPartyAlias() == null) {
@@ -223,14 +252,14 @@ public class HrdSupport {
 		return dedup.isEmpty() ? cpMappings : dedup.values().stream().toList();
 	}
 
-	private static List<ClaimsProviderRelyingParty> filterMappingsForHint(String cpSelectionHint,
-			List<ClaimsProviderRelyingParty> cpMappings) {
+	private static List<ClaimsProvider> filterMappingsForHint(String cpSelectionHint,
+                                                              List<ClaimsProvider> cpMappings) {
 		if (cpMappings.size() < 2 || cpSelectionHint == null) {
 			return cpMappings;
 		}
-		var selectedCp = cpMappings.stream().filter(cpm -> cpm.getId().equals(cpSelectionHint)).toList();
+		var selectedCp = cpMappings.stream().filter(cpm -> cpm.isMatchingHrdHint(cpSelectionHint)).toList();
 		if (!selectedCp.isEmpty()) {
-			var newList = new ArrayList<ClaimsProviderRelyingParty>(); // eliminate output duplicates
+			var newList = new ArrayList<ClaimsProvider>(); // eliminate output duplicates
 			newList.add(selectedCp.get(0));
 			log.debug("HRD reduced by hint={} ({}): {}", cpSelectionHint, newList.size(), newList);
 			return newList;
@@ -239,12 +268,12 @@ public class HrdSupport {
 		return cpMappings;
 	}
 
-	private static List<ClaimsProviderRelyingParty> filterMappingsForNetwork(HttpServletRequest request,
-			List<ClaimsProviderRelyingParty> cpMappings, TrustBrokerProperties properties) {
+	private static List<ClaimsProvider> filterMappingsForNetwork(HttpServletRequest request,
+                                                                 List<ClaimsProvider> cpMappings, TrustBrokerProperties properties) {
 		if (cpMappings.size() < 2) {
 			return cpMappings;
 		}
-		var network = WebSupport.getClientNetworkOnIntranet(request, properties.getNetwork());
+		var network = WebSupport.getClientNetwork(request, properties.getNetwork());
 		if (network == null) {
 			return cpMappings;
 		}
@@ -259,8 +288,8 @@ public class HrdSupport {
 		return newList;
 	}
 
-	private static List<ClaimsProviderRelyingParty> filterMappingsForRelyingPartyAlias(String rpOrAppId,
-			List<ClaimsProviderRelyingParty> cpMappings) {
+	private static List<ClaimsProvider> filterMappingsForRelyingPartyAlias(String rpOrAppId,
+                                                                           List<ClaimsProvider> cpMappings) {
 		if (cpMappings.size() < 2 || rpOrAppId == null) {
 			return cpMappings;
 		}
@@ -270,8 +299,8 @@ public class HrdSupport {
 		return ret;
 	}
 
-	private static List<ClaimsProviderRelyingParty> filterMappingsForNonMatchingAliases(
-			List<ClaimsProviderRelyingParty> cpMappings) {
+	private static List<ClaimsProvider> filterMappingsForNonMatchingAliases(
+			List<ClaimsProvider> cpMappings) {
 		if (cpMappings.size() < 2) {
 			return cpMappings;
 		}

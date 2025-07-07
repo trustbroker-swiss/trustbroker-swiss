@@ -47,6 +47,24 @@ class StateDataTest {
 	}
 
 	@Test
+	void reInit() {
+		var spStateData = StateData.builder().id("spId").build();
+		var stateData = StateData.builder().id("id").spStateData(spStateData).build();
+		stateData.getLifecycle().setLifecycleState(LifecycleState.EXPIRED);
+		spStateData.getLifecycle().setLifecycleState(LifecycleState.EXPIRED);
+
+		// precondition
+		assertThat(stateData.isExpired(), is(true));
+
+		stateData.reInit();
+
+		// postcondition
+		assertThat(stateData.isExpired(), is(false));
+		assertThat(stateData.getLifecycle().getLifecycleState(), is(LifecycleState.INIT));
+		assertThat(spStateData.getLifecycle().getLifecycleState(), is(LifecycleState.INIT));
+	}
+
+	@Test
 	void initSsoState() {
 		var stateData = StateData.builder().id("id").build();
 		assertThat(stateData.hasSsoState(), is(false));

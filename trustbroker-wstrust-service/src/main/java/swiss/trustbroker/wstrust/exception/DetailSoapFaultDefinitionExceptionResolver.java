@@ -25,7 +25,9 @@ import swiss.trustbroker.exception.GlobalExceptionHandler;
 
 @AllArgsConstructor
 public class DetailSoapFaultDefinitionExceptionResolver extends SoapFaultMappingExceptionResolver {
+
 	private static final QName CODE = new QName("code");
+
 	private static final QName DESCRIPTION = new QName("description");
 
 	private final GlobalExceptionHandler globalExceptionHandler;

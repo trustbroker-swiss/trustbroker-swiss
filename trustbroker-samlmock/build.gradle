@@ -19,7 +19,7 @@ dependencies {
 	implementation 'org.opensaml:opensaml-saml-impl'
 
 	// UI styling
-	implementation('org.webjars:bootstrap:4.1.2')
+	implementation('org.webjars:bootstrap:5.3.5')
 }
 
 springBoot {

@@ -13,13 +13,14 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Component, Input, OnInit } from '@angular/core';
+import { Component, DestroyRef, Input, OnInit } from '@angular/core';
 import { ApiService } from '../../services/api.service';
 import { Theme } from '../../model/Theme';
 import { ThemeService } from '../../services/theme-service';
 import { SupportInfo } from '../../model/SupportInfo';
 import { HttpErrorResponse } from '@angular/common/http';
 import { LanguageService } from '../../services/language.service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
 	selector: 'app-error-box',
@@ -55,6 +56,9 @@ export class ErrorBoxComponent implements OnInit {
 	reloginButton: boolean;
 
 	@Input()
+	linkButton: boolean;
+
+	@Input()
 	supportInfo: boolean;
 
 	@Input()
@@ -71,13 +75,16 @@ export class ErrorBoxComponent implements OnInit {
 
 	supportInfoData: SupportInfo;
 
+	languageAppUrl: string;
+
 	showSupportInfoText: boolean;
 
 	showSupportContactText: boolean;
 
 	constructor(
 		private readonly apiService: ApiService,
-		private readonly languageService: LanguageService
+		private readonly languageService: LanguageService,
+		private readonly destroyRef: DestroyRef
 	) {}
 
 	continueFlow(): void {
@@ -88,21 +95,32 @@ export class ErrorBoxComponent implements OnInit {
 		this.apiService.relogin(this.sessionId);
 	}
 
+	followLink(): void {
+		if (this.languageAppUrl) {
+			window.location.href = this.languageAppUrl;
+		}
+	}
+
 	ngOnInit(): void {
 		this.showSupportInfoText = false;
 		this.showSupportContactText = false;
 		this.setSupportInfoFlags(this.supportInfoText, this.supportContactText);
 
-		if (this.supportInfo) {
-			this.apiService.fetchSupportInfo(this.errorCode, this.sessionId).subscribe({
-				next: resp => {
-					this.supportInfoData = resp;
-				},
-				error: (errorResponse: HttpErrorResponse) => {
-					console.error(errorResponse);
-					this.supportInfo = false;
-				}
-			});
+		if (this.supportInfo || this.linkButton) {
+			this.apiService
+				.fetchSupportInfo(this.errorCode, this.sessionId)
+				.pipe(takeUntilDestroyed(this.destroyRef))
+				.subscribe({
+					next: resp => {
+						this.supportInfoData = resp;
+						this.setLanguageSpecificAppUrl();
+					},
+					error: (errorResponse: HttpErrorResponse) => {
+						console.error(errorResponse);
+						this.supportInfo = false;
+						this.linkButton = false;
+					}
+				});
 		}
 	}
 
@@ -110,11 +128,18 @@ export class ErrorBoxComponent implements OnInit {
 		if (supportInfoText == null) {
 			return;
 		}
-		this.languageService.langChange$.subscribe(() => {
+		this.languageService.langChange$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
 			let translated = this.languageService.translate(supportInfoText);
 			this.showSupportInfoText = translated !== supportInfoText;
 			translated = this.languageService.translate(supportContactText);
 			this.showSupportContactText = translated !== supportContactText;
+			this.setLanguageSpecificAppUrl();
 		});
+	}
+
+	setLanguageSpecificAppUrl() {
+		if (this.supportInfoData?.appUrl) {
+			this.languageAppUrl = this.supportInfoData.appUrl.replace('{lang}', this.languageService.currentLang);
+		}
 	}
 }

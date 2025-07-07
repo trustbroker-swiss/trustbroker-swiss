@@ -16,18 +16,19 @@
 import { Routes } from '@angular/router';
 
 import { AccessRequestComponent } from './access-request/access-request.component';
-import { AnnouncementsComponent } from './announcements/announcements.component';
 import { DeviceInfoComponent } from './device-info/device-info.component';
 import { ErrorPageComponent } from './error-page/error-page.component';
 import { HrdCardsComponent } from './hrd-cards/hrd-cards.component';
 import { ProfileSelectionComponent } from './profile-selection/profile-selection.component';
 import { SsoComponent } from './sso/sso.component';
 import { HrdCardsContainerComponent } from './hrd-cards-container/hrd-cards-container.component';
+import { configResolver } from './config.resolver';
 
 export const routes: Routes = [
 	{
 		path: 'home/:issuer/:authnRequestId',
-		component: HrdCardsContainerComponent
+		component: HrdCardsContainerComponent,
+		data: { pageTitle: 'trustbroker.hrd.page.title' }
 	},
 	{
 		path: 'device/:cpUrn/:rpUrn/:id',
@@ -63,11 +64,13 @@ export const routes: Routes = [
 	},
 	{
 		path: 'announcements/:issuer/:authnRequestId',
-		component: AnnouncementsComponent
+		loadComponent: () => import('./announcements/announcements.component'),
+		resolve: { config: configResolver }
 	},
 	{
 		path: 'announcements/:issuer/:authnRequestId/:appName',
-		component: AnnouncementsComponent
+		loadComponent: () => import('./announcements/announcements.component'),
+		resolve: { config: configResolver }
 	},
 	{
 		path: 'failure/:textKey/:reference',

@@ -38,6 +38,7 @@ import static swiss.trustbroker.util.SessionTimeConfiguration.START_INSTANT;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -107,7 +108,8 @@ class StateCacheServiceTest {
 		entity.setSpSessionId("spId");
 		entity.setJsonData("{\"id\":\"entityId\",\"lifecycle\":{\"lifecycleState\":\"" + lifecycleState + "\"}}");
 		entity.setExpirationTimestamp(Timestamp.from(EXPIRATION_INSTANT));
-		doReturn(Optional.of(entity)).when(stateCacheRepository).findById(entity.getId());
+		doReturn(List.of(entity)).when(stateCacheRepository).findByIdAsList(entity.getId()); // resilient
+		doReturn(Optional.of(entity)).when(stateCacheRepository).findById(entity.getId()); // direct
 		return entity;
 	}
 
@@ -145,6 +147,7 @@ class StateCacheServiceTest {
 	@Test
 	void saveRetrySuccess() {
 		doReturn(1).when(stateCacheProperties).getTxRetryDelayMs();
+		doReturn(3).when(stateCacheProperties).getTxRetryCount();
 		var data = createStateData("testId", "spId");
 		when(stateCacheRepository.save(any(StateEntity.class)))
 				.thenThrow(new CannotAcquireLockException("test"))
@@ -156,6 +159,7 @@ class StateCacheServiceTest {
 	@Test
 	void saveRetryFailed() {
 		doReturn(1).when(stateCacheProperties).getTxRetryDelayMs();
+		doReturn(1).when(stateCacheProperties).getTxRetryCount();
 		var data = createStateData("testId", "spId");
 		when(stateCacheRepository.save(any(StateEntity.class)))
 				.thenThrow(new CannotAcquireLockException("test"));
@@ -165,7 +169,8 @@ class StateCacheServiceTest {
 
 	@Test
 	void saveRetrySkipped() {
-		doReturn(-1).when(stateCacheProperties).getTxRetryDelayMs();
+		doReturn(1).when(stateCacheProperties).getTxRetryDelayMs();
+		doReturn(0).when(stateCacheProperties).getTxRetryCount();
 		var data = createStateData("testId", "spId");
 		when(stateCacheRepository.save(any(StateEntity.class)))
 				.thenThrow(new CannotAcquireLockException("test"))
@@ -308,32 +313,6 @@ class StateCacheServiceTest {
 	}
 
 	@Test
-	void findByOidcSessionIdNull() {
-		doThrow(new IllegalArgumentException()).when(stateCacheRepository).findByOidcSessionId(null);
-		var result = stateCacheService.findByOidcSessionId(null, null);
-		assertThat(result.isEmpty(), is(true));
-	}
-
-	@Test
-	void findByOidcSessionId() {
-		var entity = mockStateEntity(LifecycleState.ESTABLISHED);
-		var sessionId = "oidc1";
-		entity.setOidcSessionId(sessionId);
-		doReturn(Collections.singletonList(entity)).when(stateCacheRepository).findByOidcSessionId(sessionId);
-		var result = stateCacheService.findByOidcSessionId(sessionId, null);
-		assertThat(result.isPresent(), is(true));
-		assertThat(result.get().getId(), is(entity.getId()));
-	}
-
-	@Test
-	void findByOidcSessionIdMissing() {
-		var sessionId = "test1";
-		doReturn(Collections.emptyList()).when(stateCacheRepository).findByOidcSessionId(sessionId);
-		var result = stateCacheService.findByOidcSessionId(sessionId, null);
-		assertThat(result.isEmpty(), is(true));
-	}
-
-	@Test
 	void findBySsoSessionId() {
 		var entity = mockStateEntity(LifecycleState.ESTABLISHED);
 		var sessionId = "sso-123";
@@ -345,25 +324,26 @@ class StateCacheServiceTest {
 	}
 
 	@Test
-	void findSessionBySsoSessionIdResilient() {
+	void findBySsoSessionIdResilient() {
 		var entity = mockStateEntity(LifecycleState.ESTABLISHED);
 		var sessionId = "sso-123";
 		entity.setOidcSessionId(sessionId);
+		when(trustBrokerProperties.getStateCache())
+				.thenReturn(StateCacheProperties.builder().txRetryCount(2).txRetryDelayMs(1).build());
 		when(stateCacheRepository.findBySsoSessionId(sessionId))
 				.thenReturn(Collections.emptyList()) // 1st
 				.thenReturn(Collections.emptyList()) // 2nd
-				.thenReturn(Collections.emptyList()) // 3rd
-				.thenReturn(Collections.singletonList(entity)); // 4th
-		var result = stateCacheService.findSessionBySsoSessionIdResilient(sessionId, null);
+				.thenReturn(Collections.singletonList(entity)); // 3d
+		var result = stateCacheService.findBySsoSessionIdResilient(sessionId, null);
 		assertThat(result.isPresent(), is(true));
 		assertThat(result.get().getId(), is(entity.getId()));
 	}
 
 	@Test
-	void findSessionBySsoSessionIdResilientFails() {
+	void findBySsoSessionIdResilientFails() {
 		var sessionId = "sso-123";
 		doReturn(Collections.emptyList()).when(stateCacheRepository).findBySsoSessionId(sessionId);
-		var result = stateCacheService.findSessionBySsoSessionIdResilient(sessionId, null);
+		var result = stateCacheService.findBySsoSessionIdResilient(sessionId, null);
 		assertThat(result.isPresent(), is(false));
 	}
 

@@ -6,6 +6,10 @@ spring:
   cloud:
     config:
       enabled: false
+  data:
+    ldap:
+      repositories:
+        enabled: false
   datasource:
     url: ${spring.flyway.url}/${spring.flyway.schemas}
     username: trustbroker
@@ -42,6 +46,11 @@ spring:
     scheduling:
       pool:
         size: 2
+  #ldap:
+  #  urls: ldap://localhost:1389
+  #  base: dc=trustbroker,dc=swiss
+  #  username: cn=admin,dc=trustbroker,dc=swiss
+  #  password: secret
 
 server:
   port: 8090
@@ -73,7 +82,7 @@ management:
         include: health,prometheus
   endpoint:
     prometheus:
-      enabled: true
+      access: unrestricted
     health:
       #show-components: always
       #show-details: always
@@ -97,6 +106,9 @@ management:
     port: 8091
   security:
     enabled: false
+  health:
+    ldap:
+      enabled: false
 
 client:
   ssl:
@@ -126,7 +138,7 @@ trustbroker:
     ssoSessionIdPolicy: always # ssoSessionId claim always produced to identify XTB and improve OIDC correlation
     handleResponderErrors: false
     skinnyAssertionNamespaces: a,no-type
-    # Allow access to some halfway public APIs usually not exposed on internet )header injected by network perimeter)
+    # Allow access to some halfway public APIs usually not exposed on internet (header injected by network perimeter)
     #network:
     #  networkHeader: 'X-ClientNetwork'
     #  internetNetworkName: INTERNET
@@ -148,7 +160,8 @@ trustbroker:
       reapMaxDelaySec: 25 # each replica reaps, so reduce propability for parallel processing
       targetMaxEntries: 250000 # limiting session (10G PVC, 40k/login => 10G / 40k == 250000 retained sessions)
       minSessionLifetimeSec: 600 # minimum remaining session lifetime not to reap anymore
-      txRetryDelayMs: 20 # try to save and load DB state with a resilient retry in case of TX problems
+      txRetryDelayMs: 10 # try to save and load DB state with a resilient retry in case of TX problems
+      txRetryCount: 2 # retry times (doubling the delay on each try)
     security:
       acceptSubjectConfirmationMethods: "urn:oasis:names:tc:SAML:2.0:cm:holder-of-key,urn:oasis:names:tc:SAML:2.0:cm:bearer"
       doSignAssertions: true
@@ -222,6 +235,7 @@ trustbroker:
     # SAML 2.0 protocol support
     saml:
       # CP side destination setup
+      # path requested on XTB must be one of /api/v1/saml, /adfs/ls, /adfs/ls/, trustbroker/adfs/ls (deprecated)
       consumerUrl: ${trustbroker.config.perimeterUrl}/api/v1/saml
       flowPolicyNamespaces:
         # namespace prefix added to IDs of FlowPolicies
@@ -242,6 +256,7 @@ trustbroker:
         - urn:oasis:names:tc:SAML:2.0:nameid-format:transient
         - urn:oasis:names:tc:SAML:2.0:nameid-format:persistent
       artifactResolution:
+        # path requested on XTB must be /api/v1/saml/arp
         serviceUrl: ${trustbroker.config.perimeterUrl}/api/v1/saml/arp
         index: 0
         artifactLifetimeSecs: 60
@@ -253,8 +268,10 @@ trustbroker:
     # OIDC 1.0 protocol support
     oidc:
       issuer: "${trustbroker.config.issuer}"
+      # path requested on XTB must be /login/saml2/sso
       perimeterUrl: "${trustbroker.config.perimeterUrl}/login/saml2/sso"
       sessionMode: IN_DB
+      # path requested on XTB must be /logout
       endSessionEndpoint: "${trustbroker.config.oidc.issuer}/logout"
       # 30min for overall login process (12min would be enough potentially)
       sessionLifetimeSec: ${trustbroker.config.sessionLifetimeSec}
@@ -332,6 +349,11 @@ trustbroker:
         - Timestamp
         - Assertion
 
+    # XTB LDAP sub-system disabled by default
+    #ldap:
+    #  enabled: true
+    #  searchBase: dc=users
+
     attributes:
       # required attributes without predefined standard namespaces:
       definitions:
@@ -353,6 +375,14 @@ trustbroker:
       translations: ${TRUSTBROKER_HOME}/configuration/latest/translations/
       themeAssets: ${TRUSTBROKER_HOME}/configuration/latest/assets/
       defaultLanguage: de
+      versionedResourceMaxAgeDay: 365
+      versionedResourcePaths:
+        # Versioned Angular resources in root path:
+        - /*.js
+        - /*.woff
+        - /*.woff2
+        - /*.css
+      taggedResourceMaxAgeSec: 60
       features:
         - HEADER
         - FOOTER
@@ -410,6 +440,9 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p --- [%X{clientIp:-}] [%X{traceId:-}] [%t] %-40.40logger{39} : %m%n%wEx"
   level:
     root: INFO
+    # Suppress Velocity exception logging with stack traces that VelocityUtil handles
+    # (mainly we see broken pipe errors here if the client disconnects):
+    org.apache.velocity.directive.parse: OFF
     # Audit facility only logs RP side in INFO level, to see CP side use DEBUG and to see claim details use TRACE
     swiss.trustbroker.audit.service.AuditLogger: TRACE
     #swiss.trustbroker.audit.service.OpsAuditLogger: TRACE
@@ -456,5 +489,7 @@ logging:
     #org.flywaydb: DEBUG
     #org.hibernate.SQL: DEBUG
     #org.hibernate.orm.jdbc: TRACE
+    # LDAP sub-system (
+    #swiss.trustbroker.ldap.service: DEBUG
 
 # NOTE: The rest of the configuration is fetched from GIT_URL

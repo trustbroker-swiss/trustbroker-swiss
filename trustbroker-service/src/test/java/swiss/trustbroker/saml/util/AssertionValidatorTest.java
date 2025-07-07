@@ -678,7 +678,7 @@ class AssertionValidatorTest {
 				queryString.getBytes(StandardCharsets.UTF_8));
 		// path is not relevant:
 		var url = "/adfs/ls?" + SamlIoUtil.buildSamlRedirectQueryString(sigAlg,
-				true, samlMessage, relayState, Base64Util.encode(signature, false));
+				true, samlMessage, relayState, Base64Util.encode(signature, Base64Util.Base64Encoding.UNCHUNKED));
 		var signatureContext = SignatureContext.forRedirectBinding(url);
 
 		assertDoesNotThrow(() -> {

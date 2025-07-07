@@ -13,17 +13,16 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { DOCUMENT } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Inject, Injectable } from '@angular/core';
-import { CookieService } from 'ngx-cookie-service';
 import { Observable, Observer, ReplaySubject } from 'rxjs';
-
-import { ApiService } from './api.service';
 import { CookieConfiguration } from '../model/CookieConfiguration';
 import { Theme } from '../model/Theme';
 import { GuiFeature } from '../shared/enums/GuiFeature';
 import { HeaderButton } from '../shared/enums/HeaderButton';
+import { ApiService } from './api.service';
+import { CookieService } from './cookie-service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { DestroyRef, Injectable } from '@angular/core';
 
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
@@ -45,7 +44,7 @@ export class ThemeService {
 	constructor(
 		private readonly cookieService: CookieService,
 		private readonly apiService: ApiService,
-		@Inject(DOCUMENT) private readonly document: Document
+		private readonly destroyRef: DestroyRef
 	) {
 		this.themeCookie = new CookieConfiguration();
 		// Defaults until we get the information from the server.
@@ -61,7 +60,7 @@ export class ThemeService {
 	}
 
 	public subscribe(observer: Partial<Observer<Theme>>) {
-		this.themeChangedSubject.subscribe(observer);
+		this.themeChangedSubject.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(observer);
 	}
 
 	public getTheme(): Theme {
@@ -125,32 +124,35 @@ export class ThemeService {
 	}
 
 	private loadConfig() {
-		this.apiService.fetchConfiguration()?.subscribe?.({
-			next: configuration => {
-				const themeCookie: CookieConfiguration = configuration.themeCookie;
-				if (themeCookie?.name == null || themeCookie.values == null) {
+		this.apiService
+			.getConfiguration()
+			.pipe(takeUntilDestroyed(this.destroyRef))
+			.subscribe?.({
+				next: configuration => {
+					const themeCookie: CookieConfiguration = configuration.themeCookie;
+					if (themeCookie?.name == null || themeCookie.values == null) {
+						// NOSONAR
+						// console.debug('[ThemeService] Keeping default theme cookie', this.themeCookie.name, 'values:', this.themeCookie.values);
+						return;
+					}
+					this.themeCookie = themeCookie;
+					this.features = configuration.features;
+					if (this.features == null) {
+						this.features = [];
+					}
+					this.buttons = configuration.buttons;
+					if (this.buttons == null) {
+						this.buttons = [];
+					}
+					this.defaultCookieParameters = false;
 					// NOSONAR
-					// console.debug('[ThemeService] Keeping default theme cookie', this.themeCookie.name, 'values:', this.themeCookie.values);
-					return;
+					// console.debug('[ThemeService] Server sent theme cookie parameters', this.themeCookie.name, 'values:', this.themeCookie.values);
+					this.publish(this.getTheme());
+				},
+				error: (errorResponse: HttpErrorResponse) => {
+					console.error(errorResponse);
 				}
-				this.themeCookie = themeCookie;
-				this.features = configuration.features;
-				if (this.features == null) {
-					this.features = [];
-				}
-				this.buttons = configuration.buttons;
-				if (this.buttons == null) {
-					this.buttons = [];
-				}
-				this.defaultCookieParameters = false;
-				// NOSONAR
-				// console.debug('[ThemeService] Server sent theme cookie parameters', this.themeCookie.name, 'values:', this.themeCookie.values);
-				this.publish(this.getTheme());
-			},
-			error: (errorResponse: HttpErrorResponse) => {
-				console.error(errorResponse);
-			}
-		});
+			});
 	}
 
 	private publish(theme: Theme) {
@@ -261,14 +263,6 @@ export class ThemeService {
 		theme = ThemeService.toCookie(theme);
 		// NOSONAR
 		// console.debug('[ThemeService] Setting theme cookie:', this.themeCookie.name, '=', theme, 'on path', this.themeCookie.path, 'and domain', this.themeCookie.domain);
-		this.cookieService.set(
-			this.themeCookie.name,
-			theme,
-			this.themeCookie.maxAge,
-			this.themeCookie.path,
-			this.themeCookie.domain,
-			this.themeCookie.secure,
-			this.themeCookie.sameSite
-		);
+		this.cookieService.set(this.themeCookie, theme);
 	}
 }

@@ -27,10 +27,12 @@ import org.opensaml.saml.saml2.core.Response;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 import swiss.trustbroker.common.exception.RequestDeniedException;
+import swiss.trustbroker.common.saml.dto.SamlBinding;
 import swiss.trustbroker.common.saml.dto.SignatureContext;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.util.WebUtil;
@@ -99,6 +101,7 @@ public class AppController extends AbstractSamlController {
 	@PostMapping(path = { ApiSupport.SAML_API, ApiSupport.ADFS_ENTRY_URL,
 			ApiSupport.ADFS_ENTRY_URL_TRAILING_SLASH, ApiSupport.XTB_LEGACY_ENTRY_URL },
 			consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
+	@Transactional
 	public String handleIncomingPostMessages(HttpServletRequest request, HttpServletResponse response) {
 		return handleIncomingMessage(request, response, false);
 	}
@@ -112,6 +115,7 @@ public class AppController extends AbstractSamlController {
 	 * @return redirect routing or null when no redirect is needed.
 	 */
 	@GetMapping(path = { ApiSupport.SAML_API, ApiSupport.ADFS_ENTRY_URL, ApiSupport.XTB_LEGACY_ENTRY_URL })
+	@Transactional
 	public String handleIncomingGetMessages(HttpServletRequest request, HttpServletResponse response) {
 		return handleIncomingMessage(request, response, true);
 	}
@@ -120,22 +124,33 @@ public class AppController extends AbstractSamlController {
 		MessageContext messageContext;
 		SignatureContext signatureContext;
 		if (OpenSamlUtil.isSamlArtifactRequest(request)) {
+			validateBinding(SamlBinding.ARTIFACT);
 			messageContext = artifactResolutionService.decodeSamlArtifactRequest(request);
 			signatureContext = SignatureContext.forArtifactBinding();
 		}
-		else if (isGet && !OpenSamlUtil.isSamlRedirectRequest(request)) {
-			throw new RequestDeniedException(String.format(
-					"GET %s without any SAML message dropped", request.getRequestURI()));
-		}
 		else if (isGet) {
+			validateBinding(SamlBinding.REDIRECT);
+			if (!OpenSamlUtil.isSamlRedirectRequest(request)) {
+				throw new RequestDeniedException(String.format(
+						"GET %s without any SAML message dropped", request.getRequestURI()));
+			}
 			messageContext = OpenSamlUtil.decodeSamlRedirectMessage(request);
 			signatureContext = SignatureContext.forRedirectBinding(WebUtil.getUrlWithQuery(request));
 		}
 		else {
+			validateBinding(SamlBinding.POST);
 			messageContext = OpenSamlUtil.decodeSamlPostMessage(request);
 			signatureContext = SignatureContext.forPostBinding();
 		}
 		return processMessageContext(messageContext, response, request, signatureContext);
+	}
+
+	private void validateBinding(SamlBinding binding) {
+		if (!binding.isIn(trustBrokerProperties.getSaml().getBindings())) {
+			throw new RequestDeniedException(
+					String.format("Binding=%s not enabled: %s",
+							binding, trustBrokerProperties.getSaml().getBindings()));
+		}
 	}
 
 	private String processMessageContext(MessageContext messageContext, HttpServletResponse response,
@@ -203,7 +218,9 @@ public class AppController extends AbstractSamlController {
 
 	// Use @Endpoint instead? Would require tweaking interceptor chain (see WsTrustEndpoint etc. via Spring EndpointMapping)
 	@PostMapping(path = ApiSupport.ARP_URL)
+	@Transactional
 	public void resolveArtifact(HttpServletRequest request, HttpServletResponse response) {
+		validateBinding(SamlBinding.ARTIFACT);
 		artifactResolutionService.resolveArtifact(request, response);
 	}
 

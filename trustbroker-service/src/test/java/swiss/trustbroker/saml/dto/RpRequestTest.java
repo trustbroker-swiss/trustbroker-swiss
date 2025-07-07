@@ -26,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 
 class RpRequestTest {
 
@@ -94,10 +94,10 @@ class RpRequestTest {
 		var rpRequest = new RpRequest();
 		List<String> contextClasses = new ArrayList<>(List.of(CONTEXT_CLASS_1, CONTEXT_CLASS_2));
 		rpRequest.setContextClasses(contextClasses);
-		List<ClaimsProviderRelyingParty> cps = new ArrayList<>(List.of(
-				ClaimsProviderRelyingParty.builder().id(CP_1).build(),
-				ClaimsProviderRelyingParty.builder().id(CP_2).build(),
-				ClaimsProviderRelyingParty.builder().id(CP_3).build()));
+		List<ClaimsProvider> cps = new ArrayList<>(List.of(
+				ClaimsProvider.builder().id(CP_1).build(),
+				ClaimsProvider.builder().id(CP_2).build(),
+				ClaimsProvider.builder().id(CP_3).build()));
 		rpRequest.setClaimsProviders(cps);
 		return rpRequest;
 	}

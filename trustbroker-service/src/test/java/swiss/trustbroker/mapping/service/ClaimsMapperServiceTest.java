@@ -27,6 +27,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -35,6 +36,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Test;
@@ -51,6 +53,7 @@ import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.ClaimsMapper;
+import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.IdmLookup;
@@ -84,7 +87,7 @@ class ClaimsMapperServiceTest {
 	void filterAndCreateCpDefinitionsExceptionTest() {
 		var confAttributes = Collections.singletonList(new Definition("attr1"));
 		assertThrows(TechnicalException.class, () ->
-				ClaimsMapperService.filterAndCreateCpDefinitions(null, confAttributes, null));
+				ClaimsMapperService.filterAndCreateCpDefinitions(null, confAttributes, null, "cpIssuer"));
 	}
 
 	@Test
@@ -93,7 +96,7 @@ class ClaimsMapperServiceTest {
 		Collection<Definition> confAttributes = Collections.emptyList();
 
 		Map<Definition, List<String>> result = ClaimsMapperService.filterAndCreateCpDefinitions(attributes, confAttributes,
-				null);
+				null, "cpIssuer");
 
 		assertTrue(result.isEmpty(), "Result should be an empty map when confAttributes is empty.");
 	}
@@ -113,10 +116,30 @@ class ClaimsMapperServiceTest {
 		Collection<Definition> confAttributes = List.of(definition1);
 
 		Map<Definition, List<String>> result = ClaimsMapperService.filterAndCreateCpDefinitions(attributes, confAttributes,
-				null);
+				null, "cpIssuer");
 
 		assertEquals(1, result.size());
 		assertTrue(result.containsKey(definition1));
+	}
+
+	@Test
+	void filterAndCreateCpDefinitionsNoConfTest() {
+		Map<Definition, List<String>> attributes = new HashMap<>();
+		Definition definition1 = new Definition("attr1");
+		Definition definition2 = new Definition("attr2");
+
+		List<String> values1 = Arrays.asList("value1", "value2");
+		List<String> values2 = Arrays.asList("value3", "value4");
+
+		attributes.put(definition1, values1);
+		attributes.put(definition2, values2);
+
+		Collection<Definition> confAttributes = Collections.emptyList();
+
+		Map<Definition, List<String>> result = ClaimsMapperService.filterAndCreateCpDefinitions(attributes, confAttributes,
+				null, "cpIssuer");
+
+		assertEquals(0, result.size());
 	}
 
 	@Test
@@ -153,6 +176,65 @@ class ClaimsMapperServiceTest {
 		assertThat(result, is(Map.of(scriptTime, List.of("100000"))));
 	}
 
+	@Test
+	void applyMapperIgnore() {
+		var attrWithIgnore = Definition.builder()
+				.name("attribute")
+				.mappers(ClaimsMapper.IGNORE.name())
+				.build();
+		var inputs = Map.of(attrWithIgnore, List.of("anyData"));
+		var result = claimsMapperService.applyMappers(inputs, "test");
+
+		assertEquals(0 , result.size());
+		verifyNoInteractions(scriptService);
+	}
+
+	@Test
+	void applyMapperString() {
+		var attr = Definition.builder()
+				.name("attribute")
+				.mappers(ClaimsMapper.STRING.name())
+				.build();
+
+		var stringInput = "anything";
+		var result = claimsMapperService.applyMappers(attr, List.of(stringInput), "test");
+		assertEquals(1 , result.size());
+		assertThat(result.get(0) instanceof String, is(true));
+		assertEquals(stringInput, result.get(0));
+
+		var now = LocalDate.now();
+		result = claimsMapperService.applyMappers(attr, List.of(now), "test");
+		assertEquals(1 , result.size());
+		assertThat(result.get(0) instanceof String, is(true));
+		assertEquals(now.toString(), result.get(0));
+
+		var longInput = 123L;
+		result = claimsMapperService.applyMappers(attr, List.of(longInput), "test");
+		assertEquals(1 , result.size());
+		assertThat(result.get(0) instanceof String, is(true));
+		assertEquals(String.valueOf(longInput), result.get(0));
+
+		var booleanInput = true;
+		result = claimsMapperService.applyMappers(attr, List.of(booleanInput), "test");
+		assertEquals(1 , result.size());
+		assertThat(result.get(0) instanceof String, is(true));
+		assertEquals(String.valueOf(booleanInput), result.get(0));
+	}
+
+	@Test
+	void applyMapperEpochString() {
+		var attr = Definition.builder()
+				.name("timeAttr")
+				.mappers(StringUtils.joinWith(",",
+						ClaimsMapper.TIME_EPOCH.name(), ClaimsMapper.STRING.name()))
+				.build();
+		var now = LocalDate.now();
+		var inputs = Map.of(attr, List.of(now.toString()));
+		var result = claimsMapperService.applyMappers(inputs, "test");
+
+		assertEquals(1 , result.size());
+		assertEquals(String.valueOf(TimeUnit.DAYS.toSeconds(now.toEpochDay())), result.get(attr).get(0));
+	}
 
 	@Test
 	void applyProfileSelectionTest() {
@@ -221,7 +303,7 @@ class ClaimsMapperServiceTest {
 
 	@Test
 	void attributeToDropNoInListTest() {
-		Definition definition = Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME);
+		Definition definition = Definition.ofNames(CoreAttributeName.FIRST_NAME);
 		List<String> attributesToBeDropped = List.of("otherAttr");
 		Map<Definition, List<String>> userDetails = new HashMap<>();
 		Map<Definition, List<String>> properties = new HashMap<>();
@@ -235,7 +317,7 @@ class ClaimsMapperServiceTest {
 
 	@Test
 	void attributeToDropInListTest() {
-		Definition definition = Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME);
+		Definition definition = Definition.ofNames(CoreAttributeName.FIRST_NAME);
 		List<String> attributesToBeDropped = Collections.singletonList(CoreAttributeName.FIRST_NAME.getNamespaceUri());
 		Map<Definition, List<String>> userDetails = new HashMap<>();
 		userDetails.put(definition, List.of("someValue"));
@@ -274,11 +356,15 @@ class ClaimsMapperServiceTest {
 				.builder()
 				.rpIssuerId(relyingParty.getId())
 				.build();
+		var claimsParty = ClaimsParty.builder()
+									 .id("testCp")
+									 .build();
 
 		// data
 		var cpResponse = CpResponse
 				.builder()
 				// CP attributes
+				.issuer(claimsParty.getId())
 				.attributes(Map.of(
 						Definition.ofNameNamespaceUriAndSource(claim, fqClaim, "CP"), List.of("cp-value")
 				))
@@ -336,12 +422,11 @@ class ClaimsMapperServiceTest {
 		}
 
 		// pick
-		var attrDefs = relyingParty.getAttributesSelection() != null ?
-				relyingParty.getAttributesSelection()
-							.getDefinitions() : Collections.emptyList();
-		doReturn(attrDefs)
+		doReturn(relyingParty)
 				.when(relyingPartySetupService)
-				.getRpAttributesDefinitions(params.getRpIssuerId(), params.getRpReferer());
+				.getRelyingPartyByIssuerIdOrReferrer(params.getRpIssuerId(), params.getRpReferer());
+		doReturn(claimsParty)
+				.when(relyingPartySetupService).getClaimsProviderSetupByIssuerId(claimsParty.getId(), null);
 		claimsMapperService.applyFinalAttributeMapping(cpResponse, params, "dest", relyingParty);
 
 		// assert
@@ -376,9 +461,9 @@ class ClaimsMapperServiceTest {
 
 	private static Map<Definition, List<String>> givenUserDetails() {
 		return Map.of(
-				Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME), List.of(
+				Definition.ofNames(CoreAttributeName.FIRST_NAME), List.of(
 						"first_name_1"),
-				Definition.ofNamespaceUri(CoreAttributeName.NAME), List.of(
+				Definition.ofNames(CoreAttributeName.NAME), List.of(
 						"family_name_1"));
 	}
 

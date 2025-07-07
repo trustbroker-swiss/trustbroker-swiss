@@ -35,6 +35,9 @@ app-mat-header {
       padding-left: 0 !important;
       padding-right: 16px;
     }
+	ul {
+		padding-inline-start: 0;
+	}
   }
 
   // Layout issues after Oblique 11 update
@@ -43,12 +46,17 @@ app-mat-header {
 	list-style: none;
 	display: inline-flex;
 	align-items: center;
-	margin: 0px;
+	margin: 0;
   }
 
   // So that the language selector dropdown is visible
   .ob-master-layout-header-title {
     overflow: visible !important;
+
+ 	  .ob-master-layout-brand-app-title.mobile {
+		  font-size: 1rem;
+		  font-weight: 600;
+	  }
   }
 
   .app-language-selector {

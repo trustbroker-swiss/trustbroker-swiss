@@ -37,10 +37,14 @@ import swiss.trustbroker.config.AppConfigService;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.exception.GlobalExceptionHandler;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderDefinitions;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.RelyingPartySetup;
+import swiss.trustbroker.homerealmdiscovery.service.WebResourceProvider;
 import swiss.trustbroker.homerealmdiscovery.util.ClaimsProviderUtil;
 import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
+import swiss.trustbroker.oidc.client.service.OidcMetadataCacheService;
 import swiss.trustbroker.script.service.ScriptService;
 
 /**
@@ -68,6 +72,10 @@ public class ApplicationInitializer {
 	private final List<IdmQueryService> idmQueryServices;
 
 	private final GlobalExceptionHandler globalExceptionHandler;
+
+	private final WebResourceProvider resourceProvider;
+
+	private final OidcMetadataCacheService oidcMetadataCacheService;
 
 	@EventListener(ContextRefreshedEvent.class)
 	@PostConstruct
@@ -117,13 +125,13 @@ public class ApplicationInitializer {
 		scriptService.prepareRefresh();
 
 		// load standard configurations
-		loadAllRelyingParties(relyingPartySetup);
+		loadAllRelyingParties(relyingPartySetup, claimsProviderSetup, claimsProviderDefinitions);
 
 		// PKI setup, note that RP/CP unrelated PKI setup cannot be reloaded dynamically, we need to restart then
 		appConfigService.checkAndLoadRelyingPartyCertificates(relyingPartySetup);
 
 		// post-conditions again
-		appConfigService.checkClaimAndRpMatch(claimsProviderDefinitions, claimsProviderSetup, relyingPartySetup, ssoGroupSetup);
+		appConfigService.checkClaimAndRpMatch(relyingPartySetup, ssoGroupSetup);
 
 		appConfigService.filterInvalidRelyingParties(relyingPartySetup);
 		appConfigService.filterInvalidClaimsParties(claimsProviderSetup);
@@ -145,7 +153,12 @@ public class ApplicationInitializer {
 		scriptService.activateRefresh();
 		gitService.refresh();
 
+		resourceProvider.flushCache();
+
 		appConfigService.updateMetrics();
+
+		// OIDC remote calls at the end
+		oidcMetadataCacheService.triggerRefreshConfigurations();
 	}
 
 	private void initAttributes() {
@@ -173,7 +186,7 @@ public class ApplicationInitializer {
 		}
 	}
 
-	private void loadAllRelyingParties(RelyingPartySetup relyingPartySetup) {
+	private void loadAllRelyingParties(RelyingPartySetup relyingPartySetup, ClaimsProviderSetup claimsProviderSetup, ClaimsProviderDefinitions claimsProviderDefinitions) {
 		String configurationPath = trustBrokerProperties.getConfigurationPath();
 		String newConfigPath = AppConfigService.getConfigCachePath(configurationPath) +
 						BootstrapProperties.getSpringProfileActive() + File.separatorChar;
@@ -181,7 +194,6 @@ public class ApplicationInitializer {
 		RelyingPartySetupUtil.loadRelyingParty(
 				relyingParties, trustBrokerProperties.getConfigurationPath() +
 						GitService.CONFIGURATION_PATH_SUB_DIR_LATEST + RelyingPartySetupUtil.DEFINITION_PATH, newConfigPath,
-				trustBrokerProperties, idmQueryServices, scriptService);
+				trustBrokerProperties, idmQueryServices, scriptService, claimsProviderSetup, claimsProviderDefinitions);
 	}
-
 }

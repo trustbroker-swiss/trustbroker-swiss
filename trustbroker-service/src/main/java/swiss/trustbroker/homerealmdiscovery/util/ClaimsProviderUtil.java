@@ -25,8 +25,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.SerializationUtils;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderDefinitions;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
 import swiss.trustbroker.federation.xmlconfig.CounterParty;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
@@ -169,7 +169,7 @@ public class ClaimsProviderUtil {
 	}
 
 	private static void addAliasesForClaimsProvider(Set<String> rpIds,
-			ArrayList<RelyingParty> aliasList, RelyingParty relyingParty, ClaimsProviderRelyingParty claimProvider) {
+			ArrayList<RelyingParty> aliasList, RelyingParty relyingParty, ClaimsProvider claimProvider) {
 		var alias = claimProvider.getRelyingPartyAlias();
 		if (alias != null) {
 			var rpAliasCopy = SerializationUtils.clone(relyingParty);

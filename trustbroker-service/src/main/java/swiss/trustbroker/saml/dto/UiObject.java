@@ -17,6 +17,7 @@ package swiss.trustbroker.saml.dto;
 
 import java.io.Serializable;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,16 +28,62 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UiObject implements Serializable {
+
+	/**
+	 * id uniquely identifies a tile.
+	 */
 	private String urn;
-	private String title;
-	private String image;
-	private String button;
-	private String name;
-	private String shortcut;
-	private String color;
-	private String tileTitle;
+
+	/**
+	 * disabled signals to the frontend to inactivate the tile.
+	 */
+	private UiDisableReason disabled;
+
+	/**
+	 * order allows to compose multiple tiles in a flexible manner.
+	 */
 	private Integer order;
 
-	@Builder.Default
-	private boolean disabled = false;
+	/**
+	 * name is displayed on the tile given it's not used as a key into the translation service or overridden by tileTitle.
+	 */
+	private String name;
+
+	/**
+	 * Title for the CP tile and help item.
+	 * <br/>
+	 * The fallback order (if not defined) is: title > name > ID
+	 */
+	private String title;
+
+	/**
+	 * Text displayed in the CP tile.
+	 * <br/>
+	 * The fallback order (if not defined) is: description > name > ID
+	 */
+	private String description;
+
+	/**
+	 * Image displayed in the HRD large view.
+	 */
+	private String image;
+
+	/**
+	 * A usually two-character code identifying the CP on small screens.
+	 */
+	private String shortcut;
+
+	/**
+	 * HTML color code identifying the CP on small screens.
+	 */
+	private String color;
+
+	/**
+	 * @return configured order number or a default order at the end of a common CP list (using range [100, 999].
+	 */
+	@JsonIgnore
+	public Integer getOrderWithDefault() {
+		return order != null ? order : 999;
+	}
+
 }

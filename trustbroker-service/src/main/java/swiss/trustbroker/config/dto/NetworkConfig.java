@@ -19,11 +19,13 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 
 /**
  * Network configuration.
  *
- * @see swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty
+ * @see ClaimsProvider
  */
 @Data
 @Builder
@@ -84,7 +86,7 @@ public class NetworkConfig {
 	private String canaryEnabledValue = "always";
 
 	/**
-	 * Allow to disable OpenTelemetry traceparent propagation to backends, that might block use otherwise.
+	 * Allow disabling OpenTelemetry traceparent propagation to backends that might block use otherwise.
 	 *
 	 * @since 1.7.0
 	 */
@@ -98,12 +100,22 @@ public class NetworkConfig {
 	 */
 	private String proxyUrl;
 
+	/**
+	 * Backend service connect timeout in seconds.
+	 * <br/>
+	 * Default: 30
+	 *
+	 * @since 1.10.0
+	 */
+	@Builder.Default
+	private int backendConnectTimeoutSec = 30;
+
 	public boolean isIntranet(String name) {
-		return intranetNetworkName != null && intranetNetworkName.equals(name);
+		return StringUtils.isNotEmpty(intranetNetworkName) && intranetNetworkName.equals(name);
 	}
 
 	public boolean isInternet(String name) {
-		return internetNetworkName != null && internetNetworkName.equals(name);
+		return StringUtils.isNotEmpty(internetNetworkName) && internetNetworkName.equals(name);
 	}
 
 }

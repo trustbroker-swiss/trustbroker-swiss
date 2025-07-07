@@ -42,6 +42,10 @@ XTB consists of the following modules:
 |``swiss.trustbroker.samlmock``
 |Mock for testing SAML exchanges based on recorded or hand-crafted messages.
 
+|``trustbroker-oidcmock``
+|``swiss.trustbroker.oidcmock``
+|Mock for testing OICD interaction.
+
 |``trustbroker-install``
 |N/A
 |Docker image creation.

@@ -38,7 +38,6 @@ import org.opensaml.saml.saml2.metadata.Endpoint;
 import org.opensaml.saml.saml2.metadata.EntityDescriptor;
 import org.opensaml.saml.saml2.metadata.KeyDescriptor;
 import org.opensaml.saml.saml2.metadata.NameIDFormat;
-import org.opensaml.security.credential.Credential;
 import swiss.trustbroker.common.config.KeystoreProperties;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
@@ -83,11 +82,8 @@ class FederationMetadataServiceTest {
 	private RelyingPartySetupService givenRpSetupService(TrustBrokerProperties trustBrokerProperties) {
 		var relyingPartiesMapping = new RelyingPartyDefinitions();
 
-		List<Credential> cpEncryptionTrustCred = new ArrayList<>();
-		cpEncryptionTrustCred.add(SamlTestBase.dummyCredential());
-
 		var claimsParty = ClaimsParty.builder()
-				.cpEncryptionTrustCredentials(cpEncryptionTrustCred)
+				.cpDecryptionCredentials(List.of(SamlTestBase.dummyCredential()))
 				.build();
 
 		List<ClaimsParty> claimParties = new ArrayList<>();
@@ -101,7 +97,7 @@ class FederationMetadataServiceTest {
 
 		List<RelyingParty> relyingParties = new ArrayList<>();
 		var relyingParty = RelyingParty.builder()
-				.rpEncryptionCred(SamlTestBase.dummyCredential())
+				.rpEncryptionCredential(SamlTestBase.dummyCredential()) // does not affect metadata
 				.build();
 		relyingParties.add(relyingParty);
 
@@ -174,7 +170,7 @@ class FederationMetadataServiceTest {
 		validateArpIndexes(arpServices, ARP_INDEX);
 		validateBinding(arpServices, SAMLConstants.SAML2_SOAP11_BINDING_URI, true);
 		// KeyDescriptor
-		validateKeyDescriptor(idpSsoDescriptor.getKeyDescriptors());
+		validateKeyDescriptor(idpSsoDescriptor.getKeyDescriptors(), 2);
 	}
 
 	private void validateSp(EntityDescriptor entityDescriptor) {
@@ -193,7 +189,7 @@ class FederationMetadataServiceTest {
 		validateLocation(spSloServices, CONSUMER_URL);
 		validateBindings(spSloServices, false);
 		// KeyDescriptors
-		validateKeyDescriptor(spSsoDescriptor.getKeyDescriptors());
+		validateKeyDescriptor(spSsoDescriptor.getKeyDescriptors(), 3);
 	}
 
 	private static void validateNameIdFormats(List<NameIDFormat> nameIDFormats) {
@@ -225,8 +221,8 @@ class FederationMetadataServiceTest {
 		}
 	}
 
-	private static void validateKeyDescriptor(List<KeyDescriptor> keyDescriptors) {
-		assertThat(keyDescriptors, hasSize(3));
+	private static void validateKeyDescriptor(List<KeyDescriptor> keyDescriptors, int expectedKeyDescriptors) {
+		assertThat(keyDescriptors, hasSize(expectedKeyDescriptors));
 		for (var keyDescriptor : keyDescriptors) {
 			assertThat(keyDescriptor.getKeyInfo(), is(not(nullValue())));
 			assertThat(keyDescriptor.getUse(), is(not(nullValue())));

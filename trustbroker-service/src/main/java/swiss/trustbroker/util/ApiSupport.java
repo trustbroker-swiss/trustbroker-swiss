@@ -114,6 +114,10 @@ public class ApiSupport {
 
 	public static final String VERSION_API = API_CONTEXT + "/version";
 
+	public static final String CONFIG_API = API_CONTEXT + "/config";
+
+	public static final String CONFIG_FRONTEND_API = CONFIG_API + "/frontend";
+
 	static final String PROFILES_API = HRD_API + "/profiles";
 
 	static final String PROFILE_API = HRD_API + "/profile";
@@ -246,7 +250,7 @@ public class ApiSupport {
 		return path != null && path.endsWith(ApiSupport.OIDC_LOGOUT);
 	}
 
-	private static boolean isSpringFederationPath(String path) {
+	public static boolean isSpringFederationPath(String path) {
 		return path != null && (path.startsWith(ApiSupport.SPRING_SAML_LOGIN_CTXPATH)
 				|| path.startsWith(ApiSupport.SPRING_SAML_AUTHENTICATE_CTXPATH));
 	}

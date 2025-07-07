@@ -80,6 +80,16 @@ public class StateCacheProperties {
 	private int txRetryDelayMs = -1;
 
 	/**
+	 * Number of retries doubling the txRetryDelayMs on every try.
+	 * <br/>
+	 * Default: 0
+	 *
+	 * @since 1.10.0
+	 */
+	@Builder.Default
+	private int txRetryCount = 0;
+
+	/**
 	 * State cache schema migration. Currently unused.
 	 * <br/>
 	 * Default: true

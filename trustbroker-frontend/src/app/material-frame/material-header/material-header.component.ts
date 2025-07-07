@@ -13,13 +13,19 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Component, EventEmitter, Input, OnInit, Output, ViewChild, ViewEncapsulation } from '@angular/core';
+import { Component, EventEmitter, Input, Output, ViewChild, ViewEncapsulation } from '@angular/core';
 import { ObEColor, ObPopoverDirective } from '@oblique/oblique';
 
 import { Theme } from '../../model/Theme';
 import { ApiService } from '../../services/api.service';
 import { LanguageService } from '../../services/language.service';
 import { ThemeService } from '../../services/theme-service';
+import { FocusOrigin } from '@angular/cdk/a11y';
+import { ActivationStart, Router } from '@angular/router';
+import { Observable, filter } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { BreakpointObserver } from '@angular/cdk/layout';
+import { toSignal } from '@angular/core/rxjs-interop';
 
 @Component({
 	selector: 'app-mat-header',
@@ -27,40 +33,40 @@ import { ThemeService } from '../../services/theme-service';
 	styleUrls: ['./material-header.component.scss'],
 	encapsulation: ViewEncapsulation.None
 })
-export class MaterialHeaderComponent implements OnInit {
+export class MaterialHeaderComponent {
 	@Input() appName: string;
 
 	@Input() environment: string;
 
 	@Input() theme: Theme = ThemeService.defaultTheme;
 
-	@Input() readonly helpPanelState: EventEmitter<boolean>;
+	@Output() readonly helpPanel = new EventEmitter<FocusOrigin>();
 
-	@Output() readonly helpPanel = new EventEmitter<boolean>();
+	@Input({ required: true })
+	helpPanelVisible: boolean;
 
 	@ViewChild(ObPopoverDirective) popover: ObPopoverDirective;
 
 	languageDropdownVisible: boolean;
-	helpPanelVisible: boolean;
+
 	readonly languages: string[];
+
+	pageTitle$: Observable<string | undefined>;
+	isMobile = toSignal(this.breakpointObserver.observe('(max-width: 511px)').pipe(map(({ matches }) => matches)));
 
 	constructor(
 		public readonly languageService: LanguageService,
-		private readonly apiService: ApiService
+		private readonly apiService: ApiService,
+		private readonly router: Router,
+		private readonly breakpointObserver: BreakpointObserver
 	) {
 		this.languages = this.languageService.availableLanguages;
 		this.languageDropdownVisible = false;
-		this.helpPanelVisible = false;
-	}
 
-	ngOnInit(): void {
-		if (this.helpPanelState !== null) {
-			this.helpPanelState.subscribe({
-				next: event => {
-					this.helpPanelVisible = event === 'open';
-				}
-			});
-		}
+		this.pageTitle$ = this.router.events.pipe(
+			filter(event => event instanceof ActivationStart),
+			map(event => event.snapshot.data['pageTitle'])
+		);
 	}
 
 	languageSelectionToggle(): void {
@@ -75,9 +81,13 @@ export class MaterialHeaderComponent implements OnInit {
 		this.languageDropdownVisible = false;
 	}
 
-	toggleHelpPanel(value: boolean): void {
+	toggleHelpPanel(event: UIEvent): void {
+		const focusOrigin = this.extractFocusOrigin(event);
+		if (event instanceof KeyboardEvent && !['Space', 'Enter'].includes(event.code)) {
+			return;
+		}
 		if (this.theme.hasHelpPanel) {
-			this.helpPanel.emit(value);
+			this.helpPanel.emit(focusOrigin);
 		} else {
 			const helpLink = this.languageService.translate('trustbroker.header.help.link');
 			const helpTarget = this.languageService.translate('trustbroker.header.help.target');
@@ -120,11 +130,17 @@ export class MaterialHeaderComponent implements OnInit {
 		return this.languageDropdownVisible;
 	}
 
-	helpExpanded(): boolean {
-		return this.helpPanelVisible;
-	}
-
 	imageUrl(image: string) {
 		return this.apiService.getImageUrl(this.theme, image);
+	}
+
+	private extractFocusOrigin(event: UIEvent): FocusOrigin {
+		if (event instanceof KeyboardEvent) {
+			return 'keyboard';
+		}
+		if (event instanceof PointerEvent) {
+			return event.pointerType === 'touch' ? 'touch' : 'mouse';
+		}
+		return 'program';
 	}
 }

@@ -38,7 +38,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.opensaml.security.credential.Credential;
 import swiss.trustbroker.api.relyingparty.dto.RelyingPartyConfig;
 import swiss.trustbroker.common.saml.dto.SignatureParameters;
-import swiss.trustbroker.util.PropertyUtil;
 
 /**
  * This class describes the configuration of a relying party (RP).
@@ -241,7 +240,7 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 
 	private transient Credential rpSigner;
 
-	private transient Credential rpEncryptionCred;
+	private transient Credential rpEncryptionCredential;
 
 	// Lombok would generate these, but schemagen compilation complains about not implementing RelyingPartyConfig / CounterParty
 
@@ -266,9 +265,15 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 	}
 
 	@Override
+	public SecurityPolicies getSecurityPolicies() { return securityPolicies; }
+
+	@Override
 	public Saml getSaml() {
 		return saml;
 	}
+
+	@Override
+	public AttributesSelection getAttributesSelection() { return attributesSelection; }
 
 	@Override
 	public Scripts getScripts() {
@@ -293,8 +298,8 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 	}
 
 	@XmlTransient
-	public Credential getEncryptionCred() {
-		return rpEncryptionCred;
+	public Credential getRpEncryptionCredential() {
+		return rpEncryptionCredential;
 	}
 
 	// derived
@@ -326,25 +331,6 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 				.findFirst();
 	}
 
-	public boolean requireSignedAuthnRequest() {
-		return PropertyUtil.evaluatePropery(securityPolicies, SecurityPolicies::getRequireSignedAuthnRequest,
-				() -> true);
-	}
-
-	public boolean requireSignedLogoutRequest() {
-		return PropertyUtil.evaluatePropery(securityPolicies, SecurityPolicies::getRequireSignedLogoutRequest,
-				() -> true);
-	}
-
-	public boolean requireSignedResponse(boolean defaultValue) {
-		return PropertyUtil.evaluatePropery(securityPolicies, SecurityPolicies::getRequireSignedResponse,
-				() -> defaultValue);
-	}
-
-	public int getSsoMinQoaLevel(int defaultValue) {
-		return PropertyUtil.evaluatePropery(securityPolicies, SecurityPolicies::getSsoMinQoaLevel, () -> defaultValue);
-	}
-
 	public List<OidcClient> getOidcClients() {
 		return oidc != null && oidc.getClients() != null ? oidc.getClients() : Collections.emptyList();
 	}
@@ -362,10 +348,11 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 		return builder.credential(getRpSigner());
 	}
 
-	// disable setting OriginalIssuer on Attribute - defaults to true
+	// disable setting OriginalIssuer on Attribute - defaults to true (unlike ClaimsParty.isDelegateOrigin)
 	public boolean isDelegateOrigin() {
-		return securityPolicies == null || securityPolicies.getDelegateOrigin() == null ||
-				securityPolicies.getDelegateOrigin();
+		var secPol = getSecurityPolicies();
+		return secPol == null || secPol.getDelegateOrigin() == null ||
+				secPol.getDelegateOrigin();
 	}
 
 	public List<Flow> getFlows() {
@@ -381,7 +368,7 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 				relyingParty.claimsProviderMappings.getClaimsProviderList());
 	}
 
-	public Optional<ClaimsProviderRelyingParty> getCpMappingForAlias(String rpAliasId) {
+	public Optional<ClaimsProvider> getCpMappingForAlias(String rpAliasId) {
 		if (rpAliasId == null || claimsProviderMappings == null || claimsProviderMappings.getClaimsProviderList() == null) {
 			return Optional.empty();
 		}

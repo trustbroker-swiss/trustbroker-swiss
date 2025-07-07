@@ -38,6 +38,7 @@ import org.springframework.security.oauth2.server.authorization.OAuth2Authorizat
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import swiss.trustbroker.common.tracing.TraceSupport;
+import swiss.trustbroker.common.util.ProcessUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.exception.GlobalExceptionHandler;
 import swiss.trustbroker.metrics.service.MetricsService;
@@ -71,6 +72,8 @@ public class CustomOAuth2AuthorizationService extends JdbcOAuth2AuthorizationSer
 
 	public final MetricsService metricsService;
 
+	private static final ThreadLocal<Boolean> resilientOps = new ThreadLocal<>();
+
 	public CustomOAuth2AuthorizationService(
 			JdbcOperations jdbcOperations,
 			RegisteredClientRepository registeredClientRepository,
@@ -86,15 +89,11 @@ public class CustomOAuth2AuthorizationService extends JdbcOAuth2AuthorizationSer
 		this.trustBrokerProperties = trustBrokerProperties;
 	}
 
-	@Override
-	public void save(OAuth2Authorization authorization) {
-		super.save(assignConversation(authorization));
-	}
-
 	@Nullable
 	@Override
 	public OAuth2Authorization findById(String id) {
-		var ret = super.findById(id);
+		var retry = resilientOps.get();
+		var ret = findWithFinder(id, null, null, retry == null || retry);
 		applyConversation(ret);
 		return ret;
 	}
@@ -102,9 +101,49 @@ public class CustomOAuth2AuthorizationService extends JdbcOAuth2AuthorizationSer
 	@Nullable
 	@Override
 	public OAuth2Authorization findByToken(String token, @Nullable OAuth2TokenType tokenType) {
-		var ret = super.findByToken(token, tokenType);
+		var ret = findWithFinder(null, token, tokenType, true);
 		applyConversation(ret);
 		return ret;
+	}
+
+	@Override
+	public void save(OAuth2Authorization authorization) {
+		try {
+			resilientOps.set(Boolean.FALSE);
+			super.save(authorization);
+		}
+		finally {
+			resilientOps.remove();
+		}
+	}
+
+	// retry flag implements a CircuitBreaker retrying if we do not yet find any data (galera master/master read many problem)
+	private OAuth2Authorization findWithFinder(String id, String token, OAuth2TokenType tokenType, boolean retry) {
+		OAuth2Authorization authorization = null;
+		var retryDelayMs = trustBrokerProperties.getStateCache().getTxRetryDelayMs();
+		var maxTry = retry ? trustBrokerProperties.getStateCache().getTxRetryCount() + 1 : 1;
+		var retryCnt = 0;
+		var startTime = System.currentTimeMillis();
+		while (authorization == null && retryCnt < maxTry) {
+			if (retryCnt > 0) {
+				log.debug("Resilient find retries={} with txRetryDelayMs={}", retryCnt, retryDelayMs);
+				ProcessUtil.sleep(retryDelayMs);
+				retryDelayMs *= 2; // double the time on next try
+			}
+			authorization = id != null ? super.findById(id) : super.findByToken(token, tokenType);
+			retryCnt += 1;
+		}
+		if (retryCnt > 1) {
+			var msg = String.format("Resilient findWithFinder for id=%s token='%s' tokenType=%s done with retries=%s dTms=%s authorizationCount==%s",
+					id, token, tokenType, retryCnt - 1, System.currentTimeMillis() - startTime, authorization != null ? 1 : 0);
+			if (authorization == null) {
+				log.debug(msg); // unnecessary waiting querying data that is not there
+			}
+			else {
+				log.warn(msg); // make latency with session DB visible
+			}
+		}
+		return authorization;
 	}
 
 	@SuppressWarnings("java:S2245") // use of unsecure random just for randomizing run time between PODs
@@ -177,15 +216,6 @@ public class CustomOAuth2AuthorizationService extends JdbcOAuth2AuthorizationSer
 		PreparedStatementSetter pss = new ArgumentPreparedStatementSetter(parameters);
 		long deleted = jdbcOperations.update(DELETE_AUTHORIZATION_BY_CLIENTID_PRINCIPAL, pss);
 		log.debug("Deleted tokens={} for ClientID={} PrincipalName={}", deleted, clientId, principalName);
-	}
-
-	private static OAuth2Authorization assignConversation(OAuth2Authorization authorization) {
-		return OAuth2Authorization.from(authorization)
-								  .attributes(attrs -> {
-									  attrs.putAll(authorization.getAttributes());
-									  saveConversation(attrs);
-								  })
-								  .build();
 	}
 
 	public static void saveConversation(Map<String, Object> metaData) {

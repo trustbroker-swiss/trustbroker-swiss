@@ -119,7 +119,7 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 
 	private static Node getNode(SoapElement soapMessage) {
 		var source = soapMessage.getSource();
-		var domSource = (DOMSource)source;
+		var domSource = (DOMSource) source;
 		return domSource.getNode();
 	}
 
@@ -171,15 +171,15 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 					log.debug("Timestamp created on={}", timestamp.getCreated().getValue());
 					requestHeader.setRequestTimestamp(timestamp);
 				}
-				else if(xmlObject instanceof Security){
+				else if (xmlObject instanceof Security) {
 					//Security header is handle by springws
 					log.debug("Security header is present in the request");
 				}
-				else if(xmlObject instanceof Signature){
+				else if (xmlObject instanceof Signature) {
 					//Signature header is handle by springws
 					log.debug("Signature header is present in the request");
 				}
-				else if (log.isErrorEnabled()){
+				else if (log.isErrorEnabled()) {
 					log.error("Unknown security header xml object with namespace={}: {}",
 							xmlObject.getElementQName(), OpenSamlUtil.samlObjectToString(securityHeader));
 				}
@@ -206,7 +206,7 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 		if (node instanceof Element element) {
 			return unmarshallElement(element);
 		}
-		else if (log.isErrorEnabled()){
+		else if (log.isErrorEnabled()) {
 			log.error("Unexpected xml object of type={}: {}", node.getNamespaceURI(), SoapUtil.nodeObjectToString(node));
 		}
 
@@ -301,7 +301,7 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 
 	@Override
 	public void afterCompletion(MessageContext messageContext, Object endpoint, Exception ex) {
-		// NOSONAR nothing to do
+		// nothing to do
 	}
 
 	public static Action createActionHeader() {

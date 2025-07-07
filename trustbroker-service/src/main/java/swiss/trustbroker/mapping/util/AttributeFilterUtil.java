@@ -17,6 +17,7 @@ package swiss.trustbroker.mapping.util;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -90,13 +91,10 @@ public class AttributeFilterUtil {
 		}
 		List<IdmQuery> queries = idmLookup.getQueries();
 		for (IdmQuery idmQuery : queries) {
-			if (idmQuery.getUserDetailsSelection() == null) {
-				continue;
-			}
+			var userDetailsSelection = idmQuery.getAttributeSelection();
 			List<Definition> claimsForSource = AttributeFilterUtil.getClaimsForSource(claimsSelection,
 					ClaimSourceUtil.buildClaimSource(ClaimSource.IDM, idmQuery.getName()));
-			List<Definition> userDetailsSelection = idmQuery.getUserDetailsSelection().getDefinitions();
-			List<Definition> joinConfAttributes = joinConfAttributes(userDetailsSelection, claimsForSource);
+			var joinConfAttributes = joinConfAttributes(userDetailsSelection, claimsForSource);
 
 			for (var configDefinition : joinConfAttributes) {
 				// Create the attribute if the Definition is in the config
@@ -105,8 +103,10 @@ public class AttributeFilterUtil {
 				if (attributeValue.isPresent()) {
 					var definition = Definition.ofNames(configDefinition);
 					var source = attributeValue.get().getKey().getSource();
+					var mappers = attributeValue.get().getKey().getMappers();
 					var value = new ArrayList<>(attributeValue.get().getValue());
 					definition.setSource(source);
+					definition.setMappers(mappers);
 					applyMultiQueryPolicy(multiQueryPolicy, responseAttrs, definition, value);
 				}
 			}
@@ -114,7 +114,7 @@ public class AttributeFilterUtil {
 	}
 
 	static Optional<Map.Entry<Definition, List<String>>> getAttributeValueIfRequiredForOutput(
-			Map<Definition, List<String>> userDetailMap, Definition configDefinition, String queryName) {
+			Map<Definition, List<String>> userDetailMap, AttributeName configDefinition, String queryName) {
 		for (Map.Entry<Definition, List<String>> entry : userDetailMap.entrySet()) {
 			var attributeDefinition = entry.getKey();
 			// Attribute definition does not have NamespaceUri yet
@@ -158,11 +158,11 @@ public class AttributeFilterUtil {
 	}
 
 	public static List<Definition> getClaimsForSource(AttributesSelection claimsSelection, String attrSource) {
-		return claimsSelection != null ?
+		return claimsSelection != null && claimsSelection.getDefinitions() != null ?
 				claimsSelection.getDefinitions()
 						.stream()
 						.filter(def -> def.getSource() != null && attrSource != null && attrSource.startsWith(def.getSource()))
-						.toList() : new ArrayList<>();
+						.toList() : Collections.emptyList();
 	}
 
 	public static boolean claimMustBeInResponse(Definition definition, List<Definition> claimsSelection) {
@@ -192,7 +192,11 @@ public class AttributeFilterUtil {
 
 	// confAttributes can be unmodifiable, adds claimsForSource as required and returns a modifiable list
 	public static <T extends AttributeName> List<T> joinConfAttributes(Collection<T> confAttributes, List<T> claimsForSource) {
-		List<T> modifiableList = new ArrayList<>(confAttributes);
+		List<T> modifiableList = new ArrayList<>();
+		if (confAttributes != null) {
+			modifiableList.addAll(confAttributes);
+		}
+
 		if (CollectionUtils.isEmpty(claimsForSource)) {
 			return modifiableList;
 		}
@@ -205,6 +209,9 @@ public class AttributeFilterUtil {
 	}
 
 	static <T extends AttributeName> boolean addDefToCollection(T def, Collection<T> confAttributes) {
+		if (confAttributes == null) {
+			return true;
+		}
 		for (T confDef : confAttributes) {
 			if (confDef.equalsByNameAndNamespace(def)) {
 				return false;
@@ -215,14 +222,16 @@ public class AttributeFilterUtil {
 
 	// confAttributes can be unmodifiable, adds claimsForSource as required and returns a modifiable list
 	public static List<AttributeName> joinConfAttributes(List<AttributeName> confAttributes, List<Definition> claimsSelection) {
-		List<AttributeName> modifiableList = new ArrayList<>(confAttributes);
+		List<AttributeName> modifiableList = new ArrayList<>();
+		if (confAttributes != null) {
+			modifiableList.addAll(confAttributes);
+		}
 		if (CollectionUtils.isEmpty(claimsSelection)) {
 			return modifiableList;
 		}
 		for (Definition def : claimsSelection) {
-			AttributeName attributeName = def;
-			if (addDefToCollection(attributeName, confAttributes)) {
-				modifiableList.add(attributeName);
+			if (addDefToCollection(def, confAttributes)) {
+				modifiableList.add(def);
 			}
 		}
 		return modifiableList;

@@ -45,6 +45,7 @@ import org.springframework.stereotype.Service;
 import org.w3c.dom.Element;
 import swiss.trustbroker.common.config.KeystoreProperties;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.saml.dto.SamlBinding;
 import swiss.trustbroker.common.saml.util.CredentialReader;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlFactory;
@@ -65,9 +66,7 @@ public class FederationMetadataService {
 
 	private List<Credential> allSigners;
 
-	private List<Credential> cpEncryptionCreds;
-
-	private List<Credential> rpEncryptionCreds;
+	private List<Credential> cpDecryptionCredentials;
 
 	FederationMetadataService(TrustBrokerProperties trustBrokerProperties, RelyingPartySetupService relyingPartySetupService) {
 		this.trustBrokerProperties = trustBrokerProperties;
@@ -75,8 +74,7 @@ public class FederationMetadataService {
 		// initialized onApplicationEvent
 		this.signer = null;
 		this.allSigners = null;
-		this.cpEncryptionCreds = null;
-		this.rpEncryptionCreds = null;
+		this.cpDecryptionCredentials = null;
 	}
 
 	@EventListener(ContextRefreshedEvent.class)
@@ -87,8 +85,7 @@ public class FederationMetadataService {
 		allSigners = loadTrustableCerts(trustBrokerProperties.getRolloverSigner()); // trust
 
 		// encryption
-		cpEncryptionCreds = relyingPartySetupService.getCpsEncryptionTrustCredentials(); // cp credentials
-		rpEncryptionCreds = relyingPartySetupService.getRpsEncryptionCredentials(); // rp credentials
+		cpDecryptionCredentials = relyingPartySetupService.getAllCpDecryptionCredentials();
 	}
 
 	private List<Credential> loadTrustableCerts(KeystoreProperties keystoreProperties) {
@@ -167,26 +164,25 @@ public class FederationMetadataService {
 		var idpDescriptor = OpenSamlUtil.buildSamlObject(IDPSSODescriptor.class);
 		idpDescriptor.setWantAuthnRequestsSigned(true);
 		idpDescriptor.addSupportedProtocol(SAMLConstants.SAML20P_NS);
-		for (String binding : samlConfig.getBindings()) {
+		for (var binding : samlConfig.getBindings()) {
 			idpDescriptor.getSingleSignOnServices()
 						 .add(getSingleSignOnService(consumerUrl, binding));
 			if (samlConfig.isIdpLogoutMetadataEnabled()) {
 				idpDescriptor.getSingleLogoutServices()
 							 .add(getSingleLogoutService(consumerUrl, binding));
 			}
-		}
-		if (samlConfig.getArtifactResolution() != null) {
-			idpDescriptor.getArtifactResolutionServices()
-						 .add(getArtifactResolutionService());
+			// artifact resolution is only for artifact binding:
+			if (SamlBinding.ARTIFACT.is(binding) && samlConfig.getArtifactResolution() != null) {
+				idpDescriptor.getArtifactResolutionServices()
+							 .add(getArtifactResolutionService());
+			}
 		}
 		for (String nameIdFormat : samlConfig.getIdpNameFormats()) {
 			idpDescriptor.getNameIDFormats()
 						 .add(getNameIdFormat(nameIdFormat));
 		}
 		allSigners.forEach(cred -> idpDescriptor.getKeyDescriptors().add(getKeyDescriptor(cred, UsageType.SIGNING)));
-		if (!cpEncryptionCreds.isEmpty()) {
-			cpEncryptionCreds.forEach(cred -> idpDescriptor.getKeyDescriptors().add(getKeyDescriptor(cred, UsageType.ENCRYPTION)));
-		}
+		// Encryption certs towards RPs belong to IDP descriptor (matching the role of XTB towards RPs)
 		return idpDescriptor;
 	}
 
@@ -227,8 +223,9 @@ public class FederationMetadataService {
 			spDescriptor.getNameIDFormats().add(getNameIdFormat(nameIdFormat));
 		}
 		allSigners.forEach(cred -> spDescriptor.getKeyDescriptors().add(getKeyDescriptor(cred, UsageType.SIGNING)));
-		if (!rpEncryptionCreds.isEmpty()) {
-			rpEncryptionCreds.forEach(cred -> spDescriptor.getKeyDescriptors().add(getKeyDescriptor(cred, UsageType.ENCRYPTION)));
+		// Encryption certs towards CPs belong to SP descriptor (matching the role of XTB towards CPs)
+		if (!cpDecryptionCredentials.isEmpty()) {
+			cpDecryptionCredentials.forEach(cred -> spDescriptor.getKeyDescriptors().add(getKeyDescriptor(cred, UsageType.ENCRYPTION)));
 		}
 		return spDescriptor;
 	}

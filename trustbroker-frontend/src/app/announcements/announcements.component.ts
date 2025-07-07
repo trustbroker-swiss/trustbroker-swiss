@@ -14,33 +14,48 @@
  */
 
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 
 import { AnnouncementsService } from '../services/announcements.service';
 import { AnnouncementResponse } from '../services/announcement-response';
 import { ThemeService } from '../services/theme-service';
 import { Theme } from '../model/Theme';
+import { map } from 'rxjs/operators';
+import { Md5 } from 'ts-md5';
+import { AnnouncementComponent } from './announcement/announcement.component';
+import { TranslatePipe } from '@ngx-translate/core';
+import { MatButton } from '@angular/material/button';
+import { Configuration } from '../model/Configuration';
+import { CookieService } from '../services/cookie-service';
+
+export type AnnouncementWithCookieName = AnnouncementResponse & { cookieName: string };
 
 @Component({
 	selector: 'app-announcements',
 	templateUrl: './announcements.component.html',
-	styleUrls: ['./announcements.component.scss']
+	styleUrls: ['./announcements.component.scss'],
+	standalone: true,
+	changeDetection: ChangeDetectionStrategy.OnPush,
+	imports: [AnnouncementComponent, TranslatePipe, MatButton]
 })
-export class AnnouncementsComponent implements OnInit {
+export default class AnnouncementsComponent implements OnInit {
 	showAnnouncements = false;
-	announcements: AnnouncementResponse[];
-	appVisible: boolean;
+	announcements: AnnouncementWithCookieName[];
+	appAccessible: boolean;
 	theme: Theme;
 	private authnRequestId: string;
 	private issuer: string;
 	private appName: string;
+	private readonly config: Configuration = this.route.snapshot.data['config'];
 
 	constructor(
 		private readonly announcementService: AnnouncementsService,
 		private readonly route: ActivatedRoute,
 		private readonly router: Router,
-		private readonly themeService: ThemeService
+		private readonly themeService: ThemeService,
+		private readonly cookieService: CookieService,
+		private readonly cd: ChangeDetectorRef
 	) {
 		this.theme = this.themeService.getTheme();
 		this.themeService.subscribe({
@@ -52,39 +67,48 @@ export class AnnouncementsComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.route.params.subscribe((params: Params) => {
-			this.authnRequestId = params.authnRequestId;
-			this.issuer = params.issuer;
-			this.appName = params.appName;
+			this.authnRequestId = params['authnRequestId'];
+			this.issuer = params['issuer'];
+			this.appName = params['appName'];
 			const navRoute = `home/${this.issuer}/${this.authnRequestId}`;
-			this.announcementService.getAnnouncements(this.issuer, this.appName).subscribe({
-				next: resp => {
-					if (resp == null || resp.length === 0) {
+			this.announcementService
+				.getAnnouncements(this.issuer, this.appName)
+				.pipe(
+					map(responses => (responses ? responses.map(each => this.enhanceWithCookieName(each)) : [])),
+					map(announcements => announcements.filter(announcement => !this.cookieService.check(announcement.cookieName)))
+				)
+				.subscribe({
+					next: resp => {
+						if (resp == null || resp.length === 0) {
+							void this.router.navigate([navRoute]);
+						} else {
+							this.showAnnouncements = true;
+						}
+						this.cd.markForCheck();
+						this.announcements = resp;
+						this.appAccessible = resp.every(announcement => announcement.applicationAccessible);
+					},
+					error: (errorResponse: HttpErrorResponse) => {
+						console.error(errorResponse);
 						void this.router.navigate([navRoute]);
-					} else {
-						this.showAnnouncements = true;
 					}
-					this.announcements = resp;
-					this.appVisible = this.applicationAccessible();
-				},
-				error: (errorResponse: HttpErrorResponse) => {
-					console.error(errorResponse);
-					void this.router.navigate([navRoute]);
-				}
-			});
+				});
 		});
 	}
 
-	continueToApp() {
+	continueToApp(): void {
 		const navRoute = `home/${this.issuer}/${this.authnRequestId}`;
 		void this.router.navigate([navRoute]);
 	}
 
-	applicationAccessible() {
-		for (const announcement of this.announcements) {
-			if (!announcement.applicationAccessible) {
-				return false;
-			}
-		}
-		return true;
+	private enhanceWithCookieName(announcement: AnnouncementResponse): AnnouncementWithCookieName {
+		return {
+			...announcement,
+			cookieName: this.computeCookieName(announcement)
+		};
+	}
+
+	private computeCookieName(announcement: AnnouncementResponse): string {
+		return `${this.config.announcementCookie.name}-${new Md5().appendStr(JSON.stringify(announcement)).end()}`;
 	}
 }

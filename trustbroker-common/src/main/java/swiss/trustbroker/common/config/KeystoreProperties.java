@@ -22,6 +22,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
+@ToString // required to ToString.Exclude
 @Data
 @Getter
 @Builder

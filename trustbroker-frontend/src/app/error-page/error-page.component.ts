@@ -13,12 +13,13 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Component, OnInit } from '@angular/core';
+import { Component, DestroyRef, OnInit } from '@angular/core';
 import { ActivatedRoute, Params } from '@angular/router';
 
 import { Theme } from '../model/Theme';
 import { ApiService } from '../services/api.service';
 import { ThemeService } from '../services/theme-service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
 	selector: 'app-error-page',
@@ -32,8 +33,8 @@ export class ErrorPageComponent implements OnInit {
 	infoKey: string;
 	sessionId: string;
 	continueButton: boolean;
-	unknown: boolean;
 	reloginButton: boolean;
+	linkButton: boolean;
 	supportInfo: boolean;
 	referenceKey: string;
 	reference: string;
@@ -45,7 +46,8 @@ export class ErrorPageComponent implements OnInit {
 	constructor(
 		private readonly route: ActivatedRoute,
 		private readonly themeService: ThemeService,
-		private readonly apiService: ApiService
+		private readonly apiService: ApiService,
+		private readonly destroyRef: DestroyRef
 	) {
 		this.referenceKey = 'trustbroker.error.main.reference';
 		this.theme = this.themeService.getTheme();
@@ -57,15 +59,15 @@ export class ErrorPageComponent implements OnInit {
 	}
 
 	ngOnInit(): void {
-		this.route.params.subscribe((params: Params) => {
-			let textKey = params.textKey;
+		this.route.params.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params: Params) => {
+			let textKey = params['textKey'];
 			if (!textKey) {
 				textKey = 'default';
 			}
 			if (
 				this.parameterInvalid(textKey, '^[0-9A-Za-z]*$') ||
-				this.parameterInvalid(params.reference, '^[0-9A-Za-z.-]*$') ||
-				this.parameterInvalid(params.sessionId, '^[0-9A-Za-z_-]*$')
+				this.parameterInvalid(params['reference'], '^[0-9A-Za-z.-]*$') ||
+				this.parameterInvalid(params['sessionId'], '^[0-9A-Za-z_-]*$')
 			) {
 				return;
 			}
@@ -78,11 +80,12 @@ export class ErrorPageComponent implements OnInit {
 			this.supportInfoText = `trustbroker.error.main.support.info.${this.errorCode}`;
 			this.supportContactText = `trustbroker.error.main.support.contact.${this.errorCode}`;
 
-			this.reference = params.reference;
-			this.sessionId = params.sessionId;
-			const buttonStr: string = params.button;
+			this.reference = params['reference'];
+			this.sessionId = params['sessionId'];
+			const buttonStr: string = params['button'];
 			this.continueButton = buttonStr?.includes('continue');
 			this.reloginButton = buttonStr?.includes('relogin');
+			this.linkButton = buttonStr?.includes('link');
 			this.supportInfo = buttonStr?.includes('support');
 		});
 	}

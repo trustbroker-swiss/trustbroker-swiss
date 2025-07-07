@@ -66,6 +66,7 @@ import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBindingMode;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.QoaComparison;
+import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.Saml;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
@@ -200,10 +201,13 @@ class ClaimsProviderServiceTest {
 						).build()
 				)
 				.securityPolicies(
-						SecurityPolicies.builder().delegateOrigin(true).build()
+						SecurityPolicies.builder()
+										.delegateOrigin(true)
+										.forceAuthn(true)
+										.build()
 				)
 				.build();
-		doReturn(Optional.of(cp)).when(relyingPartySetupService).getClaimsProviderSetupById(cpIssuer);
+		doReturn(Optional.of(cp)).when(relyingPartySetupService).getClaimsProviderSetupByIssuerId(cpIssuer);
 		doReturn(cp).when(relyingPartySetupService).getClaimsProviderSetupByIssuerId(cpIssuer, null);
 
 		var samlProperties = new SamlProperties();
@@ -219,9 +223,10 @@ class ClaimsProviderServiceTest {
 
 		// mock
 		var requestCaptor = ArgumentCaptor.forClass(AuthnRequest.class);
-		doReturn(credential).when(relyingPartySetupService).getRelyingPartySigner(rpIssuer, referrer);
+		var relyingParty = RelyingParty.builder().id(rpIssuer).rpSigner(credential).build();
+		doReturn(relyingParty).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(rpIssuer, referrer);
 		doReturn(new QoaConfig(null, rpIssuer))
-				.when(relyingPartySetupService).getQoaConfiguration(spstateData, rpIssuer, referrer, trustBrokerProperties);
+				.when(relyingPartySetupService).getQoaConfiguration(spstateData, relyingParty, trustBrokerProperties);
 		doNothing().when(samlOutputService).sendRequest(requestCaptor.capture(),
 				eq(credential), eq(relayState), eq(ssoUrl), eq(response), eq(encodingParams), eq(DestinationType.CP));
 		var auditCaptor = ArgumentCaptor.forClass(AuditDto.class);
@@ -245,6 +250,7 @@ class ClaimsProviderServiceTest {
 		assertThat(authnRequest.getNameIDPolicy(), is(not(nullValue())));
 		assertThat(authnRequest.getNameIDPolicy().getFormat(), is(NameIDType.UNSPECIFIED));
 		assertThat(authnRequest.getDestination(), is(ssoUrl));
+		assertThat(authnRequest.isForceAuthn(), is(true));
 
 		// context class
 		assertThat(authnRequest.getRequestedAuthnContext(), is(not(nullValue())));

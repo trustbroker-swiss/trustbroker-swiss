@@ -28,6 +28,14 @@ import lombok.NoArgsConstructor;
 
 /**
  * This class allows configuring policies per CP/RP as opposed to SecurityChecks on a global level.
+ *
+ * Breaking changes:
+ * <ul>
+ *     <li>Specification alignment: With 1.10.0 <code>requireSignedLogoutRequest</code> is applied to incoming LogoutRequests as
+ *     specified (instead of <code>requireSignedAuthnRequest</code> used in previous releases).<br/>
+ *     The new <code>requireSignedLogoutNotificationRequest</code> now controls outbound LogoutRequests sent as SLO
+ *     notifications (instead of <code>requireSignedLogoutRequest</code> used in previous releases).</li>
+ * </ul>
  */
 @XmlRootElement(name = "SecurityPolicies")
 @XmlAccessorType(XmlAccessType.FIELD)
@@ -39,6 +47,8 @@ public class SecurityPolicies implements Serializable {
 
 	/**
 	 * Allow to disable signature check for incoming SAML AuthnRequests.
+	 * <br/>
+	 * Default: true
 	 */
 	@XmlAttribute(name = "requireSignedAuthnRequest")
 	@Builder.Default
@@ -46,10 +56,24 @@ public class SecurityPolicies implements Serializable {
 
 	/**
 	 * Allow to disable signature check for incoming LogoutRequests.
+	 * <br/>
+	 * Default: true
 	 */
 	@XmlAttribute(name = "requireSignedLogoutRequest")
 	@Builder.Default
 	private Boolean requireSignedLogoutRequest = Boolean.TRUE;
+
+	/**
+	 * Allow to disable signature check for outgoing SLO notification LogoutRequests.
+	 * <br/>
+	 * Default: true
+	 *
+	 * @see SloResponse
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "requireSignedLogoutNotificationRequest")
+	@Builder.Default
+	private Boolean requireSignedLogoutNotificationRequest = Boolean.TRUE;
 
 	/**
 	 * Flag allows to enforce signed SAML responses from CP required for maximum security to assert integrity of the incoming
@@ -60,6 +84,36 @@ public class SecurityPolicies implements Serializable {
 	 */
 	@XmlAttribute(name = "requireSignedResponse")
 	private Boolean requireSignedResponse;
+
+	/**
+	 * Allow to disable required encrypted Assertion when the EncryptionKeystore is configured.
+	 * <br/>
+	 * Default: true
+	 *
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "requireEncryptedAssertion")
+	@Builder.Default
+	private Boolean requireEncryptedAssertion = Boolean.TRUE;
+
+	/**
+	 * Flag allows to enforce signed SAML artifact responses from CP required for maximum security to assert integrity of the
+	 * incoming artifact response message.
+	 * <br/>
+	 * Overrides global SecurityChecks
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "requireSignedArtifactResponse")
+	private Boolean requireSignedArtifactResponse;
+
+	/**
+	 * Flag allows to sign outbound SAML artifact resolve messages for maximum security.
+	 * <br/>
+	 * Overrides global SecurityChecks
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "doSignArtifactResolve")
+	private Boolean doSignArtifactResolve;
 
 	/**
 	 * Overrides global SecurityChecks
@@ -93,6 +147,8 @@ public class SecurityPolicies implements Serializable {
 	/**
 	 * Some claims providers are not sending well-formed valid XML and therefore are blocked by XTB. The schema check can be
 	 * disabled lowering the security barrier and let OpenSAML deal with the data directly.
+	 * <br/>
+	 * Default: true
 	 */
 	@XmlAttribute(name = "validateXmlSchema")
 	@Builder.Default
@@ -104,4 +160,14 @@ public class SecurityPolicies implements Serializable {
 	 */
 	@XmlAttribute(name = "delegateOrigin")
 	private Boolean delegateOrigin;
+
+	/**
+	 * Always enforce re-authentication on this CP/on all CPs configured for this RP.
+	 * <br/>
+	 * Default: false (only enforced if RP requests it)
+	 *
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "forceAuthn")
+	private Boolean forceAuthn;
 }

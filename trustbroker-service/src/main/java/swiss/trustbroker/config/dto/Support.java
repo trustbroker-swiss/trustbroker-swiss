@@ -22,11 +22,12 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 
 /**
  * Support configuration.
  *
- * @see swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty
+ * @see ClaimsProvider
  * @since 1.7.0
  */
 @Data

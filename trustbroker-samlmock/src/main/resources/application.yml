@@ -52,6 +52,7 @@ trustbroker:
     dataEncryptionAlgorithm: http://www.w3.org/2001/04/xmlenc#aes128-cbc
     keyEncryptionAlgorithm: http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p
     keyPlacement: PEER
+    emitSki: false
     encryptionKeystore: token-signer/keystore.pem
     encryptionPassword: ${PKI_PASSPHRASE}
     useOriginalAcr: false

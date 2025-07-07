@@ -16,6 +16,7 @@
 package swiss.trustbroker.config;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 import lombok.AllArgsConstructor;
 import org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory;
@@ -24,6 +25,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.CacheControl;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -53,16 +55,30 @@ public class WebConfiguration implements WebMvcConfigurer {
 
 	@Override
 	public void addResourceHandlers(ResourceHandlerRegistry registry) {
+		// Resources with versioning and long term caching:
+		if (properties.getGui().getVersionedResourcePaths() != null &&
+				properties.getGui().getVersionedResourceMaxAgeDay() > 0) {
+			registry.addResourceHandler(properties.getGui().getVersionedResourcePaths())
+					.addResourceLocations("classpath:/static/")
+					.setCacheControl(CacheControl.maxAge(properties.getGui().getVersionedResourceMaxAgeDay(), TimeUnit.DAYS)
+							.cachePublic())
+					.resourceChain(true)
+					.addResolver(defaultToIndexResolver());
+		}
 		registry.addResourceHandler("/**")
 				.addResourceLocations("classpath:/static/")
 				.resourceChain(true)
-				.addResolver(new PathResourceResolver() {
-					@Override
-					protected Resource getResource(String resourcePath, Resource location) throws IOException {
-						var requestedResource = location.createRelative(resourcePath);
-						return requestedResource.exists() ? requestedResource : new ClassPathResource("/static/index.html");
-					}
-				});
+				.addResolver(defaultToIndexResolver());
+	}
+
+	private static PathResourceResolver defaultToIndexResolver() {
+		return new PathResourceResolver() {
+			@Override
+			protected Resource getResource(String resourcePath, Resource location) throws IOException {
+				var requestedResource = location.createRelative(resourcePath);
+				return requestedResource.exists() ? requestedResource : new ClassPathResource("/static/index.html");
+			}
+		};
 	}
 
 	// Make HTTP session manager K8S ready externalizing session to our StateCache DB

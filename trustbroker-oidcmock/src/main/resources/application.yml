@@ -27,7 +27,15 @@ spring:
                 - openid
                 - profile
                 - email
-            require-authorization-consent: true
+            require-authorization-consent: false
+oidcmock:
+  clients:
+    XTB-dev:
+      acr: "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport"
+      atr1: "atr1"
+    XTB-dev2:
+      acr: "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport"
+      atr2: "atr2"
 
 logging:
   level:

@@ -39,6 +39,7 @@ import swiss.trustbroker.config.dto.CorsPolicies;
 import swiss.trustbroker.config.dto.FrameOptionsPolicies;
 import swiss.trustbroker.config.dto.GuiProperties;
 import swiss.trustbroker.config.dto.IdmConfig;
+import swiss.trustbroker.config.dto.LdapStoreConfig;
 import swiss.trustbroker.config.dto.NetworkConfig;
 import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.config.dto.ProfileSelectionConfig;
@@ -48,6 +49,7 @@ import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.config.dto.StateCacheProperties;
 import swiss.trustbroker.config.dto.Support;
 import swiss.trustbroker.config.dto.WsTrustConfig;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 
 /**
  * The root of the XTB configuration.
@@ -161,6 +163,11 @@ public class TrustBrokerProperties {
 	 * Configuration for optional IDM integration.
 	 */
 	private IdmConfig idm = new IdmConfig();
+
+	/**
+	 * Configuration for optional LDAP integration.
+	 */
+	private LdapStoreConfig ldap = new LdapStoreConfig();
 
 	/**
 	 * Configuration for attributes
@@ -352,7 +359,7 @@ public class TrustBrokerProperties {
 	 * Parts of issuer ID ignored when determining Single Logout (SLO).
 	 * These are common parts of RP aliases.
 	 *
-	 * @see swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty
+	 * @see ClaimsProvider
 	 */
 	private String[] sloIssuerIdDropPatterns;
 
@@ -371,7 +378,7 @@ public class TrustBrokerProperties {
 	 *
 	 * @deprecated XTB does not support CP/IDP switching based on CP error responses anymore with v1.10.
 	 */
-	@Deprecated(since = "v1.9.0")
+	@Deprecated(since = "1.9.0")
 	private boolean handleEnterpriseSwitch;
 
 	/**
@@ -379,7 +386,7 @@ public class TrustBrokerProperties {
 	 *
 	 * @deprecated Replaced by the 'first' marker on the network, e.g. INTRANET-first.
 	 */
-	@Deprecated(since = "v1.9.0")
+	@Deprecated(since = "1.9.0")
 	private String enterpriseIdpId;
 
 	/**
@@ -388,7 +395,7 @@ public class TrustBrokerProperties {
 	 * @see swiss.trustbroker.api.homerealmdiscovery.service.HrdService
 	 * @deprecated Replaced by the 'first' marker on the network, e.g. INTERNET-first.
 	 */
-	@Deprecated(since = "v1.9.0")
+	@Deprecated(since = "1.9.0")
 	private String brokerIdpId;
 
 	/**
@@ -396,14 +403,52 @@ public class TrustBrokerProperties {
 	 *
 	 * @deprecated Replaced by the 'first' marker on the network, e.g. INTERNET-first.
 	 */
-	@Deprecated(since = "v1.9.0")
+	@Deprecated(since = "1.9.0")
 	private String publicIdpId;
 
 	/**
-	 * Mobile IDP ID that is used for CP filtering in HRD when XTB is accessed via configured IP addresses (mobileGatewayIpRegex).
+	 * Mobile IDP ID that is used for CP filtering in HRD when XTB is accessed via configured IP addresses
+	 * (mobileGatewayIpRegex).
 	 * Special case: A single IDP that can be identified by its IP address and then automatically dispatched to the that CP.
 	 */
 	private String mobileIdpId;
+
+	/**
+	 * HTTP GET query parameter (or POST parameter) that can be sent to request selection of an IDP instead of showing the HRD
+	 * screen.
+	 * <br/>
+	 * See <code>ClaimsProvider</code> for the fields matched against this parameter.
+	 *
+	 * @see ClaimsProvider#getHrdHintAlias()
+	 * @since 1.10.0
+	 */
+	private String hrdHintParameter;
+
+	/**
+	 * HTTP header / cookie name to allow a testing framework to pass a CP to be selected in HRD.
+	 * <br/>
+	 * For normal applications, setting HTTP headers or cookies is usually not convenient (see <code>hrdHintParameter</code>).
+	 * <br/>
+	 * See <code>ClaimsProvider</code> for the fields matched against this parameter.
+	 * <br/>
+	 * Note: This is ignored if the request is not from INTRANET (see <code>hrdHintTestAllowedFromInternet</code>).
+	 * If set, it also suppresses the AccessRequest.
+	 *
+	 * @see ClaimsProvider#getHrdHintAlias()
+	 * @since 1.10.0
+	 */
+	private String hrdHintTestParameter;
+
+	/**
+	 * Allow hrdHintTestParameter without a network header or from INTERNET.
+	 * <br/>
+	 * Note: In case you use AccessRequest, only enable this if AccessRequest may be skipped without security impact.
+	 * <br/>
+	 * Default: false
+	 *
+	 * @since 1.10.0
+	 */
+	private Boolean hrdHintTestAllowedFromInternet = Boolean.FALSE;
 
 	/**
 	 * Autologin cookie that can be used for CP filtering in HRD.

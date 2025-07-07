@@ -6,10 +6,10 @@
           version="3.0">
     <bindings schemaLocation="SsoGroupSetup.xsd" version="1.0">
         <globalBindings>
-          <xjc:simple />
+            <xjc:simple />
         </globalBindings>
         <schemaBindings>
-            <package name="swiss.trustbroker.homerealmdiscovery.dto"/>
+            <package name="swiss.trustbroker.homerealmdiscovery.dto" />
         </schemaBindings>
     </bindings>
 </bindings>

@@ -23,6 +23,7 @@ import { ApiService } from '../services/api.service';
 import { anything, mock, when } from 'ts-mockito';
 import { of } from 'rxjs';
 import { SafeMarkupPipe } from '../pipes/safe-markup.pipe';
+import { ThemeService } from '../services/theme-service';
 
 describe('SsoComponent', () => {
 	let component: SsoComponent;
@@ -50,8 +51,12 @@ describe('SsoComponent', () => {
 		// mock services
 		mockApiService = mock(ApiService);
 		when(mockApiService.getSsoParticipants(anything())).thenReturn(of([]));
+		const mockThemeService = mock(ThemeService);
 		TestBed.configureTestingModule({
-			providers: [{ provide: ApiService, useValue: mockApiService }]
+			providers: [
+				{ provide: ApiService, useValue: mockApiService },
+				{ provide: ThemeService, useValue: mockThemeService }
+			]
 		});
 
 		fixture = TestBed.createComponent(SsoComponent);

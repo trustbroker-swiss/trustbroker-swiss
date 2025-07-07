@@ -22,10 +22,6 @@
 
   padding-top: 1rem;
 
-  @media(max-width: $small-page-size) {
-    width: 80%;
-  }
-
   @media(min-width: $small-page-size) {
     width: 80%;
   }

@@ -24,7 +24,6 @@ import org.opensaml.saml.saml2.encryption.Decrypter;
 import org.opensaml.saml.saml2.encryption.EncryptedElementTypeEncryptedKeyResolver;
 import org.opensaml.saml.saml2.encryption.Encrypter;
 import org.opensaml.security.credential.Credential;
-import org.opensaml.security.credential.impl.CollectionCredentialResolver;
 import org.opensaml.xmlsec.encryption.support.ChainingEncryptedKeyResolver;
 import org.opensaml.xmlsec.encryption.support.DataEncryptionParameters;
 import org.opensaml.xmlsec.encryption.support.DecryptionException;
@@ -32,13 +31,11 @@ import org.opensaml.xmlsec.encryption.support.EncryptedKeyResolver;
 import org.opensaml.xmlsec.encryption.support.EncryptionException;
 import org.opensaml.xmlsec.encryption.support.InlineEncryptedKeyResolver;
 import org.opensaml.xmlsec.encryption.support.KeyEncryptionParameters;
+import org.opensaml.xmlsec.encryption.support.SimpleKeyInfoReferenceEncryptedKeyResolver;
 import org.opensaml.xmlsec.encryption.support.SimpleRetrievalMethodEncryptedKeyResolver;
 import org.opensaml.xmlsec.keyinfo.KeyInfoCredentialResolver;
 import org.opensaml.xmlsec.keyinfo.KeyInfoGeneratorFactory;
-import org.opensaml.xmlsec.keyinfo.impl.KeyInfoProvider;
-import org.opensaml.xmlsec.keyinfo.impl.LocalKeyInfoCredentialResolver;
-import org.opensaml.xmlsec.keyinfo.impl.provider.InlineX509DataProvider;
-import org.opensaml.xmlsec.keyinfo.impl.provider.RSAKeyValueProvider;
+import org.opensaml.xmlsec.keyinfo.impl.CollectionKeyInfoCredentialResolver;
 import swiss.trustbroker.common.exception.TechnicalException;
 
 public class EncryptionUtil {
@@ -47,15 +44,14 @@ public class EncryptionUtil {
 	}
 
 	public static EncryptedAssertion encryptAssertion(Assertion assertion, Credential credential, String dataEncryptALg,
-			String keyEncryptAlg, Encrypter.KeyPlacement keyReplacement, String issuer) {
+			String keyEncryptAlg, Encrypter.KeyPlacement keyReplacement, String issuer, boolean emitSki) {
 		DataEncryptionParameters encParams = new DataEncryptionParameters();
 		encParams.setAlgorithm(dataEncryptALg);
 
 		KeyEncryptionParameters kekParams = new KeyEncryptionParameters();
 		kekParams.setEncryptionCredential(credential);
 		kekParams.setAlgorithm(keyEncryptAlg);
-
-		KeyInfoGeneratorFactory kigf = SamlFactory.getKeyInfoGeneratorFactory(credential);
+		KeyInfoGeneratorFactory kigf = SamlFactory.getKeyInfoGeneratorFactory(credential, emitSki);
 		kekParams.setKeyInfoGenerator(kigf.newInstance());
 
 		Encrypter samlEncrypter = new Encrypter(encParams, kekParams);
@@ -83,15 +79,7 @@ public class EncryptionUtil {
 		}
 
 		List<Credential> creds = new ArrayList<>(credentials);
-		CollectionCredentialResolver localCredResolver = new CollectionCredentialResolver(creds);
-
-		// Support EncryptedKey/KeyInfo containing decryption key hints via
-		// KeyValue/RSAKeyValue and X509Data/X509Certificate
-		List<KeyInfoProvider> kiProviders = new ArrayList<>();
-		kiProviders.add(new RSAKeyValueProvider());
-		kiProviders.add(new InlineX509DataProvider());
-
-		KeyInfoCredentialResolver kekResolver = new LocalKeyInfoCredentialResolver(kiProviders, localCredResolver);
+		KeyInfoCredentialResolver kekResolver = new CollectionKeyInfoCredentialResolver(creds);
 
 		List<EncryptedKeyResolver> encryptedKeyResolvers = new ArrayList<>();
 		// The EncryptedKey is assumed to be contained within the EncryptedAssertion/EncryptedData/KeyInfo.
@@ -101,6 +89,7 @@ public class EncryptionUtil {
 		// The EncryptedKey is assumed to be contained via a RetrievalMethod child of the EncryptedData/KeyInfo,
 		// which points via a same-document fragment reference to an EncryptedKey located elsewhere in the document.
 		encryptedKeyResolvers.add(new SimpleRetrievalMethodEncryptedKeyResolver());
+		encryptedKeyResolvers.add(new SimpleKeyInfoReferenceEncryptedKeyResolver());
 		ChainingEncryptedKeyResolver encryptedKeyResolver = new ChainingEncryptedKeyResolver(encryptedKeyResolvers);
 
 		Decrypter decrypter = new Decrypter(null, kekResolver, encryptedKeyResolver);

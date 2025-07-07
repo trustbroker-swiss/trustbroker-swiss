@@ -23,6 +23,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.doReturn;
+import static swiss.trustbroker.common.saml.util.CoreAttributeName.CLAIMS_NAME;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -135,8 +136,8 @@ class AuditMapperTest {
 		var cpResponse = new CpResponse();
 		cpResponse.setIssuer(TEST_ISSUER);
 		cpResponse.setDestination(TEST_DESTINATION);
-		cpResponse.setAttribute(CoreAttributeName.CLAIMS_NAME.getNamespaceUri(), TEST_CLAIMS_NAME);
-		cpResponse.setAttribute(CoreAttributeName.CLAIMS_NAME.getName(), TEST_CLAIMS_NAME2);
+		cpResponse.setAttribute(CLAIMS_NAME.getNamespaceUri(), TEST_CLAIMS_NAME);
+		cpResponse.setAttribute(CLAIMS_NAME.getName(), TEST_CLAIMS_NAME2);
 		cpResponse.setAttribute(CoreAttributeName.EMAIL.getNamespaceUri(), TEST_EMAIL);
 		cpResponse.setAttribute(CoreAttributeName.FIRST_NAME.getName(), TEST_FIRST_NAME);
 		cpResponse.setAttribute(CoreAttributeName.HOME_REALM.getName(), "dropped");
@@ -154,12 +155,12 @@ class AuditMapperTest {
 		assertThat(auditDto.getIssuer(), is(TEST_ISSUER));
 		assertThat(auditDto.getResponseAttributes(), is(not(nullValue())));
 		assertThat(auditDto.getResponseAttributes().size(), is(5));
-		var truncatedClaimsName = DefinitionUtil.truncateNamespace(CoreAttributeName.CLAIMS_NAME.getNamespaceUri());
+		var truncatedClaimsName = DefinitionUtil.truncateNamespace(CLAIMS_NAME.getNamespaceUri());
 		assertThat(auditDto.getResponseAttributes().get(truncatedClaimsName),
 				is(AuditDto.ResponseAttributeValues.of(
-						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME, CoreAttributeName.CLAIMS_NAME.getNamespaceUri(),
+						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME, CLAIMS_NAME.getNamespaceUri(),
 								AuditDto.AttributeSource.CP_RESPONSE, ClaimSource.CP.name(), null))));
-		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.CLAIMS_NAME.getName()),
+		assertThat(auditDto.getResponseAttributes().get(CLAIMS_NAME.getName()),
 				is(AuditDto.ResponseAttributeValues.of(
 						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME2, null,
 						AuditDto.AttributeSource.CP_RESPONSE, ClaimSource.CP.name(), null))));
@@ -185,10 +186,10 @@ class AuditMapperTest {
 		var cpResponse = new CpResponse();
 		cpResponse.setIssuer(TEST_ISSUER);
 		cpResponse.setDestination(TEST_DESTINATION);
-		cpResponse.setResult(Definition.ofNamespaceUri(CoreAttributeName.CLAIMS_NAME), List.of(TEST_CLAIMS_NAME));
+		cpResponse.setResult(new Definition(CoreAttributeName.CLAIMS_NAME.getNamespaceUri()), List.of(TEST_CLAIMS_NAME));
 		cpResponse.setResult(Definition.ofName(CoreAttributeName.CLAIMS_NAME), List.of(TEST_CLAIMS_NAME2));
 		var nameId = "myNameId";
-		cpResponse.setResult(Definition.ofNamespaceUri(CoreAttributeName.NAME_ID), List.of(nameId));
+		cpResponse.setResult(new Definition(CoreAttributeName.NAME_ID.getNamespaceUri()), List.of(nameId));
 		cpResponse.setResult(Definition.ofName(CoreAttributeName.FIRST_NAME), List.of(TEST_FIRST_NAME));
 		var authLevel = "normalverified";
 		cpResponse.setAuthLevel(authLevel);
@@ -206,12 +207,12 @@ class AuditMapperTest {
 		assertThat(auditDto.getIssuer(), is(TEST_ISSUER));
 		assertThat(auditDto.getResponseAttributes(), is(not(nullValue())));
 		assertThat(auditDto.getResponseAttributes().size(), is(5));
-		var truncatedClaimsName = DefinitionUtil.truncateNamespace(CoreAttributeName.CLAIMS_NAME.getNamespaceUri());
+		var truncatedClaimsName = DefinitionUtil.truncateNamespace(CLAIMS_NAME.getNamespaceUri());
 		assertThat(auditDto.getResponseAttributes().get(truncatedClaimsName),
 				is(AuditDto.ResponseAttributeValues.of(
-						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME, CoreAttributeName.CLAIMS_NAME.getNamespaceUri(),
+						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME, CLAIMS_NAME.getNamespaceUri(),
 								AuditDto.AttributeSource.CP_RESPONSE, null, null))));
-		assertThat(auditDto.getResponseAttributes().get(CoreAttributeName.CLAIMS_NAME.getName()),
+		assertThat(auditDto.getResponseAttributes().get(CLAIMS_NAME.getName()),
 				is(AuditDto.ResponseAttributeValues.of(
 						AuditDto.ResponseAttributeValue.of(TEST_CLAIMS_NAME2, null,
 						AuditDto.AttributeSource.CP_RESPONSE, null, null))));
@@ -466,11 +467,11 @@ class AuditMapperTest {
 		var homeNames = List.of("home1", "home2");
 		var emails = List.of("myEmail1@domain", "myEmail2@domain");
 		Map<Definition, List<String>> attributes = new HashMap<>();
-		attributes.put(Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME), List.of(TEST_FIRST_NAME));
+		attributes.put(new Definition(CoreAttributeName.FIRST_NAME.getNamespaceUri()), List.of(TEST_FIRST_NAME));
 		attributes.put(Definition.ofName(CoreAttributeName.CLAIMS_NAME), List.of(TEST_CLAIMS_NAME2));
-		attributes.put(Definition.ofNamespaceUri(CoreAttributeName.CLAIMS_NAME), List.of(TEST_CLAIMS_NAME));
+		attributes.put(new Definition(CoreAttributeName.CLAIMS_NAME.getNamespaceUri()), List.of(TEST_CLAIMS_NAME));
 		attributes.put(Definition.ofName(CoreAttributeName.NAME), List.of(TEST_NAME));
-		attributes.put(Definition.ofNamespaceUri(CoreAttributeName.NAME), null); // null ignored
+		attributes.put(new Definition(CoreAttributeName.NAME.getNamespaceUri()), null); // null ignored
 		attributes.put(Definition.ofName(CoreAttributeName.SSO_SESSION_ID), List.of(TEST_SESSION_ID));
 		attributes.put(Definition.ofNames(CoreAttributeName.EMAIL), emails);
 		attributes.put(Definition.ofName(CoreAttributeName.HOME_NAME), homeNames);

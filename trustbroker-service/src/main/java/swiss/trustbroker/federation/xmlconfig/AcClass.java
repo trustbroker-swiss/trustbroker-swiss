@@ -65,6 +65,17 @@ public class AcClass implements Serializable {
 	private Boolean mapOutbound = Boolean.TRUE;
 
 	/**
+	 * Replace inbound Qoa from RP request. Only works with Qoa.replaceInbound together
+	 * <br/>
+	 * Default: true
+	 *
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "replaceInbound")
+	@Builder.Default
+	private Boolean replaceInbound = Boolean.TRUE;
+
+	/**
 	 * ACClass name
 	 */
 	@XmlValue

@@ -311,7 +311,7 @@ class ArtifactResolutionServiceTest {
 		System.arraycopy(type.getEndpointIndex(), 0, artifactIdBytes, 2, 2);
 		System.arraycopy(type.getSourceID(), 0, artifactIdBytes, 4, 20);
 		System.arraycopy(type.getMessageHandle(), 0, artifactIdBytes, 24, 20);
-		return Base64Util.encode(artifactIdBytes, true);
+		return Base64Util.encode(artifactIdBytes, Base64Util.Base64Encoding.CHUNKED);
 	}
 
 	@Test
@@ -450,7 +450,7 @@ class ArtifactResolutionServiceTest {
 	}
 
 	private void validateAudit() {
-		verify(auditService).logInboundSamlFlow(argThat(dto -> dto.getEventType() == EventType.ARTIFACT_RESOLVE));
+		verify(auditService).logInboundFlow(argThat(dto -> dto.getEventType() == EventType.ARTIFACT_RESOLVE));
 		verify(auditService).logOutboundFlow(argThat(dto -> dto.getEventType() == EventType.ARTIFACT_RESPONSE));
 	}
 

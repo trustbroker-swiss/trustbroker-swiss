@@ -38,7 +38,15 @@ import org.springframework.context.annotation.Configuration;
 public class SamlProperties {
 
 	/**
-	 * XTB SAML consumer URL.
+	 * XTB SAML consumer URL, included in the metadata.
+	 * <br/>
+	 * Note: Currently, the path that is requested on XTB needs to be one of the default paths:
+	 * <ul>
+	 *     <li><code>/api/v1/saml</code></li>
+	 *     <li><code>/adfs/ls</code></li>
+	 *     <li><code>/adfs/ls/</code></li>
+	 *     <li><code>/trustbroker/adfs/ls/</code></li> (deprecated)
+	 * </ul>
 	 */
 	private String consumerUrl;
 
@@ -110,4 +118,12 @@ public class SamlProperties {
 	 */
 	@Builder.Default
 	private boolean idpLogoutMetadataEnabled = true;
+
+	/**
+	 * Drop all CP attributes if there is no AttributeSelection defined
+	 *
+	 * @since 1.10.0
+	 */
+	@Builder.Default
+	private boolean dropAttrSelectionIfNoFilter = false;
 }

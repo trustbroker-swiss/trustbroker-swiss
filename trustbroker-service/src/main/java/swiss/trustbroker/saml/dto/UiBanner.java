@@ -54,7 +54,7 @@ public class UiBanner implements Serializable {
 	/**
 	 * True if paragraphs of banner are shown collapsed on a small screen.
 	 */
-	private boolean collapseParagraphsOnSmallScreen;
+	private boolean collapseParagraphs;
 
 	/**
 	 * Order of the banner.

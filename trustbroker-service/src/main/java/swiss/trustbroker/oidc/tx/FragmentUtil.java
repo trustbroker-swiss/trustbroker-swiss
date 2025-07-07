@@ -22,6 +22,7 @@ import java.util.Map;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.oidc.OidcExceptionHelper;
 import swiss.trustbroker.util.ApiSupport;
@@ -73,7 +74,7 @@ public class FragmentUtil {
 			return null;
 		}
 		// code redirect
-		var codeIdx = ownParametersPosition(ret, CODE_TAG	);
+		var codeIdx = ownParametersPosition(ret, CODE_TAG);
 		if (codeIdx >= 0 && session != null && OIDC_RESPONSE_FRAGMENT.equals(session.getAttribute(OIDC_RESPONSE_MODE))) {
 			removeFragmentModeFlag(session);
 			ret = reorganizeRedirectUri(redirect, codeIdx);
@@ -119,7 +120,7 @@ public class FragmentUtil {
 	// workaround to handle OIDC applications echoing our own error redirects back to us (usually some faulty javascript adapter)
 	static String discardAmbiguousErrorsInRedirect(String location, int patchIndex, boolean dropAllErrors) {
 		// make sure it's our own error
-		var errorUriIdx = location.indexOf(ERROR_URI_TAG, patchIndex);
+		var errorUriIdx = StringUtils.indexOfIgnoreCase(location, ERROR_URI_TAG, patchIndex);
 		if (errorUriIdx < 0) {
 			return location;
 		}
@@ -129,7 +130,7 @@ public class FragmentUtil {
 		Map<String, Integer> errorCounts = new HashMap<>();
 		for (var part : parts) {
 			if (!ret.isEmpty()) {
-				var tokPos = location.indexOf(part);
+				var tokPos = StringUtils.indexOfIgnoreCase(location, part);
 				var nextSep = location.substring(tokPos - 1, tokPos);
 				sep = !nextSep.equals("&") ? nextSep : sep;
 			}
@@ -147,7 +148,7 @@ public class FragmentUtil {
 
 	private static boolean keepParameter(boolean dropAllErrors, String part, Map<String, Integer> errorCounts) {
 		for (var errorTag : ERROR_TAGS) {
-			if (part.startsWith(errorTag)) {
+			if (StringUtils.startsWithIgnoreCase(part, errorTag)) {
 				int errorCount = errorCounts.getOrDefault(errorTag, 0) + 1;
 				errorCounts.put(errorTag, errorCount);
 				if (dropAllErrors || errorCount > 1) {
@@ -167,7 +168,7 @@ public class FragmentUtil {
 
 	static int ownParametersPosition(String redirect, String startParameter) {
 		for (var sep : List.of("?", "&", "#")) {
-			var ret = redirect.indexOf(sep + startParameter);
+			var ret = StringUtils.indexOfIgnoreCase(redirect, sep + startParameter);
 			if (ret >= 0) {
 				return ret;
 			}

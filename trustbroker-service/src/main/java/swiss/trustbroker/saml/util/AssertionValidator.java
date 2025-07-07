@@ -143,8 +143,10 @@ public class AssertionValidator {
 		validateAuthnRequestIssueInstant(authnRequest, now, properties);
 		validateAuthnRequestConditions(authnRequest, now, null, properties, securityPolicies);
 
-		validateAuthnContextClassRefs(new QoaConfig(qoa, authnRequest.getIssuer().getValue()),
-			OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest),
+		var qoaConfig = new QoaConfig(qoa, authnRequest.getIssuer().getValue());
+		validateAuthnContextClassRefs(qoaConfig,
+			OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest, qoaConfig.isReplaceInbound(),
+														   QoaMappingUtil.getReplacementAcClasses(qoa)),
 				OpenSamlUtil.extractAuthnRequestComparison(authnRequest), properties.getQoaMap());
 
 		// Audit facility does INFO logging
@@ -163,7 +165,7 @@ public class AssertionValidator {
 
 	public static void validateResponse(ResponseData<Response> responseData, List<Assertion> assertions,
 			List<Credential> credentials, TrustBrokerProperties properties, ClaimsParty claimsParty,
-			Qoa rpQoa, ExpectedAssertionValues expectedValues) {
+			Qoa qoa, ExpectedAssertionValues expectedValues) {
 		if (responseData == null || responseData.getResponse() == null) {
 			throw new RequestDeniedException("Missing response");
 		}
@@ -189,7 +191,7 @@ public class AssertionValidator {
 			if (expectedValues.expectedRequestId == null) {
 				expectedValues.setExpectedRequestId(response.getInResponseTo());
 			}
-			validateResponseAssertions(assertions, response, credentials, properties, claimsParty, rpQoa, expectedValues);
+			validateResponseAssertions(assertions, response, credentials, properties, claimsParty, qoa, expectedValues);
 		}
 		// else: no assertions
 
@@ -198,7 +200,7 @@ public class AssertionValidator {
 	}
 
 	static void validateResponseAssertions(List<Assertion> assertions, Response response, List<Credential> credentials,
-			TrustBrokerProperties properties, ClaimsParty claimsParty, Qoa rpQoa, ExpectedAssertionValues expectedValues) {
+			TrustBrokerProperties properties, ClaimsParty claimsParty, Qoa qoa, ExpectedAssertionValues expectedValues) {
 
 		if (assertions == null || assertions.isEmpty()) {
 			throw new RequestDeniedException(
@@ -207,11 +209,11 @@ public class AssertionValidator {
 		if (assertions.size() != 1 && log.isWarnEnabled()) {
 			log.warn("Response contains more than 1 assertion: {}", OpenSamlUtil.samlObjectToString(response));
 		}
-		validateAssertions(assertions, credentials, properties, claimsParty, rpQoa, response, expectedValues);
+		validateAssertions(assertions, credentials, properties, claimsParty, qoa, response, expectedValues);
 	}
 
 	static void validateAssertions(List<Assertion> assertions, List<Credential> credentials, TrustBrokerProperties properties,
-			ClaimsParty claimsParty, Qoa rpQoa, XMLObject xmlObject, ExpectedAssertionValues expectedValues) {
+			ClaimsParty claimsParty, Qoa qoa, XMLObject xmlObject, ExpectedAssertionValues expectedValues) {
 		if (assertions == null || assertions.isEmpty() || assertions.get(0) == null) {
 			throw new RequestDeniedException(String.format(
 					"Assertions missing: %s",
@@ -219,7 +221,7 @@ public class AssertionValidator {
 		}
 		Instant now = Instant.now();
 		for (Assertion assertion : assertions) {
-			validateAssertion(assertion, now, credentials, properties, claimsParty, rpQoa, expectedValues);
+			validateAssertion(assertion, now, credentials, properties, claimsParty, qoa, expectedValues);
 		}
 	}
 
@@ -246,7 +248,7 @@ public class AssertionValidator {
 	}
 
 	public static void validateAssertion(Assertion assertion, Instant now, List<Credential> credentials,
-			TrustBrokerProperties properties, ClaimsParty claimsParty, Qoa rpQoa, ExpectedAssertionValues expectedValues) {
+			TrustBrokerProperties properties, ClaimsParty claimsParty, Qoa qoa, ExpectedAssertionValues expectedValues) {
 		var securityPolicies = claimsParty != null ? claimsParty.getSecurityPolicies(): null;
 		if (assertion == null) {
 			throw new RequestDeniedException("Assertion missing");
@@ -263,8 +265,8 @@ public class AssertionValidator {
 		validateAssertionIssuer(assertion, expectedValues.expectedIssuer, properties);
 		validateAssertionSubject(assertion, now, expectedValues.expectedAssertionId, false, properties);
 		validateAssertionConditions(assertion, now, expectedValues.expectedAudience, properties, securityPolicies);
-		var rpQoaConf = new QoaConfig(rpQoa, expectedValues.getExpectedRpId());
-		validateAssertionAuthnStatements(assertion, now, claimsParty, rpQoaConf, properties,
+		var qoaConfig = new QoaConfig(qoa, expectedValues.getExpectedRpId());
+		validateAssertionAuthnStatements(assertion, now, claimsParty, qoaConfig, properties,
 				expectedValues.getExpectedContextClasses(), expectedValues.getExpectedComparison());
 		validateAssertionAttributeStatements(assertion);
 
@@ -425,7 +427,7 @@ public class AssertionValidator {
 			throw new TechnicalException(
 					String.format("Called with invalid context for binding %s", signatureContext.getBinding()));
 		}
-		URLBuilder urlBuilder = urlBuilderForRedirectBinding(signatureContext);
+		var urlBuilder = urlBuilderForRedirectBinding(signatureContext);
 		var samlMessageName = SamlIoUtil.SAML_REQUEST_NAME;
 		var samlMessage = WebSupport.getUniqueQueryParameter(urlBuilder, samlMessageName);
 		if (samlMessage == null) {
@@ -483,7 +485,7 @@ public class AssertionValidator {
 	}
 
 	private static boolean isRedirectMessageSigned(SignatureContext signatureContext) {
-		URLBuilder urlBuilder = urlBuilderForRedirectBinding(signatureContext);
+		var urlBuilder = urlBuilderForRedirectBinding(signatureContext);
 		var signature = WebSupport.getUniqueQueryParameter(urlBuilder, SamlIoUtil.SAML_REDIRECT_SIGNATURE);
 		var signatureAlgorithm = WebSupport.getUniqueQueryParameter(urlBuilder, SamlIoUtil.SAML_REDIRECT_SIGNATURE_ALGORITHM);
 		return signature != null && signatureAlgorithm != null;
@@ -590,8 +592,7 @@ public class AssertionValidator {
 			if (properties.getSecurity().isValidateAuthnStatementIssueInstant()) {
 				validateTimestampInRange("AuthnStatement.AuthnInstant",
 						authnStatement.getAuthnInstant(), nowOffsetDateTime,
-						properties.getSecurity()
-								  .getNotBeforeToleranceSec(),
+						properties.getSecurity().getNotBeforeToleranceSec(),
 						getNotOnOrAfterSeconds(properties, securityPolicies),
 						assertion);
 			}

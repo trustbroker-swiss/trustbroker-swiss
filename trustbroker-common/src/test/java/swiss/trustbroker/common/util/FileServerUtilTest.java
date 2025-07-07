@@ -19,12 +19,13 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpServletResponse;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
 
@@ -32,45 +33,46 @@ class FileServerUtilTest {
 
 	private static final String ASSETS = "assets";
 
-	public static final String TRANSLATIONS = "translations";
+	private static final String TRANSLATIONS = "translations";
 
 	@Test
-	void returnFileContentValid() throws Exception {
-		var response = new MockHttpServletResponse();
+	void readFileContentValid() {
 		var directory = SamlTestBase.fileFromClassPath(ASSETS).getAbsolutePath();
-		FileServerUtil.returnFileContent(response, directory, "test/test.txt", MediaType.TEXT_PLAIN_VALUE);
-		assertThat(response.getHeader(HttpHeaders.CONTENT_TYPE), is(MediaType.TEXT_PLAIN_VALUE));
-		assertThat(response.getContentAsString(), is("""
+		var result = FileServerUtil.readFileContent(directory, "test/test.txt", MediaType.TEXT_PLAIN_VALUE);
+		assertThat(result.name(), is(directory + File.separatorChar + "test" + File.separatorChar + "test.txt"));
+		assertThat(result.contentType(), is(MediaType.TEXT_PLAIN_VALUE));
+		assertThat(new String(result.data(), StandardCharsets.UTF_8), is("""
 				Test
 				"""));
 	}
 
 	@Test
-	void returnFileContentDetection() throws Exception {
-		var response = new MockHttpServletResponse();
+	void readFileContentDetection() {
 		var directory = SamlTestBase.fileFromClassPath(ASSETS).getAbsolutePath();
-		FileServerUtil.returnFileContent(response, directory, "test/test.svg", null);
-		assertThat(response.getHeader(HttpHeaders.CONTENT_TYPE), is("image/svg+xml"));
-		assertThat(response.getContentAsString(), is("""
+		var result = FileServerUtil.readFileContent(directory, "test/test.svg", null);
+		assertThat(result.name(), is(directory + File.separatorChar + "test" + File.separatorChar + "test.svg"));
+		assertThat(result.contentType(), is("image/svg+xml"));
+		assertThat(new String(result.data(), StandardCharsets.UTF_8), is("""
 				<svg>
 				</svg>
 				"""));
 	}
 
 	@Test
-	void returnFileContentBlocked() {
-		var response = new MockHttpServletResponse();
+	void readFileContentBlocked() {
 		var directory = SamlTestBase.fileFromClassPath(ASSETS).getAbsolutePath();
 		// invalid path traversal
 		assertThrows(RequestDeniedException.class,
-				() -> FileServerUtil.returnFileContent(response, directory, "../private.txt", MediaType.TEXT_PLAIN_VALUE));
+				() -> FileServerUtil.readFileContent(directory,"../private.txt", MediaType.TEXT_PLAIN_VALUE));
 	}
 
 	@Test
 	void readTranslationFile() {
 		var directory = SamlTestBase.fileFromClassPath(TRANSLATIONS).getAbsolutePath();
-		var result = FileServerUtil.readTranslationFile(directory, "en", "de", "42.0");
-		assertThat(result, is("""
+		var result = FileServerUtil.readTranslationFile(directory, "de", "en", "42.0");
+		assertThat(result.name(), is(directory + File.separatorChar + "de.json"));
+		assertThat(result.contentType(), is(MediaType.APPLICATION_JSON_VALUE));
+		assertThat(new String(result.data(), StandardCharsets.UTF_8), is("""
 				{
 					"language": "Deutsch",
 					"version": "XTB/42.0"
@@ -81,8 +83,10 @@ class FileServerUtilTest {
 	@Test
 	void readTranslationFileDefaultLanguage() {
 		var directory = SamlTestBase.fileFromClassPath(TRANSLATIONS).getAbsolutePath();
-		var result = FileServerUtil.readTranslationFile(directory, "en", "fr", "TrustBroker/B1.2");
-		assertThat(result, is("""
+		var result = FileServerUtil.readTranslationFile(directory, "fr", "en", "TrustBroker/B1.2");
+		assertThat(result.name(), is(directory + File.separatorChar + "en.json"));
+		assertThat(result.contentType(), is(MediaType.APPLICATION_JSON_VALUE));
+		assertThat(new String(result.data(), StandardCharsets.UTF_8), is("""
 				{
 					"language": "English",
 					"version": "XTB/TrustBroker/B1.2"
@@ -98,8 +102,10 @@ class FileServerUtilTest {
 	void readTranslationFileBlocked(String language) {
 		var directory = SamlTestBase.fileFromClassPath(TRANSLATIONS).getAbsolutePath();
 		// file exists, but invalid path traversal -> default language is used
-		var result = FileServerUtil.readTranslationFile(directory, "en", language, null);
-		assertThat(result, is("""
+		var result = FileServerUtil.readTranslationFile(directory, language, "en", null);
+		assertThat(result.name(), is(directory + File.separatorChar + "en.json"));
+		assertThat(result.contentType(), is(MediaType.APPLICATION_JSON_VALUE));
+		assertThat(new String(result.data(), StandardCharsets.UTF_8), is("""
 				{
 					"language": "English",
 					"version": "XTB/VERSION@STAGE"

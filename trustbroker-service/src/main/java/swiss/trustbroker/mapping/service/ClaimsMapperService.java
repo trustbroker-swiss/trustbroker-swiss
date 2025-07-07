@@ -15,7 +15,6 @@
 
 package swiss.trustbroker.mapping.service;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -25,7 +24,6 @@ import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.stereotype.Service;
 import swiss.trustbroker.api.profileselection.dto.ProfileSelectionResult;
 import swiss.trustbroker.api.sessioncache.dto.AttributeName;
@@ -40,7 +38,6 @@ import swiss.trustbroker.federation.xmlconfig.MultiResultPolicy;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
-import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
 import swiss.trustbroker.mapping.util.AttributeFilterUtil;
 import swiss.trustbroker.saml.dto.ClaimSource;
 import swiss.trustbroker.saml.dto.CpResponse;
@@ -72,14 +69,15 @@ public class ClaimsMapperService {
 			String destination, RelyingParty relyingParty) {
 		applyConfigFilter(cpResponse, responseParameters, relyingParty);
 		applyMappers(cpResponse);
-		applyDeduplication(cpResponse, destination, relyingParty);
+		applyOidcDeduplication(cpResponse, destination, relyingParty);
 	}
 
 	private void applyConfigFilter(CpResponse cpResponse, ResponseParameters params, RelyingParty relyingParty) {
 		// filter CP claims on RP side (CP side already done)
-		var cpAttributesDefs = RelyingPartySetupUtil.getCpAttrDefinitions(cpResponse, relyingPartySetupService, params);
 		var claimsSelection = relyingParty.getClaimsSelection();
-		var cpAttributes = filterAndCreateCpDefinitions(cpResponse.getAttributes(), cpAttributesDefs, claimsSelection);
+		var cpAttributesDefs = relyingPartySetupService
+				.getRelyingPartyByIssuerIdOrReferrer(params.getRpIssuerId(), params.getRpReferer()).getAttributesDefinitions();
+		var cpAttributes = filterAndCreateCpDefinitions(cpResponse.getAttributes(), cpAttributesDefs, claimsSelection, cpResponse.getIssuer());
 
 		// filter IDM claims on RP side
 		var userQueries = relyingParty.getIdmLookup();
@@ -101,7 +99,7 @@ public class ClaimsMapperService {
 	}
 
 	// replacement for ConstAttributes (configured Definition having a value)
-	private static  Map<Definition, List<String>> applyConstantDefinitionValues(RelyingParty relyingParty) {
+	public static  Map<Definition, List<String>> applyConstantDefinitionValues(RelyingParty relyingParty) {
 		var allDefs = relyingParty.getAllDefinitions();
 		var ret = new HashMap<Definition, List<String>>();
 		if (!allDefs.isEmpty()) {
@@ -128,14 +126,19 @@ public class ClaimsMapperService {
 		}
 	}
 
-	static Map<Definition, List<String>> filterAndCreateCpDefinitions(Map<Definition, List<String>> attributes,
-			Collection<Definition> confAttributes, AttributesSelection claimsSelection) {
+	static Map<Definition, List<String>> filterAndCreateCpDefinitions(
+			Map<Definition, List<String>> attributes, Collection<Definition> confAttributes, AttributesSelection claimsSelection, String issuer) {
 		if (attributes == null) {
-			throw new TechnicalException("Missing IDP response attributes");
+			throw new TechnicalException(String.format("Missing IDP response attributes for cpIssuer=%s", issuer));
 		}
+
 		List<Definition> claimsForSource = AttributeFilterUtil.getClaimsForSource(claimsSelection, ClaimSource.CP.name());
 		List<Definition> joinedAttributes = AttributeFilterUtil.joinConfAttributes(confAttributes, claimsForSource);
 		Map<Definition, List<String>> respCpAttributes = new HashMap<>();
+		if (joinedAttributes.isEmpty()) {
+			log.debug("No Cp AttributeSelection for={}", claimsForSource);
+			return respCpAttributes;
+		}
 		for (var definition : joinedAttributes) {
 			var attributeValues = getAttributeValues(attributes, definition);
 			if (!attributeValues.isEmpty()) {
@@ -164,14 +167,16 @@ public class ClaimsMapperService {
 			Map<Definition, List<String>> attributes, String typeDescription) {
 		Map<Definition, List<String>> result = new HashMap<>();
 		for (var entry : attributes.entrySet()) {
-			if (entry.getKey().getMappers().isEmpty()) {
+			if (entry.getKey().getClaimsMappers().isEmpty()) {
 				// no mapping
 				result.put(entry.getKey(), entry.getValue());
 			}
 			else {
 				var mappedValues = applyMappers(entry.getKey(), entry.getValue(), typeDescription);
-				// we need List<String> here
-				result.put(entry.getKey(), CollectionUtil.toStringList(mappedValues, Object::toString));
+				if (mappedValues != null && !mappedValues.isEmpty()) {
+					// we need List<String> here
+					result.put(entry.getKey(), CollectionUtil.toStringList(mappedValues, Object::toString));
+				}
 			}
 		}
 		return result;
@@ -181,7 +186,7 @@ public class ClaimsMapperService {
 	 * Apply the mappers of a Definition.
 	 */
 	public <T> List<Object> applyMappers(Definition definition, List<T> values, String typeDescription) {
-		var mappers = definition.getMappers();
+		var mappers = definition.getClaimsMappers();
 		@SuppressWarnings("unchecked")
 		List<Object> mappedValues = (List<Object>) values;
 		for (var mapper : mappers) {
@@ -195,18 +200,34 @@ public class ClaimsMapperService {
 		return mappedValues;
 	}
 
-	private void applyDeduplication(CpResponse cpResponse, String destination, RelyingParty relyingParty) {
+	private void applyOidcDeduplication(CpResponse cpResponse, String destination, RelyingParty relyingParty) {
 		List<String> dropDuplicatedAttributes = Collections.emptyList();
 		var dropDuplicatedAttributesConfig = trustBrokerProperties.getOidc() != null ?
-				trustBrokerProperties.getOidc().getDropDuplicatedAttributeFromOriginalIssuer() : new String[0];
-		if (HrdSupport.isXtbDestination(trustBrokerProperties, destination) && ArrayUtils.isNotEmpty(dropDuplicatedAttributesConfig)) {
-			dropDuplicatedAttributes = Arrays.asList(dropDuplicatedAttributesConfig);
+				trustBrokerProperties.getOidc().getDropDuplicatedAttributeFromOriginalIssuer() : null;
+		if (CollectionUtils.isNotEmpty(dropDuplicatedAttributesConfig) &&
+				HrdSupport.isXtbDestination(trustBrokerProperties, destination)) {
+			dropDuplicatedAttributes = dropDuplicatedAttributesConfig;
 			log.debug("OIDC: Dropping original issuer version if duplicated for attributes={}", dropDuplicatedAttributes);
 		}
 
 		cpResponse.setUserDetails(deduplicatedRpAttributes(cpResponse.getUserDetails(), cpResponse.getProperties(),
 				relyingParty.getConstAttributes()));
 		cpResponse.setAttributes(deduplicatedCpAttributes(cpResponse, dropDuplicatedAttributes, relyingParty.getConstAttributes()));
+	}
+
+	/**
+	 * Drop duplicate attributes coming from CP and IDM having the same value with a CP preference.
+	 * This is needed to pass-through data to AccessRequestService with a preference for the IDP.
+	 */
+	public void applyIdmDeduplication(CpResponse cpResponse) {
+		cpResponse.getAttributes().forEach((key, value) -> {
+			var idmValue = cpResponse.getUserDetail(key.getNamespaceUri());
+			if (value.contains(idmValue)) {
+				cpResponse.removeUserDetails(key.getNamespaceUri());
+				log.debug("Dropping idmClaim='{}' in favor of cpIssuer={}",
+						key.getNamespaceUri(), cpResponse.getIssuerId());
+			}
+		});
 	}
 
 	/**

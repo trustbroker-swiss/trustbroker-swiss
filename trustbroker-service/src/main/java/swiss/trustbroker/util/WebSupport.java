@@ -15,10 +15,16 @@
 
 package swiss.trustbroker.util;
 
+import java.net.URI;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +40,7 @@ import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.common.util.WebUtil;
+import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.NetworkConfig;
 
 /**
@@ -64,21 +71,32 @@ public class WebSupport {
 	}
 
 	public static HttpServletRequest getWebRequest() {
-		// we are within spring so a spring-mvc filter provides us with this information
+		// we are within Spring, so a spring-mvc filter provides us with this information
 		var attrs = RequestContextHolder.getRequestAttributes();
 		return attrs != null ? ((ServletRequestAttributes) attrs).getRequest() : null;
 	}
 
-	public static String getClientNetwork(HttpServletRequest request, NetworkConfig networkConfig) {
-		return networkConfig != null ? WebUtil.getHeader(networkConfig.getNetworkHeader(), request) : null;
+	// Real network header as it's set by a loadbalancer/proxy
+	public static String getRealClientNetwork(HttpServletRequest request, NetworkConfig networkConfig) {
+		return getClientNetwork(request, networkConfig, NetworkConfig::getNetworkHeader);
+	}
+
+	private static String getClientNetwork(HttpServletRequest request, NetworkConfig networkConfig,
+										   Function<NetworkConfig, String> header) {
+		return networkConfig != null && StringUtils.isNotEmpty(header.apply(networkConfig)) ?
+				WebUtil.getHeader(header.apply(networkConfig), request) : null;
 	}
 
 	// On INTRANET allow testing HRD with X-Simulated-Client-Network header
-	public static String getClientNetworkOnIntranet(HttpServletRequest request, NetworkConfig networkConfig) {
-		var network = getClientNetwork(request, networkConfig);
+	public static String getClientNetwork(HttpServletRequest request, NetworkConfig networkConfig) {
+		var network = getRealClientNetwork(request, networkConfig);
 		if (networkConfig != null && networkConfig.isIntranet(network)) {
-			var simulatedNetwork = WebUtil.getHeader(networkConfig.getTestNetworkHeader(), request);
-			network = simulatedNetwork != null ? simulatedNetwork : network;
+			var simulatedNetwork = getClientNetwork(request, networkConfig, NetworkConfig::getTestNetworkHeader);
+			if (simulatedNetwork != null) {
+				log.debug("Using simulatedNetwork={} from header {} over actual network={}",
+						simulatedNetwork, networkConfig.getTestNetworkHeader(), network);
+				network = simulatedNetwork;
+			}
 		}
 		return network;
 	}
@@ -105,13 +123,10 @@ public class WebSupport {
 	// LB sends value otherwise
 	// If there's no configuration for the header, treat as Internet access
 	public static boolean isClientOnInternet(HttpServletRequest request, NetworkConfig networkConfig) {
-		return networkConfig == null
-				|| StringUtils.isEmpty(networkConfig.getNetworkHeader())
-				|| StringUtils.isEmpty(networkConfig.getInternetNetworkName())
-				|| networkConfig.isInternet(getClientNetwork(request, networkConfig));
+		return networkConfig == null || networkConfig.isInternet(getClientNetwork(request, networkConfig));
 	}
 
-	// append to exceptions to correlate clients with have problems with
+	// append to exceptions to correlate clients that have a problem
 	// NOTE that clientIp and traceId are now also set in the console log via logging.pattern (see application.yml)
 	public static String getClientHint(HttpServletRequest request, NetworkConfig networkConfig) {
 		// not called from web
@@ -270,8 +285,6 @@ public class WebSupport {
 	}
 
 	/**
-	 * @param httpRequest
-	 * @param headerConditions
 	 * @return true if any of the request headers matches any of the headerConditions by header name and value/regex
 	 */
 	public static boolean anyHeaderMatches(HttpServletRequest httpRequest, List<RegexNameValue> headerConditions) {
@@ -295,4 +308,33 @@ public class WebSupport {
 		return false;
 	}
 
+	public static Set<String> getOwnOrigins(TrustBrokerProperties properties) {
+		// deduplicate via set:
+		return getOwnPerimeterUris(properties)
+				.map(WebUtil::getValidOrigin)
+				.filter(Objects::nonNull)
+				.collect(Collectors.toSet());
+	}
+
+	public static Set<String> getOwnPerimeterPaths(TrustBrokerProperties properties) {
+		// deduplicate via set:
+		return getOwnPerimeterUris(properties)
+				.map(WebUtil::getValidatedUri)
+				.filter(Objects::nonNull)
+				.map(URI::getPath)
+				.filter(StringUtils::isNotEmpty)
+				.collect(Collectors.toSet());
+	}
+
+	private static Stream<String> getOwnPerimeterUris(TrustBrokerProperties properties) {
+		// sloDefaultOidcDestinationPath not included, likely external if customized
+		// non-standard path artifactResolution.serviceUrl would only work if a proxy maps it back to the hardcoded mapping on XTB
+		// non-standard path endSessionEndpoint would only work if a proxy maps it back to the hardcoded mapping on XTB
+		// for the paths OIDC/SAML perimeterUrl/consumerUrl have the same restrictions, but they are included for getOwnOrigins
+		return Stream.of(
+				properties.getPerimeterUrl(),
+				properties.getSamlConsumerUrl(),
+				properties.getOidc() != null ? properties.getOidc().getPerimeterUrl() : null,
+				properties.getOidc() != null ? properties.getOidc().getSessionIFrameEndpoint() : null);
+	}
 }

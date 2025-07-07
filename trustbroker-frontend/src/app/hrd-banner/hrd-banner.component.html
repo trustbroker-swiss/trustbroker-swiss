@@ -15,7 +15,7 @@
 
 <div class="title">
 	@if (translatedTitle$ | async; as title) {
-		<h1 class="title">{{ title }}</h1>
+		<h2 class="title">{{ title }}</h2>
 	}
 
 	@if (translatedSubtitle$ | async; as subtitle) {
@@ -35,7 +35,7 @@
 			@for (paragraph of paragraphs; track paragraph) {
 				<p [innerHTML]="paragraph | safeMarkup" class="paragraph"></p>
 			}
-			@if (config().collapseParagraphsOnSmallScreen && isMobile()) {
+			@if (config().collapseParagraphs) {
 				<button class="link-button" (click)="expandParagraphs(false)">{{ "trustbroker.hrd.cards.banner.showLess.text" | translate }}</button>
 			}
 		} @else {

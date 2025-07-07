@@ -20,6 +20,7 @@ import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +32,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.hc.client5.http.utils.DateUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.common.dto.CookieParameters;
@@ -61,13 +63,19 @@ public class WebUtil {
 
 	public static final String COOKIE_SAME_SITE = "SameSite";
 
-	public static final String COOKIE_SAME_SITE_NONE = "None";
+	public static final String COOKIE_SAME_SITE_NONE = "None"; // see tomcat SameSiteCookies
 
 	public static final String COOKIE_SAME_SITE_LAX = "Lax";
 
 	public static final String COOKIE_SAME_SITE_STRICT = "Strict";
 
 	public static final String COOKIE_SAME_SITE_DYNAMIC = "Dynamic"; // XTB config value - choose based on involved URLs
+
+	public static final String CACHE_CONTROL_NO_CACHE = "no-cache, no-store, max-age=0, must-revalidate";
+
+	public static final String PRAGMA_NO_CACHE = "no-cache";
+
+	public static final String CACHE_CONTROL_MAX_AGE = "public, max-age=";
 
 	private WebUtil() {
 	}
@@ -252,7 +260,12 @@ public class WebUtil {
 			cookie.setPath(params.getPath());
 		}
 		if (params.getSameSite() != null) {
-			cookie.setAttribute(COOKIE_SAME_SITE, params.getSameSite());
+			if (isSameSiteDynamic(params.getSameSite())) {
+				log.warn("Not setting internal value sameSite={} on cookie={}", params.getSameSite(), params.getName());
+			}
+			else {
+				cookie.setAttribute(COOKIE_SAME_SITE, params.getSameSite());
+			}
 		}
 		// SameSite=None is set by default via sameSiteCookiesConfig
 		return cookie;
@@ -403,4 +416,47 @@ public class WebUtil {
 		return originBuilder.toString();
 	}
 
+	/**
+	 *	"etag" must contain leading and trailing quotes
+	 * @see <a hef="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/ETag">ETag</a>
+	 * @see <a hef="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control">Cache-Control</a>
+	 * @see <a hef="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Expires">Expires</a>
+	 * @see <a hef="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Pragma">Pragma</a>
+ 	 */
+	public static void addCacheHeaders(HttpServletResponse response, int maxAgeSecs, String etag, Instant lastModified,
+			Instant now) {
+		if (maxAgeSecs <= 0) {
+			response.setHeader(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_CACHE);
+			response.setHeader(HttpHeaders.PRAGMA, PRAGMA_NO_CACHE);
+			response.setIntHeader(HttpHeaders.EXPIRES, 0);
+		}
+		else {
+			response.setHeader(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_MAX_AGE + maxAgeSecs);
+			response.setHeader(HttpHeaders.PRAGMA, "");
+			response.setHeader(HttpHeaders.EXPIRES, DateUtils.formatStandardDate(now.plusSeconds(maxAgeSecs)));
+		}
+		if (lastModified != null) {
+			response.setHeader(HttpHeaders.LAST_MODIFIED, DateUtils.formatStandardDate(lastModified));
+		}
+		if (etag != null) {
+			response.setHeader(HttpHeaders.ETAG, etag);
+		}
+	}
+
+	/**
+	 * Returns true if the resource has not been modified based on the browser headers If-None-Match/If-Modified-Since.
+	 * "etag" must contain leading and trailing quotes
+	 * @see <a hef="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/If-None-Match">If-None-Match</a>
+	 * @see <a hef="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/If-Modified-Since">If-Modified-Since</a>
+	 */
+	public static boolean isCached(String etag, String ifNoneMatch, Instant cacheTime, String ifModifiedSince) {
+		if (etag != null && ifNoneMatch != null && ifNoneMatch.contains(etag)) {
+			return true;
+		}
+		if (cacheTime != null && ifModifiedSince != null) {
+			var browserCacheTime = DateUtils.parseStandardDate(ifModifiedSince);
+			return browserCacheTime != null && !browserCacheTime.isBefore(cacheTime);
+		}
+		return false;
+	}
 }

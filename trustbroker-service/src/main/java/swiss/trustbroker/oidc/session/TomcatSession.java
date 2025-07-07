@@ -17,17 +17,33 @@ package swiss.trustbroker.oidc.session;
 
 import java.io.Serializable;
 import java.security.Principal;
+import java.util.Set;
 
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.catalina.session.StandardSession;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import swiss.trustbroker.sessioncache.dto.StateData;
 
 @Slf4j
 @Getter
 @Setter
+@SuppressWarnings("javaarchitecture:S7027")
 public class TomcatSession extends StandardSession implements Serializable {
+
+	// Spring attaches our SAML principal to the HttpSession and SessionRegistry (the correct abstraction) to deal with it
+	// is too high up in the software stack, as we also need to replicate HttpSession ro oder service instances/pods.
+	private static final String SPRING_SECURITY_CONTEXT = HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY;
+
+	// Spring-sec and spring-auth use a (package) private in HttpSessionRequestCache and WebSessionServerRequestCache.
+	// So we cannot make this compile-time save, but it's used for exception improvements only anyway.
+	private static final String SPRING_SECURITY_SAVED_REQUEST = "SPRING_SECURITY_SAVED_REQUEST";
+
+	// Just for debugging purposes we want to know when spring is processing the SAML response on OIDC side
+	private static final String SAML2_AUTHN_REQUEST = "org.springframework.security.saml2.provider.service.web."
+			+ "HttpSessionSaml2AuthenticationRequestRepository.SAML2_AUTHN_REQUEST";
 
 	private transient TomcatSessionManager tomcatSessionManager;
 
@@ -56,16 +72,20 @@ public class TomcatSession extends StandardSession implements Serializable {
 			log.trace("SESS.getAttribute={} on sessionId={} returning ret='{}' of type={} valid={}",
 					name, getId(), ret, ret != null ? ret.getClass().getName() : null, valid);
 		}
-		if (name.equals(OidcSessionSupport.SPRING_SECURITY_SAVED_REQUEST)) {
-			tomcatSessionManager.validateSamlFederationState(this, ret);
+		if (name.equals(SPRING_SECURITY_SAVED_REQUEST)) {
+			tomcatSessionManager.validateSamlFederationState(this, ret, name);
 		}
-		else if (name.equals(OidcSessionSupport.SAML2_AUTHN_REQUEST)) {
+		else if (name.equals(SAML2_AUTHN_REQUEST)) {
 			log.debug("Check for SAML Response from federation using sessionId={}", getId());
 		}
-		else if (name.equals(OidcSessionSupport.SPRING_SECURITY_CONTEXT)) {
+		else if (name.equals(SPRING_SECURITY_CONTEXT)) {
 			tomcatSessionManager.validateOidcTokenState(this, ret);
 		}
 		return ret;
+	}
+
+	public Set<String> getAttributeNamesInternal() {
+		return attributes != null ? attributes.keySet() : null;
 	}
 
 	public int getAttributeCount() {
@@ -78,13 +98,13 @@ public class TomcatSession extends StandardSession implements Serializable {
 
 	public Object setAttributeInternal(String name, Object value) {
 		Object ret = null;
-		if (name.equals(OidcSessionSupport.SPRING_SECURITY_SAVED_REQUEST)) {
+		if (name.equals(SPRING_SECURITY_SAVED_REQUEST)) {
 			tomcatSessionManager.checkAuthorizationTrigger();
 		}
-		else if (name.equals(OidcSessionSupport.SAML2_AUTHN_REQUEST)) {
+		else if (name.equals(SAML2_AUTHN_REQUEST)) {
 			log.debug("Trigger SAML AuthnRequest starting federation using sessionId={}", getId());
 		}
-		else if (name.equals(OidcSessionSupport.SPRING_SECURITY_CONTEXT)) {
+		else if (name.equals(SPRING_SECURITY_CONTEXT)) {
 			ret = value;
 			tomcatSessionManager.setFinalValuesFromAuthentication(this, value);
 		}
@@ -104,15 +124,15 @@ public class TomcatSession extends StandardSession implements Serializable {
 			log.debug("Skip discarding SAML principal on OIDC /userinfo (spring bug)");
 			return;
 		}
-		else if (name.equals(OidcSessionSupport.SPRING_SECURITY_SAVED_REQUEST)) {
+		else if (name.equals(SPRING_SECURITY_SAVED_REQUEST)) {
 			log.debug("Authentication finished on sessionId={} trigger={}", getId(), name);
 		}
-		else if (name.equals(OidcSessionSupport.SAML2_AUTHN_REQUEST)) {
+		else if (name.equals(SAML2_AUTHN_REQUEST)) {
 			log.debug("Federation finished on sessionId={} trigger={}", getId(), name);
 		}
-		else if (name.equals(OidcSessionSupport.SPRING_SECURITY_CONTEXT)) {
+		else if (name.equals(SPRING_SECURITY_CONTEXT)) {
 			log.debug("Authentication invalidated on sessionId={} trigger={}", getId(), name);
-			var value = valid ? super.getAttribute(OidcSessionSupport.SPRING_SECURITY_CONTEXT) : null;
+			var value = valid ? super.getAttribute(SPRING_SECURITY_CONTEXT) : null;
 			tomcatSessionManager.clearDerivedValuesFromAuthentication(this, value);
 		}
 		if (valid) {
@@ -173,6 +193,10 @@ public class TomcatSession extends StandardSession implements Serializable {
 		if (stateData != null && oidcClientId != null) {
 			stateData.setOidcClientId(oidcClientId);
 		}
+	}
+
+	public SecurityContext getSecurityContext() {
+		return (SecurityContext) getAttributeInternal(SPRING_SECURITY_CONTEXT);
 	}
 
 }

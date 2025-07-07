@@ -28,8 +28,8 @@ import java.util.List;
  */
 public interface IdmRequests {
 
-	public String getStore();
+	String getStore();
 
-	public List<IdmRequest> getQueryList();
+	List<IdmRequest> getQueryList();
 
 }

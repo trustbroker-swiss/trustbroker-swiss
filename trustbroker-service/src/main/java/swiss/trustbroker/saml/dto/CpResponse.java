@@ -80,6 +80,14 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	private String originalNameId;
 
 	/**
+	 * CP Response incoming subject name ID after CP side subject name mapping.
+	 *
+	 * @see swiss.trustbroker.federation.xmlconfig.SubjectNameMappings
+	 * @since 1.10.0
+	 */
+	private String mappedNameId;
+
+	/**
 	 * Format of the subject name ID.
 	 */
 	private String nameIdFormat;
@@ -317,8 +325,9 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 			log.warn("CpResponse.setAttribute(name={}, value={}) rejected", name, value);
 			return;
 		}
+
 		var newValue = new ArrayList<>(List.of(value)); // mutable, as addAttribute extends
-		var definition = Definition.ofNameNamespaceUriAndSource(name, namespaceUri, ClaimSource.CP.name());
+		var definition = DefinitionUtil.getOrCreateDefinition(name, namespaceUri, ClaimSource.CP.name(), attributes);
 		setAttributes(definition, newValue);
 	}
 
@@ -330,7 +339,8 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 			log.warn("CpResponse.setAttributes(name={}, values={}) rejected", name, values);
 			return;
 		}
-		var definition = Definition.ofNameAndSource(name, ClaimSource.CP.name());
+
+		var definition = DefinitionUtil.getOrCreateDefinition(name, null, ClaimSource.CP.name(), attributes);
 		var oldValue = attributes.put(definition, values);
 		log.debug("CpResponse.attribute change name={} value={} oldValue={}", name, values, oldValue);
 	}
@@ -821,6 +831,7 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 								 .name(key.getName())
 								 .namespaceUri(key.getNamespaceUri())
 								 .source(key.getSource())
+								 .mappers(key.getMappers())
 								 .build(),
 					entry.getValue());
 		}

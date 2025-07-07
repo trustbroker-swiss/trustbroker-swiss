@@ -25,6 +25,11 @@ import lombok.NoArgsConstructor;
 
 /**
  * Announcement configuration.
+ * <br>
+ * Potentially breaking changes:
+ * <ul>
+ *     <li>With 1.10.0 value of attributes changed to Object to allow nested structures.</li>
+ * </ul>
  *
  * @see swiss.trustbroker.api.announcements.service.AnnouncementService
  * @see swiss.trustbroker.federation.xmlconfig.AnnouncementRpConfig
@@ -94,6 +99,6 @@ public class AnnouncementConfig {
 	/**
 	 * Custom attributes that might be needed by the implementation.
  	 */
-	private Map<String, String> attributes;
+	private Map<String, Object> attributes;
 
 }

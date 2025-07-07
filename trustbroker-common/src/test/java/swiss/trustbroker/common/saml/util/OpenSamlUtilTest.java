@@ -19,6 +19,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
@@ -34,6 +35,7 @@ import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 import jakarta.servlet.http.HttpServletResponse;
@@ -192,7 +194,7 @@ class OpenSamlUtilTest {
 						</saml2:Attribute>
 					</saml2:AttributeStatement>
 				</saml2:Assertion>
-			</saml2p:Response>			
+			</saml2p:Response>
 			""";
 
 	private static String TEST_SECURED = """
@@ -406,7 +408,9 @@ class OpenSamlUtilTest {
 
 	private static final String TEST_RELAY_STATE = "myRelayState";
 
-	private static final String TEST_DESTINATION = "myDestination";
+	private static final String TEST_DESTINATION = "https://localhost/myDestination";
+
+	private static final String TEST_DESTINATION_ENCODED = "https&#x3a;&#x2f;&#x2f;localhost&#x2f;myDestination";
 
 	private static final String TEST_ARP_URL = "https://localhost/saml/arp";
 
@@ -460,8 +464,8 @@ class OpenSamlUtilTest {
 
 	@Test
 	void testRelayStateForInjection() {
-		String unsafeRelayState = "TestRelayState_\"' ,.-";
-		String safeRelyState = HTMLEncoder.encodeForHTML(unsafeRelayState);
+		var unsafeRelayState = "TestRelayState_\"' ,.-";
+		var safeRelyState = HTMLEncoder.encodeForHTML(unsafeRelayState);
 		assertEquals("TestRelayState_&quot;&#x27; ,.-", safeRelyState);
 	}
 
@@ -474,22 +478,44 @@ class OpenSamlUtilTest {
 
 	@Test
 	void testExtractAuthnRequestContextClasses() {
-		var authnRequest = OpenSamlUtil.buildSamlObject(AuthnRequest.class);
-		var reqAuthnContext = OpenSamlUtil.buildSamlObject(RequestedAuthnContext.class);
-		authnRequest.setRequestedAuthnContext(reqAuthnContext);
 		var inputClasses = List.of(SamlContextClass.NOMAD_TELEPHONY, SamlContextClass.KERBEROS,
 				SamlContextClass.PASSWORD_PROTECTED_TRANSPORT,
 				// not mapped -> removed:
 				"urn:test:names:classes:StrongestPossible");
+		var authnRequest = givenAuthnRequestWithContextClasses(inputClasses);
+		var result = OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest);
+		assertThat(result, containsInAnyOrder(inputClasses.toArray()));
+	}
+
+	@Test
+	void testExtractAuthnRequestContextClassesReplaceInbound() {
+		var enforcedQoasClasses = List.of(SamlContextClass.TIME_SYNC_TOKEN, SamlContextClass.SOFTWARE_TIME_SYNC_TOKEN);
+
+		var inputClasses = List.of(SamlContextClass.NOMAD_TELEPHONY, SamlContextClass.KERBEROS,
+				SamlContextClass.PASSWORD_PROTECTED_TRANSPORT,
+				// not mapped -> removed:
+				"urn:test:names:classes:StrongestPossible");
+
+		var authnRequest = givenAuthnRequestWithContextClasses(inputClasses);
+		var result = OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest, false, Optional.of(enforcedQoasClasses));
+		assertThat(result, containsInAnyOrder(inputClasses.toArray()));
+
+		result = OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest, true, Optional.of(enforcedQoasClasses));
+		assertThat(result, containsInAnyOrder(enforcedQoasClasses.toArray()));
+	}
+
+	private static AuthnRequest givenAuthnRequestWithContextClasses(List<String> inputClasses) {
+		var authnRequest = OpenSamlUtil.buildSamlObject(AuthnRequest.class);
+		var reqAuthnContext = OpenSamlUtil.buildSamlObject(RequestedAuthnContext.class);
+		authnRequest.setRequestedAuthnContext(reqAuthnContext);
+
 		for (var name : inputClasses) {
 			var contextClass = OpenSamlUtil.buildSamlObject(AuthnContextClassRef.class);
 			contextClass.setURI(name);
 			reqAuthnContext.getAuthnContextClassRefs().add(contextClass);
 		}
-		var result = OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest);
-		assertThat(result, containsInAnyOrder(inputClasses.toArray()));
+		return authnRequest;
 	}
-
 
 	@Test
 	void encodeSamlPostMessage() throws UnsupportedEncodingException {
@@ -497,6 +523,17 @@ class OpenSamlUtilTest {
 		MockHttpServletResponse httpServletResponse = new MockHttpServletResponse();
 		OpenSamlUtil.encodeSamlPostMessage(httpServletResponse, context, velocityEngine, null);
 		validateSamlMapping(httpServletResponse, SamlIoUtil.SAML_REQUEST_NAME);
+	}
+
+	@Test
+	void encodeSamlRedirectMessage() {
+		MessageContext context = buildMessageContext();
+		MockHttpServletResponse httpServletResponse = new MockHttpServletResponse();
+		OpenSamlUtil.encodeSamlRedirectMessage(httpServletResponse, context, null);
+		assertThat(httpServletResponse.getStatus(), is(HttpServletResponse.SC_FOUND));
+		var location = httpServletResponse.getHeader(HttpHeaders.LOCATION);
+		assertThat(location, startsWith(TEST_DESTINATION + '?' + SamlIoUtil.SAML_REQUEST_NAME + '='));
+		assertThat(location, endsWith('&' + SamlIoUtil.SAML_RELAY_STATE + '=' + TEST_RELAY_STATE));
 	}
 
 	@Test
@@ -523,7 +560,7 @@ class OpenSamlUtilTest {
 		assertThat(body, containsString("name=\"" + samlName + '"'));
 		assertThat(body, containsString("name=\"" + SamlIoUtil.SAML_RELAY_STATE + '"'));
 		assertThat(body, containsString("value=\"" + TEST_RELAY_STATE + '"'));
-		assertThat(body, containsString("<form action=\"" + TEST_DESTINATION + '"'));
+		assertThat(body, containsString("<form action=\"" + TEST_DESTINATION_ENCODED + '"'));
 		// extract value of samlName field
 		var pattern = "name=\"" + samlName + "\" value=\"([^\"]*)\"";
 		var matcher = Pattern.compile(pattern, Pattern.MULTILINE).matcher(body);
@@ -701,7 +738,7 @@ class OpenSamlUtilTest {
 	private EncryptedAssertion givenEncryptedAssertion(Assertion assertion) {
 		return EncryptionUtil.encryptAssertion(assertion, SamlTestBase.dummyCredential(),
 				EncryptionConstants.ALGO_ID_BLOCKCIPHER_AES128, EncryptionConstants.ALGO_ID_KEYTRANSPORT_RSAOAEP,
-				Encrypter.KeyPlacement.PEER,"urn:TEST");
+				Encrypter.KeyPlacement.PEER,"urn:TEST", false);
 	}
 
 }

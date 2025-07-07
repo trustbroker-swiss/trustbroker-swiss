@@ -14,7 +14,7 @@
 ## limitations under the License.
 ##
 ##
-## Velocity Template for SAML 2 HTTP-POST binding 
+## Velocity Template for SAML 2 HTTP-POST binding
 ## Customized for SSO logout notification
 ##
 ## Velocity context may contain the following properties
@@ -26,7 +26,10 @@
 ## SAMLRequest - String - the Base64 encoded SAML Request
 ## SAMLResponse - String - the Base64 encoded SAML Response
 ##
-## XTBHttpMethod: HTTP method to use (default: post)
+## Binding:
+## XTBHttpMethod - String - HTTP method to use (default: post)
+## XTBSigAlg - String - Signature algorithm for redirect binding
+## XTBSignature - String - Signature for redirect binding
 ##
 ## XTBSloConsoleDebug - boolean - enable console.debug logging
 ##
@@ -51,11 +54,15 @@
         <form name="saml.result" action="${action}" method="#if($XTBHttpMethod)${XTBHttpMethod}#{else}POST#end">
             <div>
                 #if($RelayState)<input type="hidden" name="RelayState" value="${RelayState}"/>#end
-                
+
                 #if($SAMLRequest)<input type="hidden" name="SAMLRequest" value="${SAMLRequest}"/>#end
-                
+
                 #if($SAMLResponse)<input type="hidden" name="SAMLResponse" value="${SAMLResponse}"/>#end
-                
+
+				#if($XTBSignature)<input type="hidden" name="Signature" value="${XTBSignature}"/>#end
+
+				#if($XTBSigAlg)<input type="hidden" name="SigAlg" value="${XTBSigAlg}"/>#end
+
             </div>
             <noscript>
                 <div>

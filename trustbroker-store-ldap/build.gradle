@@ -1,0 +1,24 @@
+plugins {
+	id 'java-library'
+	id "org.springframework.boot"
+}
+
+dependencies {
+	// components
+	implementation project("${rootProject.top}:trustbroker-api")
+	implementation project("${rootProject.top}:trustbroker-common")
+	implementation project("${rootProject.top}:trustbroker-service")
+
+	// spring-boot baseline
+	implementation "org.springframework.boot:spring-boot-starter-web"
+
+	// ldap connectivity
+	implementation "org.springframework.boot:spring-boot-starter-data-ldap"
+
+	// spring-test baseline
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+springBoot {
+	mainClass = 'swiss.trustbroker.ldap.LdapStoreApplication'
+}

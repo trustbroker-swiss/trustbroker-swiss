@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.AdditionalMatchers.or;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -141,10 +142,10 @@ import swiss.trustbroker.sessioncache.dto.SsoState;
 import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.sessioncache.service.StateCacheService;
 import swiss.trustbroker.sso.dto.SloNotification;
+import swiss.trustbroker.sso.dto.SloResponseParameters;
 import swiss.trustbroker.sso.service.SsoService;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
 import swiss.trustbroker.util.ApiSupport;
-import swiss.trustbroker.util.HrdSupport;
 
 @SpringBootTest
 @ContextConfiguration(classes = {
@@ -185,6 +186,8 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 	private static final String PERIMETER_URL = "http://test.trustbroker.swiss";
 
 	private static final String IDENTITY_QUERY = "IDENTITY";
+
+	private static final String HINT_PARAMETER = "select_cp";
 
 	@MockitoBean
 	private TrustBrokerProperties trustBrokerProperties;
@@ -266,7 +269,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 	void handleLogoutRequest(boolean succeedLogout) throws UnsupportedEncodingException {
 		var request = new MockHttpServletRequest();
 		var response = new MockHttpServletResponse();
-		var logoutRequest = setupMockData(request, succeedLogout, null);
+		var logoutRequest = setupLogoutRequestMockData(request, succeedLogout, null);
 
 		var signatureContext = SignatureContext.forPostBinding();
 		relyingPartyService.handleLogoutRequest(outputService, logoutRequest, RELAY_STATE, request, response, signatureContext);
@@ -282,7 +285,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 	void handleLogoutRequestInvalidBinding(ArtifactBindingMode mode, SignatureContext signatureContext) {
 		var request = new MockHttpServletRequest();
 		var response = new MockHttpServletResponse();
-		var logoutRequest = setupMockData(request, true, mode);
+		var logoutRequest = setupLogoutRequestMockData(request, true, mode);
 
 		var ex = assertThrows(RequestDeniedException.class, () -> relyingPartyService.handleLogoutRequest(outputService,
 				logoutRequest, RELAY_STATE,	request, response, signatureContext));
@@ -299,52 +302,56 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 
 	@Test
 	void testAddAllProperties() {
-		String issuer = "SAMPLE-CP";
-		String clientExtId = "1234";
+		var issuer = "SAMPLE-CP";
+		var clientExtId = "1234";
 		String homeName = "Test-Login";
-		String nameId = "id/232";
-		String authnvalue = "authnvalue";
-		String ssoSessionIdValue = "test-sso-session-uuid";
-		CpResponse cpResponse = givenCpResponse(issuer, clientExtId, homeName, nameId, false);
-		when(relyingPartySetupService.getCpAuthLevel(any(), any())).thenReturn(authnvalue);
+		var nameId = "id/232";
+		var authnValue = "authnValue";
+		var ssoSessionIdValue = "test-sso-session-uuid";
+		var cpResponse = givenCpResponse(issuer, clientExtId, homeName, nameId, false);
+		var cp = ClaimsParty.builder().id(issuer).authLevel(authnValue).build();
+		when(relyingPartySetupService.getClaimsProviderSetupByIssuerId(issuer, "")).thenReturn(cp);
 
-		int initialPropertiesSize = cpResponse.getProperties().size();
+		var initialPropertiesSize = cpResponse.getProperties().size();
 		var stateDate = StateData.builder().id("test-sess-id").ssoSessionId(ssoSessionIdValue).build();
 		TraceSupport.switchToConversation("conversationId");
 		relyingPartyService.setProperties(cpResponse);
 		RelyingPartyService.adjustSsoSessionIdProperty(stateDate, cpResponse);
 
 		var properties = cpResponse.getProperties();
-		int propertiesSize = properties.size();
+		var propertiesSize = properties.size();
 
 		assertEquals(0, initialPropertiesSize);
 		assertTrue(propertiesSize > initialPropertiesSize);
 		assertEquals(6, propertiesSize);
 
-		String attributeHomeRealm = cpResponse.getProperty(CoreAttributeName.HOME_REALM.getNamespaceUri());
-		String attributeHomeName = cpResponse.getProperty(CoreAttributeName.HOME_NAME.getNamespaceUri());
-		String attributeClientExtId = cpResponse.getProperty(CoreAttributeName.ISSUED_CLIENT_EXT_ID.getNamespaceUri());
-		String attributeAuthLevel = cpResponse.getProperty(CoreAttributeName.AUTH_LEVEL.getNamespaceUri());
-		String attributeSsoSessionId = cpResponse.getProperty(CoreAttributeName.SSO_SESSION_ID.getNamespaceUri());
+		var attributeHomeRealm = cpResponse.getProperty(CoreAttributeName.HOME_REALM.getNamespaceUri());
+		var attributeHomeName = cpResponse.getProperty(CoreAttributeName.HOME_NAME.getNamespaceUri());
+		var attributeClientExtId = cpResponse.getProperty(CoreAttributeName.ISSUED_CLIENT_EXT_ID.getNamespaceUri());
+		var attributeAuthLevel = cpResponse.getProperty(CoreAttributeName.AUTH_LEVEL.getNamespaceUri());
+		var attributeSsoSessionId = cpResponse.getProperty(CoreAttributeName.SSO_SESSION_ID.getNamespaceUri());
 
 		assertEquals(attributeHomeName, homeName);
 		assertEquals(attributeHomeRealm, issuer);
 		assertEquals(attributeClientExtId, clientExtId);
-		assertEquals(attributeAuthLevel, authnvalue);
+		assertEquals(attributeAuthLevel, authnValue);
 		assertEquals(attributeSsoSessionId, ssoSessionIdValue);
 	}
 
 	@Test
 	void testFilterProperties() {
-		String issuer = "SAMPLE-CP";
-		String clientExtId = "1234";
-		String homeName = "TEST-Login";
-		String nameId = "id/232";
-		CpResponse cpResponse = givenCpResponse(issuer, clientExtId, homeName, nameId, true);
-		AttributesSelection attributesSelection = givenAttributesSelection();
-		when(relyingPartySetupService.getPropertiesAttrSelection(any(), any())).thenReturn(attributesSelection);
+		var cpIssuerId = "SAMPLE-CP";
+		var clientExtId = "1234";
+		var homeName = "TEST-Login";
+		var nameId = "id/232";
+		var cpResponse = givenCpResponse(cpIssuerId, clientExtId, homeName, nameId, true);
+		var attributesSelection = givenAttributesSelection();
+		var rpIssuerId = "rp1";
+		var relyingParty = RelyingParty.builder().id(rpIssuerId).propertiesSelection(attributesSelection).build();
+		var referrer = "test";
+		when(relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuerId, referrer)).thenReturn(relyingParty);
 
-		relyingPartyService.filterPropertiesSelection(cpResponse, "test", "test");
+		relyingPartyService.filterPropertiesSelection(cpResponse, rpIssuerId, referrer);
 
 		Map<Definition, List<String>> definitionListMap = cpResponse.getProperties();
 		int propertiesSize = definitionListMap.size();
@@ -374,12 +381,13 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 				.accessRequest(AccessRequest.builder().authorizedApplications(AuthorizedApplications.builder().build()).build())
 				.build();
 		var idmLookup = IdmLookup.builder().build();
-		var cpResponse = CpResponse.builder().rpIssuer("rp2").idmLookup(idmLookup).build();
+		var cpResponse = CpResponse.builder().rpIssuer("rp2").issuer(CP_ISSUER_ID).idmLookup(idmLookup).build();
 		stateData.setCpResponse(cpResponse);
 		var claimsParty = ClaimsParty.builder().id(CP_ISSUER_ID).build();
 		var url = fallback ? "https://localhost/initiate" : null;
 		var httpData = AccessRequestHttpData.of(request);
 		doReturn(relyingParty).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(rpIssuer, null);
+		mockClaimsParty();
 
 		var idmRefreshCallback = ArgumentCaptor.forClass(Runnable.class);
 		doReturn(AccessRequestResult.of(false,  url))
@@ -452,7 +460,8 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var request = new MockHttpServletRequest();
 		var relyingParty = RelyingParty.builder().id(ISSUER_ID).build();
 		var claimsParty = ClaimsParty.builder().id(CP_ISSUER_ID).build();
-		request.addHeader(HrdSupport.HTTP_HRD_HINT_HEADER, "anycp");
+		when(trustBrokerProperties.getHrdHintTestParameter()).thenReturn(HINT_PARAMETER);
+		request.addHeader(HINT_PARAMETER, "anycp");
 		var network = new NetworkConfig();
 		when(trustBrokerProperties.getNetwork()).thenReturn(network);
 		request.addHeader(network.getNetworkHeader(),
@@ -717,6 +726,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 				profileSelectionData, relyingParty, cpResponse, stateData);
 		var mockHttpRequest = new MockHttpServletRequest();
 		var mockHttpResponse = new MockHttpServletResponse();
+		mockClaimsParty();
 		var result = relyingPartyService.sendAuthnResponseToRpFromState(outputService, mockHttpRequest, mockHttpResponse,
 				ssoStateData, stateData);
 		assertThat(result, is(nullValue()));
@@ -809,7 +819,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 				Map.of(Definition.ofName(CoreAttributeName.FIRST_NAME),
 				List.of(value))).build();
 		doReturn(Optional.of(idmResult)).when(idmQueryService).getAttributesAudited(any(), any(), any(), any());
-
+		mockClaimsParty();
 		relyingPartyService.reloadIdmData(relyingParty, stateData);
 
 		assertThat(stateData.getCpResponse().getUserDetail(CoreAttributeName.FIRST_NAME.getName()), is(value));
@@ -960,7 +970,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 				.encryption(encryption)
 				.build();
 		return RelyingParty.builder()
-				.rpEncryptionCred(SamlTestBase.dummyCredential())
+				.rpEncryptionCredential(SamlTestBase.dummyCredential())
 				.id("Testid")
 				.saml(saml)
 				.build();
@@ -982,7 +992,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 
 	private static RelyingParty givenRelyingPartyWithEncryptionCred() {
 		return RelyingParty.builder()
-				.rpEncryptionCred(SamlTestBase.dummyCredential())
+				.rpEncryptionCredential(SamlTestBase.dummyCredential())
 				.id(RP_ISSUER_ID)
 				.build();
 	}
@@ -1005,8 +1015,9 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 				)
 				.qoa(Qoa.builder().build())
 				.build();
-		doReturn(claimsParty).when(relyingPartySetupService).getClaimsProviderSetupByIssuerId(CP_ISSUER_ID, null);
-		doReturn(Optional.of(claimsParty)).when(relyingPartySetupService).getClaimsProviderSetupById(CP_ISSUER_ID);
+		doReturn(claimsParty).when(relyingPartySetupService)
+							 .getClaimsProviderSetupByIssuerId(eq(CP_ISSUER_ID), or(eq(null), eq("")));
+		doReturn(Optional.of(claimsParty)).when(relyingPartySetupService).getClaimsProviderSetupByIssuerId(CP_ISSUER_ID);
 		return claimsParty;
 	}
 
@@ -1076,7 +1087,8 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		assertThat(response.getCookies()[0].getValue(), is(""));
 	}
 
-	private LogoutRequest setupMockData(MockHttpServletRequest request, boolean statePresent, ArtifactBindingMode mode) {
+	private LogoutRequest setupLogoutRequestMockData(
+			MockHttpServletRequest request, boolean statePresent, ArtifactBindingMode mode) {
 		// matching RPs
 		var issuer = "myIssuer";
 		var ssoGroup = "mySsoGroup";
@@ -1086,7 +1098,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		// for invalid binding test:
 		var artifactBinding = ArtifactBinding.builder().inboundMode(mode).build();
 		var saml = Saml.builder().artifactBinding(artifactBinding).build();
-		var secPol = SecurityPolicies.builder().requireSignedAuthnRequest(false).requireSignedResponse(false).build();
+		var secPol = SecurityPolicies.builder().requireSignedLogoutRequest(false).requireSignedResponse(false).build();
 		var relyingParties = new ArrayList<RelyingParty>();
 		var relyingPartySso = RelyingParty.builder().id("X-ENTERPRISE").sso(sso).saml(saml).securityPolicies(secPol).build();
 		relyingParties.add(relyingPartySso);
@@ -1129,8 +1141,8 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		notification.setEncodedUrl(SLO_URL);
 		doReturn(new SecurityChecks()).when(trustBrokerProperties).getSecurity();
 
-		doReturn(Collections.emptyMap()).when(ssoService).buildSloVelocityParameters(relyingPartySso, REFERRER,
-				ssoParticipants, nameId, null, null);
+		doReturn(new SloResponseParameters(Collections.emptyMap(), false))
+				.when(ssoService).buildSloResponseParameters(relyingPartySso, REFERRER, Collections.emptySet(), nameId, null, null);
 
 		request.setCookies(cookie, cookie2);
 		request.addHeader(HttpHeaders.REFERER, REFERRER);

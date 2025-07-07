@@ -31,6 +31,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.opensaml.security.credential.Credential;
+import swiss.trustbroker.common.exception.TechnicalException;
 
 /**
  * This class describes the configuration of a claims provider (CP).
@@ -43,7 +44,7 @@ import org.opensaml.security.credential.Credential;
  * ClaimsProvider we would want to use ending up in the shortcut CP again.
  *
  * @see ClaimsProviderDefinitions
- * @see ClaimsProvider
+ * @see ClaimsProviderMappings
  */
 @XmlRootElement(name = "ClaimsParty")
 @XmlAccessorType(XmlAccessType.FIELD)
@@ -61,7 +62,7 @@ public class ClaimsParty extends CounterParty {
 	@XmlAttribute(name = "id")
 	private String id;
 
-	@XmlTransient
+	@XmlAttribute(name = "enabled")
 	@Builder.Default
 	private FeatureEnum enabled = FeatureEnum.TRUE;
 
@@ -207,7 +208,11 @@ public class ClaimsParty extends CounterParty {
 	// transient because this class is Serializable and Credential is not
 	private transient List<Credential> cpTrustCredential;
 
-	private transient List<Credential> cpEncryptionTrustCredentials;
+	private transient List<Credential> cpDecryptionCredentials;
+
+	private transient Credential cpBackendClientCredential;
+
+	private transient List<Credential> cpBackendTrustCredentials;
 
 	// XmlTransient not allowed on transient field (the Javadoc does not say transient is considered XmlTransient)
 	@XmlTransient
@@ -216,9 +221,7 @@ public class ClaimsParty extends CounterParty {
 	}
 
 	@XmlTransient
-	public List<Credential> getCpEncryptionTrustCredentials() {
-		return cpEncryptionTrustCredentials;
-	}
+	public List<Credential> getCpDecryptionCredentials() { return cpDecryptionCredentials; }
 
 	// NP safe accessor
 	public boolean isDisableACUrl() { return Boolean.TRUE.equals(disableACUrl); }
@@ -234,9 +237,10 @@ public class ClaimsParty extends CounterParty {
 		return authLevel;
 	}
 
-	// Pass on rpIssuer to CP in Scoping element - defaults to false
+	// Pass on rpIssuer to CP in Scoping element - defaults to false (unlike RelyingParty.isDelegateOrigin)
 	public boolean isDelegateOrigin() {
-		return securityPolicies != null && Boolean.TRUE.equals(securityPolicies.getDelegateOrigin());
+		var secPol = getSecurityPolicies();
+		return secPol != null && Boolean.TRUE.equals(secPol.getDelegateOrigin());
 	}
 
 	public String getAuthnRequestIssuerId(String defaultIssuerId) {
@@ -268,6 +272,19 @@ public class ClaimsParty extends CounterParty {
 	 */
 	public boolean useSaml() {
 		return !useOidc(); // SAML is the default
+	}
+
+	@XmlTransient
+	public OidcClient getSingleOidcClient() {
+		if (oidc == null) {
+			throw new TechnicalException(String.format("Invalid ClaimsParty id=%s (missing OidcClient)", id));
+		}
+		var oidcClientCount = oidc.getClients().size();
+		if (oidcClientCount != 1) {
+			throw new TechnicalException(String.format("Invalid ClaimsParty id=%s expected single OidcClient, but count=%s",
+					id, oidcClientCount));
+		}
+		return oidc.getClients().get(0);
 	}
 
 }

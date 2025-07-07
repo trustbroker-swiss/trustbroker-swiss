@@ -16,6 +16,7 @@
 package swiss.trustbroker.oidc.tx;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,6 +25,7 @@ import jakarta.servlet.http.HttpServletResponseWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.web.header.writers.frameoptions.XFrameOptionsHeaderWriter;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.web.util.UriUtils;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
@@ -161,19 +163,19 @@ public class OidcTxResponseWrapper extends HttpServletResponseWrapper {
 			var clientId = request.getParameter(OidcUtil.OIDC_CLIENT_ID);
 			var acrValues = request.getParameter(OidcUtil.OIDC_ACR_VALUES);
 			var promptLogin = request.getParameter(OidcUtil.OIDC_PROMPT);
-			var hrdHint = request.getParameter(HrdSupport.HTTP_HRD_HINT_PARAMETER);
+			var hrdHint = HrdSupport.getHrdHintParameter(request, trustBrokerProperties);
 			var uriComponentsBuilder = UriComponentsBuilder.fromUriString(location);
 			if (acrValues != null) {
-				uriComponentsBuilder.queryParam(OidcUtil.OIDC_ACR_VALUES, acrValues);
+				uriComponentsBuilder.queryParam(OidcUtil.OIDC_ACR_VALUES, UriUtils.encode(acrValues, StandardCharsets.UTF_8));
 			}
 			if (clientId != null) {
-				uriComponentsBuilder.queryParam(OidcUtil.OIDC_CLIENT_ID, clientId);
+				uriComponentsBuilder.queryParam(OidcUtil.OIDC_CLIENT_ID, UriUtils.encode(clientId, StandardCharsets.UTF_8));
 			}
 			if (promptLogin != null) {
-				uriComponentsBuilder.queryParam(OidcUtil.OIDC_PROMPT, promptLogin);
+				uriComponentsBuilder.queryParam(OidcUtil.OIDC_PROMPT, UriUtils.encode(promptLogin, StandardCharsets.UTF_8));
 			}
 			if (hrdHint != null) {
-				uriComponentsBuilder.queryParam(HrdSupport.HTTP_HRD_HINT_PARAMETER, hrdHint);
+				uriComponentsBuilder.queryParam(trustBrokerProperties.getHrdHintParameter(), UriUtils.encode(hrdHint, StandardCharsets.UTF_8));
 			}
 			ret = uriComponentsBuilder.build().toUriString();
 		}

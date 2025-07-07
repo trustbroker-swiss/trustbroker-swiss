@@ -28,6 +28,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,18 +44,16 @@ import swiss.trustbroker.api.profileselection.dto.ProfileSelectionData;
 import swiss.trustbroker.api.profileselection.service.ProfileSelectionService;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
-import swiss.trustbroker.common.util.FileServerUtil;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.Flow;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
-import swiss.trustbroker.gui.GuiSupport;
-import swiss.trustbroker.homerealmdiscovery.dto.GuiConfig;
 import swiss.trustbroker.homerealmdiscovery.dto.ProfileRequest;
 import swiss.trustbroker.homerealmdiscovery.dto.SupportInfo;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.homerealmdiscovery.service.WebResourceProvider;
 import swiss.trustbroker.homerealmdiscovery.util.OperationalUtil;
 import swiss.trustbroker.saml.dto.DeviceInfoReq;
 import swiss.trustbroker.saml.dto.UiObjects;
@@ -100,6 +99,8 @@ public class HrdController {
 
 	private final ProfileSelectionService profileSelectionService;
 
+	private final WebResourceProvider resourceCache;
+
 	// Return the list of CP issuers we need to render
 	// once the FE has been adapted, id and stateDataByAuthnReq can be changed to required
 	@GetMapping(path = "/api/v1/hrd/relyingparties/{issuer}/tiles")
@@ -111,7 +112,7 @@ public class HrdController {
 		var referer = WebUtil.getHeader(HttpHeaders.REFERER, httpRequest);
 
 		// state for current AuthnRequest must exist
-		var stateDataByAuthnReq = stateCacheService.findBySpId(rpAuthnRequestId, this.getClass().getSimpleName());
+		var stateDataByAuthnReq = stateCacheService.findBySpIdResilient(rpAuthnRequestId, this.getClass().getSimpleName());
 
 		var rpRequest = assertionConsumerService.renderUi(rpIssuer, referer, null, httpRequest, null,
 				stateDataByAuthnReq.orElse(null));
@@ -148,6 +149,7 @@ public class HrdController {
 	}
 
 	@PostMapping(path = "/api/v1/hrd/profile")
+	@Transactional
 	public String selectProfile(HttpServletRequest request, HttpServletResponse response,
 			@RequestBody ProfileRequest profileRequest) {
 		var redirectUrl = relyingPartyService.sendResponseWithSelectedProfile(samlOutputService,
@@ -156,34 +158,24 @@ public class HrdController {
 	}
 
 	@GetMapping(value = "/api/v1/hrd/images/{name}")
-	public void getImagebyNameWithMediaType(HttpServletResponse response, @PathVariable("name") String imageName) {
-		var imagePath = trustBrokerProperties.getGui().getImages();
-		FileServerUtil.returnFileContent(response, imagePath, imageName, "image/svg+xml");
+	public void getImageByNameWithMediaType(
+			HttpServletRequest request, HttpServletResponse response, @PathVariable("name") String imageName) {
+		resourceCache.getImageByNameWithMediaType(request, response, imageName);
 	}
 
 	@GetMapping(value = ApiSupport.ASSETS_URL + "/**")
 	public void getThemeAsset(HttpServletRequest request, HttpServletResponse response) {
 		var path = request.getRequestURI();
 		var resource = path.substring(ApiSupport.ASSETS_URL.length());
-		var assetsPath = trustBrokerProperties.getGui().getThemeAssets();
-		FileServerUtil.returnFileContent(response, assetsPath, resource, null);
+		resourceCache.getThemeAsset(request, response, resource);
 	}
 
 	// translations are generic, but we use the HRD namespace for now
 	// NOTE: When ops messages or something else pops up, move this code to a TranslationService
 	@GetMapping(value = "/api/v1/hrd/translations/{language}")
-	@ResponseBody
-	public String getTranslationForLanguage(HttpServletResponse response, @PathVariable("language") String language) {
-		var translationsPath = trustBrokerProperties.getGui().getTranslations();
-		var defaultLanguage = trustBrokerProperties.getGui().getDefaultLanguage();
-		var versionInfo = trustBrokerProperties.getVersionInfo();
-		return FileServerUtil.readTranslationFile(translationsPath, defaultLanguage, language, versionInfo);
-	}
-
-	@GetMapping(value = "/api/v1/hrd/config")
-	@ResponseBody
-	public GuiConfig getGuiConfig() {
-		return GuiSupport.buildConfig(trustBrokerProperties.getGui());
+	public void getTranslationForLanguage(
+			HttpServletRequest request, HttpServletResponse response, @PathVariable("language") String language) {
+		resourceCache.getTranslationForLanguage(request, response, language);
 	}
 
 	/**
@@ -191,6 +183,7 @@ public class HrdController {
 	 * AuthnRequest ID.
 	 */
 	@GetMapping(path = "/api/v1/hrd/claimsproviders/{cpid}", produces = MediaType.TEXT_HTML_VALUE)
+	@Transactional
 	public void redirectUserToClaimsProvider(
 			HttpServletRequest request,
 			HttpServletResponse response,
@@ -236,6 +229,7 @@ public class HrdController {
 	// SSO and device fingerprinting is not an HRD functionality and this one might want to go to a new SSOController instead
 	@PostMapping(value = "/api/v1/device/info")
 	@ResponseBody
+	@Transactional
 	public ResponseEntity<ProfileResponse> checkDeviceInfo(
 			@RequestBody DeviceInfoReq deviceInfoReq,
 			HttpServletRequest request,
@@ -269,7 +263,7 @@ public class HrdController {
 	}
 
 	private StateData findValidStateByAuthnRequestId(String authReqId) {
-		var stateDataByAuthnReqOpt = stateCacheService.findBySpId(authReqId, this.getClass().getSimpleName());
+		var stateDataByAuthnReqOpt = stateCacheService.findBySpIdResilient(authReqId, this.getClass().getSimpleName());
 		if (stateDataByAuthnReqOpt.isEmpty()) {
 			throw new TechnicalException(String.format("State value is missing for request with id=%s", authReqId));
 		}
@@ -359,6 +353,7 @@ public class HrdController {
 																.url(announcementEntity.getUrl())
 																.phoneNumber(announcementEntity.getPhoneNumber())
 																.emailAddress(announcementEntity.getEmailAddress())
+																.validTo(announcementEntity.getValidTo())
 																.build())
 				.toList();
 	}

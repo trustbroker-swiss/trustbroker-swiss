@@ -95,7 +95,7 @@ class SsoControllerTest {
 
 	private SsoParticipants createSsoParticipants(String ssoGroup, Set<String> participants) {
 		var ssoParticipants = participants.stream()
-				.map(rpId -> new SsoParticipant(rpId, "cpId", "button", "image", "short", "color"))
+				.map(rpId -> new SsoParticipant(rpId, "cpId", "image", "short", "color"))
 				.collect(Collectors.toSet());
 		return SsoParticipants.builder().ssoGroupName(ssoGroup).participants(ssoParticipants).build();
 	}

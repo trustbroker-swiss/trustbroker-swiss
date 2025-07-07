@@ -87,8 +87,8 @@ class OidcAuthnRequestContextCustomizer implements Consumer<OpenSaml5Authenticat
 		return SamlFactory.createRequestedAuthnContext(qoas, null);
 	}
 
-	private static Scoping constructIdpScoping(HttpServletRequest httpServletRequest) {
-		var hrdHint = httpServletRequest.getParameter(HrdSupport.HTTP_HRD_HINT_PARAMETER);
+	private Scoping constructIdpScoping(HttpServletRequest httpServletRequest) {
+		var hrdHint = HrdSupport.getHrdHintParameter(httpServletRequest, properties);
 		if (hrdHint != null) {
 			return OpenSamlUtil.constructIdpScoping(hrdHint);
 		}

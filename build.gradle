@@ -1,8 +1,7 @@
-
 buildscript {
 	ext {
 		top = ''
-		buildVersion = '1.9.0'
+		buildVersion = '1.10.0'
 		buildTimestamp = null
 		// build promotion
 		buildName = System.env.BUILD_NAME
@@ -18,12 +17,12 @@ buildscript {
 
 plugins {
 	id 'base'
-	id 'org.springframework.boot'		version '3.4.4' apply false
-	id 'org.ajoberstar.grgit'			version '4.1.1'	apply true
-	id "org.unbroken-dome.test-sets"	version '4.1.0' apply false
-	id 'com.google.cloud.tools.jib'		version '3.4.4'	apply false
-	id "com.github.node-gradle.node"	version "7.0.2"	apply false
-	id 'com.jfrog.artifactory' 			version '4.33.1'
+	id 'org.springframework.boot' version '3.4.5' apply false
+	id 'org.ajoberstar.grgit' version '4.1.1' apply true
+	id "org.unbroken-dome.test-sets" version '4.1.0' apply false
+	id 'com.google.cloud.tools.jib' version '3.4.4' apply false
+	id "com.github.node-gradle.node" version "7.0.2" apply false
+	id 'com.jfrog.artifactory' version '4.33.1'
 }
 
 allprojects {
@@ -70,7 +69,7 @@ subprojects {
 				// opensaml
 				// https://build.shibboleth.net/maven/releases/org/opensaml/opensaml-core/
 				// https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3199500367/ReleaseNotes
-				dependencySet(group:'org.opensaml', version: '5.1.3') {
+				dependencySet(group: 'org.opensaml', version: '5.1.3') {
 					entry 'opensaml-messaging-impl'
 					entry 'opensaml-saml-impl'
 					entry 'opensaml-saml-api'
@@ -84,7 +83,7 @@ subprojects {
 				// https://central.sonatype.com/artifact/org.apache.cxf/apache-cxf/4.0.6/versions
 				// https://central.sonatype.com/artifact/com.sun.xml.messaging.saaj/saaj-impl/versions
 				// NOTE: WS-import from wsdl not managed here, see trustbroker-wstrust-service for that.
-				dependencySet(group:'org.apache.cxf', version: '4.0.6')	{
+				dependencySet(group: 'org.apache.cxf', version: '4.0.6') {
 					entry 'cxf-rt-transports-http'
 					entry 'cxf-rt-frontend-jaxws'
 				}
@@ -112,7 +111,7 @@ subprojects {
 				// script support
 				// dependency 'org.codehaus.groovy:groovy-all' is too much for security so reduce to the max
 				// https://central.sonatype.com/artifact/org.apache.groovy/groovy-jsr223/4.0.23/versions
-				dependencySet(group:'org.apache.groovy', version: '4.0.23') {
+				dependencySet(group: 'org.apache.groovy', version: '4.0.23') {
 					entry 'groovy-jsr223'
 					entry 'groovy'
 				}
@@ -124,7 +123,7 @@ subprojects {
 				// JCE provider
 				// https://www.bouncycastle.org/latest_releases.html
 				// https://central.sonatype.com/artifact/org.bouncycastle/bcprov-jdk18on/1.77/versions
-				dependencySet (group: 'org.bouncycastle', version: '1.79') {
+				dependencySet(group: 'org.bouncycastle', version: '1.79') {
 					entry 'bcprov-jdk18on'
 					entry 'bcpkix-jdk18on'
 				}
@@ -149,7 +148,7 @@ subprojects {
 				// JAX-WS
 				// https://central.sonatype.com/artifact/org.glassfish.jaxb/jaxb-xjc/4.0.5/versions
 				dependency 'jakarta.xml.bind:jakarta.xml.bind-api:4.0.2'
-				dependencySet(group:'org.glassfish.jaxb', version: '4.0.5') {
+				dependencySet(group: 'org.glassfish.jaxb', version: '4.0.5') {
 					entry 'jaxb-xjc'
 					entry 'jaxb-runtime'
 				}

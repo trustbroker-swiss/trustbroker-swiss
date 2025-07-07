@@ -21,8 +21,12 @@ import lombok.Data;
 
 @Data
 public class InternationalText implements Serializable {
+
 	private String de;
+
 	private String fr;
+
 	private String it;
+
 	private String en;
 }

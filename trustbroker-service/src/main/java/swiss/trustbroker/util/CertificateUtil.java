@@ -17,6 +17,7 @@ package swiss.trustbroker.util;
 
 import swiss.trustbroker.common.config.KeystoreProperties;
 import swiss.trustbroker.federation.xmlconfig.SignerKeystore;
+import swiss.trustbroker.federation.xmlconfig.SignerStore;
 import swiss.trustbroker.federation.xmlconfig.SignerTruststore;
 
 /**
@@ -28,23 +29,15 @@ public class CertificateUtil {
 
 	private CertificateUtil() {}
 
-	public static KeystoreProperties toKeystoreProperties(SignerTruststore truststore) {
+	public static KeystoreProperties toKeystoreProperties(SignerStore store) {
+		var certPath = store.getResolvedCertPath() != null ? store.getResolvedCertPath() : store.getCertPath();
+		var keyPath = store.getResolvedKeyPath() != null ? store.getResolvedKeyPath() : store.getKeyPath();
 		return KeystoreProperties.builder()
-								 .signerCert(truststore.getCertPath())
-								 .password(truststore.getPassword())
-								 .type(truststore.getCertType())
-								 .keyEntryId(truststore.getAlias())
-								 .signerKey(truststore.getKeyPath())
-								 .build();
-	}
-
-	public static KeystoreProperties toKeystoreProperties(SignerKeystore keystore) {
-		return KeystoreProperties.builder()
-								 .signerCert(keystore.getCertPath())
-								 .password(keystore.getPassword())
-								 .type(keystore.getCertType())
-								 .keyEntryId(keystore.getAlias())
-								 .signerKey(keystore.getKeyPath())
+								 .signerCert(certPath)
+								 .password(store.getPassword())
+								 .type(store.getCertType())
+								 .keyEntryId(store.getAlias())
+								 .signerKey(keyPath)
 								 .build();
 	}
 

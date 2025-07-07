@@ -29,6 +29,11 @@ import swiss.trustbroker.sessioncache.dto.StateEntity;
 @Repository
 public interface StateCacheRepository extends CrudRepository<StateEntity, String> {
 
+	// Align primary key finder to have a List API
+	default List<StateEntity> findByIdAsList(String id) {
+		return findById(id).map(List::of).orElseGet(List::of);
+	}
+
 	// RP InResponseTo correlation
 	List<StateEntity> findBySpSessionId(String spId);
 
@@ -44,4 +49,5 @@ public interface StateCacheRepository extends CrudRepository<StateEntity, String
 	@Modifying
 	@Query("DELETE FROM StateEntity se WHERE se.expirationTimestamp < :currentTimeStamp")
 	int deleteAllInBatchByExpirationTimestampBefore(@Param("currentTimeStamp") Timestamp currentTimeStamp);
+
 }

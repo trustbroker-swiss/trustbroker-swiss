@@ -35,6 +35,7 @@ import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
@@ -60,6 +61,7 @@ import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 import swiss.trustbroker.mapping.dto.CustomQoa;
 import swiss.trustbroker.mapping.dto.QoaConfig;
 import swiss.trustbroker.mapping.dto.QoaSpec;
+import swiss.trustbroker.mapping.util.QoaMappingUtil;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
 
 @SpringBootTest(classes = { QoaMappingService.class })
@@ -215,6 +217,35 @@ class QoaMappingServiceTest {
 		assertEquals(contextClasses, qoaMappingService.mapInboundToOutboundQoas(
 				contextClasses, inboundQoaConf, QoaComparison.EXACT, outBoundQoaConf, Collections.emptyList()),
 				"Should return original context classes if enforce is false.");
+	}
+
+	@Test
+	void mapInboundToOutboundQoasDropUnmappableTest() {
+		List<String> contextClasses = List.of("class1", "class2", "class3");
+		var inboundQoa =  Qoa.builder().enforce(true).build();
+		var inboundQoaConf = new QoaConfig(inboundQoa, "inbound1");
+		var mappedClass1 = "mappedClass1";
+		var mappedClass2 = "mappedClass2";
+		var outBoundQoa = Qoa.builder()
+				.enforce(true)
+				.mapOutbound(true)
+				.singleQoaResponse(true) // ignored
+				.classes(List.of(
+						AcClass.builder().order(1).contextClass(mappedClass1).build(),
+						AcClass.builder().order(2).contextClass(mappedClass2).build()))
+				.build();
+		var outBoundQoaConf = new QoaConfig(outBoundQoa, "outboundIssuer");
+		Map<String, Integer> globalMapping = Map.of("class1", 1, "class2", 2, "class3", 3);
+		when(trustBrokerProperties.getQoaMap()).thenReturn(globalMapping);
+
+		var result = qoaMappingService.mapInboundToOutboundQoas(
+				contextClasses, inboundQoaConf, QoaComparison.EXACT, outBoundQoaConf, Collections.emptyList());
+		assertEquals(List.of(mappedClass1, mappedClass2, "class3"), result, "Should keep unmappable context classes.");
+
+		outBoundQoaConf.config().setDropUnmappable(true);
+		result = qoaMappingService.mapInboundToOutboundQoas(
+				contextClasses, inboundQoaConf, QoaComparison.EXACT, outBoundQoaConf, Collections.emptyList());
+		assertEquals(List.of(mappedClass1, mappedClass2), result, "Should drop unmappable context classes.");
 	}
 
 	@Test
@@ -454,6 +485,30 @@ class QoaMappingServiceTest {
 				{ QoaComparison.MINIMUM, List.of(DEFAULT_QOA_70),
 						defaultQoaNotEnforced, cpQoaMax50NotEnforced, true
 				},
+		};
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void getReplacementAccClassesTest(Qoa qoa, int classCount) {
+		var result = QoaMappingUtil.getReplacementAcClasses(qoa);
+		assertTrue(result.isPresent());
+		assertEquals(classCount, result.get().size());
+	}
+
+	static Object[][] getReplacementAccClassesTest() {
+		var classesWithReplaceTrue = givenRpAcClasses();
+		var classesWithReplaceFalse = new ArrayList<AcClass>();
+		givenRpAcClasses().forEach(acClass -> {
+			acClass.setReplaceInbound(Boolean.FALSE);
+			classesWithReplaceFalse.add(acClass);}
+		);
+		var classes = givenRpAcClasses();
+		classes.get(0).setReplaceInbound(Boolean.FALSE);
+		return new Object[][] {
+				{Qoa.builder().classes(classesWithReplaceTrue).build(), 3},
+				{Qoa.builder().classes(classesWithReplaceFalse).build(), 0},
+				{Qoa.builder().classes(classes).build(), 2}
 		};
 	}
 

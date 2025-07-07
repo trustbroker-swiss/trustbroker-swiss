@@ -16,6 +16,7 @@
 package swiss.trustbroker.api.announcements.service;
 
 import java.util.List;
+import java.util.Set;
 
 import swiss.trustbroker.api.announcements.dto.Announcement;
 import swiss.trustbroker.api.announcements.dto.AnnouncementsRpData;
@@ -31,7 +32,7 @@ import swiss.trustbroker.api.relyingparty.dto.RelyingPartyConfig;
  */
 public interface AnnouncementService {
 
-	boolean showAnnouncements(AnnouncementsRpData announcementsRpData, String providerName);
+	boolean showAnnouncements(AnnouncementsRpData announcementsRpData, String providerName, Set<String> conditions);
 
 	boolean isRpAppAccessible(Announcement announcement);
 

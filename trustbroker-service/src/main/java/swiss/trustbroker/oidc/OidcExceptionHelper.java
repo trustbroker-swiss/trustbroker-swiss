@@ -46,7 +46,6 @@ import org.springframework.security.oauth2.server.authorization.client.Registere
 import org.springframework.security.saml2.core.Saml2Error;
 import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticationException;
 import org.springframework.security.web.WebAttributes;
-import org.springframework.security.web.savedrequest.SavedRequest;
 import org.springframework.util.StringUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
@@ -80,6 +79,7 @@ import swiss.trustbroker.util.ApiSupport;
  * @see <a target="_blank" href="https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.1">Section 4.1.1 Authorization Request</a>
  */
 @Slf4j
+@SuppressWarnings("javaarchitecture:S7091")
 public class OidcExceptionHelper {
 
 	// own class is just for this class marking that the description is OK for use as error_description
@@ -88,9 +88,6 @@ public class OidcExceptionHelper {
 			super(error, message);
 		}
 	}
-
-	// HttpSessionRequestCache.SAVED_REQUEST, but that is not public:
-	static final String SAVED_REQUEST = "SPRING_SECURITY_SAVED_REQUEST";
 
 	private static final String SPRING_ERROR_PAGE = ApiSupport.ERROR_PAGE_URL + "?error";
 
@@ -171,23 +168,11 @@ public class OidcExceptionHelper {
 	}
 
 	private static String getRedirectUriFromSession(HttpServletRequest request) {
-		var session = request.getSession(false);
-		if (session == null) {
-			log.debug("Missing session - cannot locate {}", OidcUtil.REDIRECT_URI);
-			return null;
+		var redirectUri = OidcSessionSupport.getInitialRedirectUri(request.getSession(false));
+		if (redirectUri == null) {
+			log.debug("No {} in session, no redirecting to relying party", OidcUtil.REDIRECT_URI);
 		}
-		var savedRequest = (SavedRequest) session.getAttribute(SAVED_REQUEST);
-		if (savedRequest == null) {
-			log.debug("No attribute={} in session={}", SAVED_REQUEST, session.getId());
-			return null;
-		}
-		log.debug("session={} savedRequestParameters={}", session.getId(), savedRequest.getParameterMap());
-		var redirectUri = savedRequest.getParameterValues(OidcUtil.REDIRECT_URI);
-		if (redirectUri == null || redirectUri.length == 0) {
-			log.debug("No {} in session={}", OidcUtil.REDIRECT_URI, session.getId());
-			return null;
-		}
-		return redirectUri[0];
+		return redirectUri;
 	}
 
 	private static String getRedirectUrl(HttpServletRequest request, String errorCode, String description, String errorUri,

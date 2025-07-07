@@ -91,10 +91,10 @@ class UnknownUserPolicyServiceTest {
 
 	private static CpResponse givenCpResponse(StatusPolicy statusPolicy, String nameAttribute) {
 		Map<Definition, List<String>> attributeValueMap = new HashMap<>();
-		attributeValueMap.put(Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME), List.of("AAAAAA"));
-		attributeValueMap.put(Definition.ofNamespaceUri(CoreAttributeName.EMAIL), List.of("SSSSSS"));
+		attributeValueMap.put(Definition.ofNames(CoreAttributeName.FIRST_NAME), List.of("AAAAAA"));
+		attributeValueMap.put(Definition.ofNames(CoreAttributeName.EMAIL), List.of("SSSSSS"));
 		if (nameAttribute != null) {
-			attributeValueMap.put(Definition.ofNamespaceUri(CoreAttributeName.NAME), List.of(nameAttribute));
+			attributeValueMap.put(Definition.ofNames(CoreAttributeName.NAME), List.of(nameAttribute));
 		}
 		CpResponse cpResponse = new CpResponse();
 		cpResponse.setUserDetails(attributeValueMap);

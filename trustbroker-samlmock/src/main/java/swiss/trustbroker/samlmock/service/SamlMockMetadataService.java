@@ -91,6 +91,7 @@ public class SamlMockMetadataService {
 	private String buildSourceId() {
 		var arIssuer = properties.getArtifactResolutionIssuer();
 		if (arIssuer == null) {
+			log.error("Missing artifactResolutionIssuer in config");
 			throw new TechnicalException("Missing artifactResolutionIssuer in config");
 		}
 		return OpenSamlUtil.calculateArtifactSourceIdFromIssuerId(arIssuer);

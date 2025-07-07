@@ -40,6 +40,14 @@ public class VelocityUtil {
 
 	public static final String VELOCITY_SLO_TEMPLATE_ID = "/templates/SLO-SAML2-POST.vm";
 
+	public static final String VELOCITY_PARAM_XTB_SIG_ALG = "XTBSigAlg";
+
+	public static final String VELOCITY_PARAM_XTB_SIGNATURE = "XTBSignature";
+
+	public static final String VELOCITY_PARAM_XTB_HTTP_METHOD = "XTBHttpMethod";
+
+	public static final String VELOCITY_PARAM_ACTION = "action"; // from OpenSaml
+
 	private VelocityUtil() {}
 
 	public static <T> void populateVelocityContext(VelocityContext velocityContext, Map<String, T> contextValues) {

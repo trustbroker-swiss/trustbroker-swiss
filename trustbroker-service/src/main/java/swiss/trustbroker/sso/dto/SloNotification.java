@@ -34,4 +34,10 @@ public class SloNotification {
 
 	private String samlRelayState;
 
+	private String samlRedirectSignature;
+
+	private String samlRedirectSignatureAlgorithm;
+
+	private String samlHttpMethod;
+
 }

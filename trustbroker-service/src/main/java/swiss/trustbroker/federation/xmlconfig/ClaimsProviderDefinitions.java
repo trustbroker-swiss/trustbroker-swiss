@@ -28,7 +28,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Defines all known claims providers and their display on the HRD screen.
+ * Defines all known claims providers and their display on the HRD screen in a XML file config.
+ * See @link ClaimsProviderMappings for instances declared in RP setup or profile.
  */
 @XmlRootElement(name = "ClaimsProviderDefinitions")
 @XmlAccessorType(XmlAccessType.FIELD)

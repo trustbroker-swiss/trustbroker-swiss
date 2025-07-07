@@ -67,6 +67,7 @@ import org.opensaml.security.credential.Credential;
 import org.opensaml.security.x509.BasicX509Credential;
 import org.opensaml.xmlsec.SecurityConfigurationSupport;
 import org.opensaml.xmlsec.keyinfo.KeyInfoGeneratorFactory;
+import org.opensaml.xmlsec.keyinfo.impl.X509KeyInfoGeneratorFactory;
 import org.opensaml.xmlsec.signature.KeyInfo;
 import org.opensaml.xmlsec.signature.Signature;
 import org.opensaml.xmlsec.signature.X509Certificate;
@@ -380,7 +381,7 @@ public class SamlFactory {
 	// dig out the keyinfo factory matching the credential
 	public static KeyInfo createKeyInfo(Credential credential) {
 		try {
-			KeyInfoGeneratorFactory keyInfoGeneratorFactory = getKeyInfoGeneratorFactory(credential);
+			KeyInfoGeneratorFactory keyInfoGeneratorFactory = getKeyInfoGeneratorFactory(credential, false);
 			var keyInfoGenerator = keyInfoGeneratorFactory.newInstance();
 			return keyInfoGenerator.generate(credential);
 		}
@@ -390,14 +391,25 @@ public class SamlFactory {
 		}
 	}
 
-	public static KeyInfoGeneratorFactory getKeyInfoGeneratorFactory(Credential credential) {
+	public static KeyInfoGeneratorFactory getKeyInfoGeneratorFactory(Credential credential, boolean emitSki) {
 		var secConfiguration = SecurityConfigurationSupport.getGlobalEncryptionConfiguration();
 		var namedKeyInfoGeneratorManager = secConfiguration.getDataKeyInfoGeneratorManager();
 		if (namedKeyInfoGeneratorManager == null) {
 			throw new TechnicalException("KeyInfoGeneratorManager is null");
 		}
 		var keyInfoGeneratorManager = namedKeyInfoGeneratorManager.getDefaultManager();
-		return keyInfoGeneratorManager.getFactory(credential);
+		var keyInfoGeneratorFactory = keyInfoGeneratorManager.getFactory(credential);
+		if (emitSki) {
+			if (keyInfoGeneratorFactory instanceof X509KeyInfoGeneratorFactory x509Factory) {
+				x509Factory.setEmitX509SKI(true);
+				x509Factory.setEmitEntityCertificate(false);
+			}
+			else {
+				log.info("KeyInfoGeneratorFactory={} is not a X509KeyInfoGeneratorFactory - cannot emit SKI",
+						keyInfoGeneratorFactory.getClass().getName());
+			}
+		}
+		return keyInfoGeneratorFactory;
 	}
 
 	public static Issuer createIssuer(String spEntity) {

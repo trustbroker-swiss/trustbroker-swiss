@@ -48,29 +48,29 @@ class Base64UtilTest {
 
 	@Test
 	void encodeException() {
-		assertThrows(TechnicalException.class, () -> Base64Util.encode((byte[]) null, false));
+		assertThrows(TechnicalException.class, () -> Base64Util.encode((byte[]) null, Base64Util.Base64Encoding.UNCHUNKED));
 	}
 
 	@ParameterizedTest
 	@MethodSource
-	void encode(byte[] input, boolean unchunked, String expected) {
-		var result = Base64Util.encode(input, unchunked);
+	void encode(byte[] input,  Base64Util.Base64Encoding encoding, String expected) {
+		var result = Base64Util.encode(input, encoding);
 		assertThat(result, is(expected));
 	}
 
 	static Object[][] encode() {
 		return new Object[][]{
-				{ new byte[0], false, "" },
-				{ SHORT_INPUT, false, SHORT_INPUT_ENCODED },
-				{ LONG_INPUT.getBytes(StandardCharsets.UTF_8), true, LONG_INPUT_ENCODED_CHUNKED },
-				{ LONG_INPUT.getBytes(StandardCharsets.UTF_8), false, LONG_INPUT_ENCODED }
+				{ new byte[0], Base64Util.Base64Encoding.UNCHUNKED, "" },
+				{ SHORT_INPUT, Base64Util.Base64Encoding.UNCHUNKED, SHORT_INPUT_ENCODED },
+				{ LONG_INPUT.getBytes(StandardCharsets.UTF_8), Base64Util.Base64Encoding.CHUNKED, LONG_INPUT_ENCODED_CHUNKED },
+				{ LONG_INPUT.getBytes(StandardCharsets.UTF_8), Base64Util.Base64Encoding.UNCHUNKED, LONG_INPUT_ENCODED }
 		};
 	}
 
 	@Test
 	void encodeString() {
-		assertThat(Base64Util.encode(LONG_INPUT, true), is(LONG_INPUT_ENCODED_CHUNKED));
-		assertThat(Base64Util.encode(LONG_INPUT, false), is(LONG_INPUT_ENCODED));
+		assertThat(Base64Util.encode(LONG_INPUT, Base64Util.Base64Encoding.CHUNKED), is(LONG_INPUT_ENCODED_CHUNKED));
+		assertThat(Base64Util.encode(LONG_INPUT, Base64Util.Base64Encoding.UNCHUNKED), is(LONG_INPUT_ENCODED));
 	}
 
 	@Test

@@ -19,6 +19,7 @@ import static org.springframework.security.web.util.matcher.AntPathRequestMatche
 
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import io.micrometer.common.util.StringUtils;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.velocity.app.VelocityEngine;
@@ -54,6 +55,7 @@ import org.springframework.security.saml2.provider.service.web.authentication.Sa
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 import swiss.trustbroker.audit.service.AuditService;
+import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.mapping.service.ClaimsMapperService;
@@ -148,8 +150,10 @@ public class OidcSecurityConfiguration {
 		http.saml2Logout(AbstractHttpConfigurer::disable);
 
 		// logout is not connected to token revocation by default as OAuth 2.1 is focused on authorization, not authentication.
+		// https://docs.spring.io/spring-security/reference/servlet/authentication/logout.html#customizing-logout-uris
 		http.logout(logout -> logout
 			.logoutSuccessHandler(logoutSuccessHandler())
+			.logoutUrl(logoutPath()) // LogoutFilter currently ignores this and always uses /logout
 			.clearAuthentication(true)
 			.invalidateHttpSession(true)
 			.deleteCookies(serverProperties.getServlet()
@@ -164,6 +168,16 @@ public class OidcSecurityConfiguration {
 
 		// all done
 		return http.build();
+	}
+
+	private String logoutPath() {
+		var logoutUri = WebUtil.getValidatedUri(properties.getOidc().getEndSessionEndpoint());
+		if (logoutUri == null || StringUtils.isEmpty(logoutUri.getPath())) {
+			log.error("trustbroker.config.oidc.endSessionEndpoint=\"{}\" is not a valid URI, using default /logout",
+					properties.getOidc().getEndSessionEndpoint());
+			return "/logout";
+		}
+		return logoutUri.getPath();
 	}
 
 	/**

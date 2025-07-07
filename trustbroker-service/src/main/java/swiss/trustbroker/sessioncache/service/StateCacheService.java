@@ -19,12 +19,12 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
+import java.util.function.Function;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -161,8 +161,8 @@ public class StateCacheService {
 			}
 		}
 		var expirationTimestamp = Timestamp.from(expiration);
-		stateData.getLifecycle().setExpirationTime(expirationTimestamp);
-		stateEntity.setExpirationTimestamp(expirationTimestamp);
+		stateData.getLifecycle().setExpirationTime(expirationTimestamp); // for business code
+		stateEntity.setExpirationTimestamp(expirationTimestamp); // for reaper
 	}
 
 	private StateData extractStateData(StateEntity stateEntity, String actor) {
@@ -181,6 +181,7 @@ public class StateCacheService {
 				}
 			}
 			var ret = objectMapper.readValue(stateEntity.getJsonData(), StateData.class);
+			ret.setExpirationTimestamp(stateEntity.getExpirationTimestamp()); // duplicate on state level
 			TraceSupport.switchToConversation(ret.getLastConversationId());
 			return ret;
 		}
@@ -227,7 +228,7 @@ public class StateCacheService {
 			}
 
 			// persist
-			resilientSave(stateEntity, true, actor, event);
+			saveResilient(stateEntity, true, actor, event);
 		}
 		catch (JsonProcessingException ex) {
 			throw new TechnicalException(String.format(
@@ -236,38 +237,49 @@ public class StateCacheService {
 		}
 	}
 
-	private void resilientSave(StateEntity stateEntity, boolean retry, String actor, String event) {
-		try {
-			stateCacheRepository.save(stateEntity);
-		}
-		catch (ConcurrencyFailureException ex) { // base class of Optimistic/PessimisticLockingFailureException and subclasses
-			var delayMs = trustBrokerProperties.getStateCache().getTxRetryDelayMs();
-			if (retry && delayMs >= 0) {
-				log.warn("Concurrent DB access, retrying after {}ms : Could not {} session={} actor={} ex={}",
-						delayMs, event, stateEntity.getId(), actor, ex.getMessage(), ex);
-				ProcessUtil.sleep(delayMs);
-				resilientSave(stateEntity, false, actor, event);
+	private void saveResilient(StateEntity stateEntity, boolean retry, String actor, String event) {
+		var retryDelayMs = trustBrokerProperties.getStateCache().getTxRetryDelayMs();
+		var maxTry = retry ? trustBrokerProperties.getStateCache().getTxRetryCount() + 1 : 1;
+		var retryCnt = 0;
+		while (retryCnt < maxTry) {
+			if (retryCnt > 0) {
+				log.debug("Resilient save retries={} with txRetryDelayMs={}", retryCnt, retryDelayMs);
+				ProcessUtil.sleep(retryDelayMs);
+				retryDelayMs *= 2; // double the time on next try
 			}
-			else {
-				throw new TechnicalException(String.format(
-						"Concurrent DB access, not retrying: Could not %s session=%s actor=%s ex=%s",
-						event, stateEntity.getId(), actor, ex.getMessage()), ex);
+			try {
+				stateCacheRepository.save(stateEntity);
+				break;
+			}
+			catch (ConcurrencyFailureException ex) { // base class of Optimistic/PessimisticLockingFailureException and subclasses
+				retryCnt += 1;
+				if (retryCnt < maxTry) {
+					log.warn("Concurrent DB access, retrying after {}ms : Could not {} session={} actor={} ex={}",
+							retryDelayMs, event, stateEntity.getId(), actor, ex.getMessage(), ex);
+				}
+				else {
+					throw new TechnicalException(String.format(
+							"Concurrent DB access, not retrying: Could not %s session=%s actor=%s ex=%s",
+							event, stateEntity.getId(), actor, ex.getMessage()), ex);
+				}
 			}
 		}
 	}
 
-	// Exception if not found so no parameter required to back-track to session actor
 	public StateData find(String id, String actor) {
-		var stateEntity = findBySessionId(id, actor);
-		return extractStateData(stateEntity, actor);
+		var stateData = findOptionalResilient(id, actor);
+		if (stateData.isEmpty()) {
+			throw new RequestDeniedException(ErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
+					String.format("State not found. Details: stateId=%s", StringUtil.clean(id)), null);
+		}
+		return stateData.get();
 	}
 
-	// Exception if not found so no parameter required to back-track to session actor
 	private StateEntity findBySessionId(String id, String actor) {
 		if (id == null) {
 			throw new RequestDeniedException(String.format("Missing state ID in call from actor=%s", actor));
 		}
-		var stateEntity = stateCacheRepository.findById(id);
+		var stateEntity = stateCacheRepository.findById(id); // not need for resilience here
 		if (stateEntity.isEmpty()) {
 			throw new RequestDeniedException(ErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
 					String.format("State not found. Details: stateId=%s", StringUtil.clean(id)), null);
@@ -275,25 +287,41 @@ public class StateCacheService {
 		return stateEntity.get();
 	}
 
-	public Optional<StateData> findOptional(String id, String actor) {
+	private Optional<StateData> findOptional(String id, boolean retry, String actor) {
 		if (id == null) {
 			log.info("Missing state ID in call from actor={}", actor);
 			return Optional.empty();
 		}
-		return findBySecondaryId(stateCacheRepository.findById(id).stream(), "sessionId", id, actor);
+		return findWithFinder(stateCacheRepository::findByIdAsList, "sessionId", id, retry, true, actor);
+	}
+
+	public Optional<StateData> findOptional(String id, String actor) {
+		return findOptional(id, false, actor);
+	}
+
+	public Optional<StateData> findOptionalResilient(String id, String actor) {
+		return findOptional(id, true, actor);
 	}
 
 	// spSessionId required for InResponseTo handling
-	public Optional<StateData> findBySpId(String id, String actor) {
+	private Optional<StateData> findBySpId(String id, boolean retry, String actor) {
 		if (id == null) {
 			log.info("Missing SP session ID in call from actor={}", actor);
 			return Optional.empty();
 		}
-		return findBySecondaryId(stateCacheRepository.findBySpSessionId(id).stream(), "spSessionId", id, actor);
+		return findWithFinder(stateCacheRepository::findBySpSessionId, "spSessionId", id, retry, true, actor);
+	}
+
+	public Optional<StateData> findBySpId(String id, String actor) {
+		return findBySpId(id, false, actor);
+	}
+
+	public Optional<StateData> findBySpIdResilient(String id, String actor) {
+		return findBySpId(id, true, actor);
 	}
 
 	public StateData findRequiredBySpId(String id, String actor) {
-		Optional<StateData> stateDataOpt = findBySpId(id, actor);
+		Optional<StateData> stateDataOpt = findBySpIdResilient(id, actor);
 		if (stateDataOpt.isEmpty()) {
 			throw new RequestDeniedException(ErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
 					String.format("State not found. Details: spStateId=%s", StringUtil.clean(id)), null);
@@ -301,54 +329,20 @@ public class StateCacheService {
 		return stateDataOpt.get();
 	}
 
-	// oidcSessionId required to track JESSIONID in spring-authorization-server
-	public Optional<StateData> findByOidcSessionId(String id, String actor) {
-		if (id == null) {
-			log.info("Missing OID session ID in call from actor={}", actor);
-			return Optional.empty();
-		}
-		return findBySecondaryId(stateCacheRepository.findByOidcSessionId(id).stream(), "oidcSessionId", id, actor);
+	public Optional<StateData> findBySsoSessionId(String ssoSessionId, String actor) {
+		return findWithFinder(stateCacheRepository::findBySsoSessionId, "ssoSessionId", ssoSessionId, false, false, actor);
 	}
 
-	// ssoSessionId required to correlate XTB OIDC with XTB SAML for participants
-	public Optional<StateData> findBySsoSessionId(String id, String actor) {
-		if (id == null) {
-			log.info("Missing SSO session ID in call from actor={}", actor);
-			return Optional.empty();
-		}
-		// findBySecondaryId with an additional check on isNotOidcSession because OIDC side uses SSO state as well
-		var stateDataList = stateCacheRepository.findBySsoSessionId(id).stream()
-				.map(
-						stateEnt -> {
-							var stateData = extractStateData(stateEnt, actor);
-							logSessionLoss(stateData, id);
-							return stateData;
-						})
-				.filter(Objects::nonNull)
-				.filter(StateData::isValid)
-				.filter(StateData::isNotOidcSession)
-				.toList();
-		return checkAndReturnValidState(stateDataList, "ssoSessionId", id, actor);
-	}
-
-	public Optional<StateData> findSessionBySsoSessionIdResilient(String ssoSessionId, String actor) {
-		var ret = findBySsoSessionId(ssoSessionId, actor);
-		// resilience workaround waiting for +/- 1.5 seconds for TX commit (until we have fixed AppController/RelyingPartyService
-		if (SsoSessionIdPolicy.isSsoSession(ssoSessionId)) {
-			for (var delay = 100; delay < 1000 && ret.isEmpty(); delay *= 2) { // 4 tries, 100ms, 200ms, 400ms, 800ms
-				log.error("No ssoSessionId={} found in DB (yet) in call from actor={} - retrying...", ssoSessionId, actor);
-				ProcessUtil.sleep(delay);
-				ret = findBySsoSessionId(ssoSessionId, actor);
-			}
-		}
-		return ret;
+	public Optional<StateData> findBySsoSessionIdResilient(String ssoSessionId, String actor) {
+		var retry = SsoSessionIdPolicy.isSsoSession(ssoSessionId);
+		return findWithFinder(stateCacheRepository::findBySsoSessionId, "ssoSessionId", ssoSessionId, retry, false, actor);
 	}
 
 	// leave some trace if session is gone (un)expectantly
 	private static void logSessionLoss(StateData stateData, String id) {
 		if (stateData == null || !stateData.isValid()) {
 			var msg = String.format("State invalidated already. Details: sessionId=%s lifecycle=%s",
-					StringUtil.clean(id), stateData == null ? stateData : stateData.getLifecycle());
+					StringUtil.clean(id), stateData == null ? null : stateData.getLifecycle());
 			if (id != null && id.startsWith(SsoSessionIdPolicy.SSO_PREFIX)) {
 				log.info(msg);
 			}
@@ -359,30 +353,61 @@ public class StateCacheService {
 		}
 	}
 
-	private Optional<StateData> findBySecondaryId(Stream<StateEntity> stream, String keyName, String id, String actor) {
+	// retry flag implements a CircuitBreaker retrying if we do not yet find any data (galera master/master read many problem)
+	private Optional<StateData> findWithFinder(Function<String, List<StateEntity>> finder,
+											   String keyName, String id,
+											   boolean retry, boolean considerOidcSessions, String actor) {
 		if (id == null) {
 			log.debug("Missing {} in call from actor={}", keyName, actor);
 			return Optional.empty();
 		}
-		var stateDataList = stream
-				.map(stateEnt -> {
-					var stateData = extractStateData(stateEnt, actor);
-					logSessionLoss(stateData, id);
-					return stateData;
-				})
-				.filter(Objects::nonNull)
-				.filter(StateData::isValid)
-				.toList();
+		List<StateData> stateDataList = Collections.emptyList();
+		var retryDelayMs = trustBrokerProperties.getStateCache().getTxRetryDelayMs();
+		var maxTry = retry ? trustBrokerProperties.getStateCache().getTxRetryCount() + 1 : 1;
+		var retryCnt = 0;
+		var startTime = System.currentTimeMillis();
+		while (stateDataList.isEmpty() && retryCnt < maxTry) {
+			if (retryCnt > 0) {
+				log.debug("Resilient find retries={} with txRetryDelayMs={}", retryCnt, retryDelayMs);
+				ProcessUtil.sleep(retryDelayMs);
+				retryDelayMs *= 2; // double the time on next try
+			}
+			stateDataList = finder.apply(id).stream()
+					.map(stateEnt -> {
+						var stateData = extractStateData(stateEnt, actor);
+						logSessionLoss(stateData, id);
+						return stateData;
+					})
+					.filter(sd -> sd.isNotOidcSession() || considerOidcSessions)
+					.toList();
+			retryCnt += 1;
+		}
+		if (retryCnt > 1) {
+			var msg = String.format("Resilient findWithFinder for %s=%s done with retries=%s dTms=%s sessionCount=%s actor=%s",
+					keyName, id, retryCnt - 1, System.currentTimeMillis() - startTime, stateDataList.size(), actor);
+			if (stateDataList.isEmpty()) {
+				log.debug(msg); // unnecessary waiting querying data that is not there
+			}
+			else {
+				log.warn(msg); // make latency with session DB visible
+			}
+		}
 		return checkAndReturnValidState(stateDataList, keyName, id, actor);
 	}
 
-	private static Optional<StateData> checkAndReturnValidState(List<StateData> stateDataList,
+	private static Optional<StateData> checkAndReturnValidState(List<StateData> allStateDataList,
 			String keyName, String id, String actor) {
+		// drop expired
+		var stateDataList = allStateDataList.stream().filter(StateData::isValid).toList();
+		if (stateDataList.size() != allStateDataList.size()) {
+			log.debug("State EXPIRED actor={} {}={} ({}=>{})", actor, keyName, id, allStateDataList.size(), stateDataList.size());
+		}
+		// receiver to handle empty result
 		if (stateDataList.isEmpty()) {
-			// we expect the receiver of the state data to throw exceptions or deal with it in other ways
 			log.debug("State MISS actor={} {}={}", actor, keyName, id);
 			return Optional.empty();
 		}
+		// assert uniqueness
 		if (stateDataList.size() > 1) {
 			throw new RequestDeniedException(String.format(
 					"State data created multiple times for %s (possible re-posts) in call from actor=%s - "
@@ -393,33 +418,32 @@ public class StateCacheService {
 	}
 
 	public Optional<StateData> findValidState(String id, String actor) {
-		Optional<StateEntity> stateEntity = stateCacheRepository.findById(id);
-
-		if (stateEntity.isEmpty()) {
+		var stateData = findOptionalResilient(id, actor);
+		if (stateData.isEmpty()) {
 			log.debug("State MISS actor={} sessionId={}", actor, id);
 			return Optional.empty();
 		}
 
-		var expirationTime = stateEntity.get().getExpirationTimestamp().toInstant();
+		// check for un-reaped expired entries
+		var state = stateData.get();
+		var expirationTime = state.getExpirationTimestamp().toInstant();
 		var currentTime = clock.instant();
-
-		var stateData = extractStateData(stateEntity.get(), actor);
 		if (currentTime.isAfter(expirationTime)) {
 			// current time is equal to log timestamp except in tests with a fixed clock
 			log.error("State EXPIRED for actor={} sessionId={} expirationTime={} currentTime={}",
 					actor, id, expirationTime, currentTime);
-			invalidate(stateData, actor);
+			invalidate(state, actor);
 			return Optional.empty();
 		}
 
 		// XTB session cookies might end up here with a cookie not cleared in the browser
-		if (stateData.isExpired()) {
+		if (state.isExpired()) {
 			log.info("State marked EXPIRED for actor={} sessionId={} expiredTime={}",
-					actor, id, stateData.getLifecycle().getExpiredTime());
+					actor, id, state.getLifecycle().getExpiredTime());
 			return Optional.empty();
 		}
 
-		return Optional.of(stateData);
+		return stateData;
 	}
 
 	// Exception if not found so no parameter required to back-track to session actor
@@ -456,7 +480,7 @@ public class StateCacheService {
 			stateData.getSpStateData().getLifecycle().setExpiredTime(now);
 		}
 
-		// invalidate in cache if present
+		// invalidate if present (best-effort, not resilient is ok)
 		var stateEntity = stateCacheRepository.findById(stateData.getId());
 		if (stateEntity.isEmpty()) {
 			log.info("State NOTFOUND, no need to invalidate. Details: sessionId={}", stateData.getId());
@@ -477,7 +501,7 @@ public class StateCacheService {
 	private void invalidate(StateEntity stateEntity, String actor) {
 		log.debug("Invalidating stateEntity={} for actor={}", stateEntity.getId(), actor);
 		stateEntity.setExpirationTimestamp(Timestamp.from(clock.instant()));
-		resilientSave(stateEntity, true, actor, "INVALIDATE");
+		saveResilient(stateEntity, true, actor, "INVALIDATE");
 	}
 
 	public void ssoEstablished(StateData stateData, String actor) {
@@ -534,7 +558,7 @@ public class StateCacheService {
 						"Completed reaping StateCache in dTms=%s totalSessions=%d expiredSessions=%d collectedSessions=%d",
 						diff, numEntries, expired, collected);
 				if (diff >= trustBrokerProperties.getStateCache().getReapWarnThresholdMs() ) {
-					log.warn(msg + " (HINT: Check statistics, tune DB, decrease load, increase reaper schedule)");
+					log.warn("{} (HINT: Check statistics, tune DB, decrease load, increase reaper schedule)", msg);
 				}
 				else {
 					log.info(msg);

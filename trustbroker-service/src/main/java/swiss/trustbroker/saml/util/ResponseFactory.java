@@ -36,6 +36,7 @@ import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlFactory;
 import swiss.trustbroker.common.saml.util.SamlUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.SamlProperties;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.Definition;
@@ -72,8 +73,8 @@ public class ResponseFactory {
 		// assemble assertion
 		params.setNameIdFormat(cpResponse.getNameIdFormat());
 		var constAttr = relyingParty.getConstAttributes();
-		var rpQoaConfig = relyingPartySetupService.getQoaConfiguration(idpStateData.getSpStateData(), params.getRpIssuerId(),
-				params.getRpReferer(), trustBrokerProperties);
+		var rpQoaConfig = relyingPartySetupService.getQoaConfiguration(idpStateData.getSpStateData(),
+				relyingParty, trustBrokerProperties);
 		// map CP Qoa model to RP Qoa model (the relevant comparison type is what the RP requested)
 		var contextClasses = qoaMappingService.mapResponseQoasToOutbound(
 				cpResponse.getContextClasses(), claimsParty.getQoaConfig(),
@@ -83,7 +84,7 @@ public class ResponseFactory {
 		// disable setting OriginalIssuer on Attribute
 		var removeOriginalIssuer = !relyingParty.isDelegateOrigin();
 		var homeNameOriginalIssuer = mapHomeNameIssuer(params.getHomeNameIssuerMapping(), claimsParty.getId());
-		updateOriginalIssuer(assertion, params.isSetOriginalIssuerIfEmpty(), params.getCpAttrOriginIssuer(),
+		updateOriginalIssuer(assertion, params.getRequireOriginalIssuerClaims(), params.getCpAttrOriginIssuer(),
 				removeOriginalIssuer, homeNameOriginalIssuer);
 
 		// we use the ID as session index - store for validation
@@ -149,7 +150,7 @@ public class ResponseFactory {
 			ResponseParameters params) {
 		applyRpSideDefaults(idpStateData, cpResponse, relyingParty, params);
 
-		applyFederationDefaults(cpResponse, claimsParty, params);
+		applyFederationDefaults(cpResponse, relyingParty, claimsParty, params);
 
 		applyValidityParameterDefaults(relyingParty, params);
 	}
@@ -174,22 +175,32 @@ public class ResponseFactory {
 		}
 	}
 
-	private void applyFederationDefaults(CpResponse cpResponse, ClaimsParty claimsParty, ResponseParameters params) {
+	private void applyFederationDefaults(CpResponse cpResponse, RelyingParty relyingParty, ClaimsParty claimsParty,
+			ResponseParameters params) {
 		if (params.getFederationServiceIssuerId() == null) {
 			var federationServiceIssuer = cpResponse.getCustomIssuer() != null ? cpResponse.getCustomIssuer() :
 					trustBrokerProperties.getIssuer();
 			params.setFederationServiceIssuerId(federationServiceIssuer);
 		}
 		if (params.getNameId() == null) {
-			params.setNameId(params.isAccessRequest() ? cpResponse.getOriginalNameId() : cpResponse.getNameId());
+			var nameId = cpResponse.getNameId();
+			if (params.isAccessRequest()) {
+				nameId = cpResponse.getMappedNameId() != null ?  cpResponse.getMappedNameId() : cpResponse.getOriginalNameId();
+				log.debug("AccessRequest - using nameId={} from mappedNameId={} with fallback to originalNameId={}",
+						nameId,  cpResponse.getMappedNameId(), cpResponse.getOriginalNameId());
+			}
+			params.setNameId(nameId);
+			if (params.getNameId() == null) {
+				log.error("Missing nameId for authnRequestId={} rpIssuerId={} cpIssuerId={}",
+						cpResponse.getInResponseTo(), relyingParty.getId(), claimsParty.getId());
+			}
 		}
 		if (params.getCpAttrOriginIssuer() == null) {
 			var cpOriginalIssuer = claimsParty.getOriginalIssuer();
 			params.setCpAttrOriginIssuer(cpOriginalIssuer);
 		}
 		if (params.getRpClientName() == null) {
-			var rpClientName = relyingPartySetupService.getRpClientName(
-					params.getRpIssuerId(), params.getRpReferer());
+			var rpClientName = relyingPartySetupService.getRpClientName(relyingParty);
 			params.setRpClientName(rpClientName);
 		}
 		if (params.getSkinnyAssertionStyle() == null) {
@@ -227,7 +238,8 @@ public class ResponseFactory {
 		return null;
 	}
 
-	private static void updateOriginalIssuer(Assertion assertion, boolean setOriginalIssuerIfEmpty, String claimOriginalIssuer,
+	private static void updateOriginalIssuer(
+			Assertion assertion, List<String>requireOriginalIssuerClaims, String claimOriginalIssuer,
 			boolean removeOriginalIssuer, String homeNameOriginalIssuer) {
 		for (var as : assertion.getAttributeStatements()) {
 			for (var att : as.getAttributes()) {
@@ -238,7 +250,8 @@ public class ResponseFactory {
 				else if (removeOriginalIssuer) {
 					SamlUtil.removeOriginalIssuer(att);
 				}
-				else if (setOriginalIssuerIfEmpty && claimOriginalIssuer != null) {
+				else if (claimOriginalIssuer != null && requireOriginalIssuerClaims != null &&
+						requireOriginalIssuerClaims.contains(att.getName())) {
 					SamlUtil.setOriginalIssuerIfMissing(att, claimOriginalIssuer);
 				}
 			}
@@ -264,10 +277,15 @@ public class ResponseFactory {
 		return idpStateData.getSpStateData().getAssertionConsumerServiceUrl();
 	}
 
-	public static void filterCpAttributes(CpResponse cpResponse, List<Definition> cpAttributeDefinitions) {
+	public static void filterCpAttributes(CpResponse cpResponse, List<Definition> cpAttributeDefinitions, SamlProperties samlProperties) {
+		var dropAttrSelectionIfNoFilter = samlProperties != null && samlProperties.isDropAttrSelectionIfNoFilter();
+		// Keep attributes when there is no AttributeSelection defined
+		if ((cpAttributeDefinitions == null || cpAttributeDefinitions.isEmpty()) && !dropAttrSelectionIfNoFilter) {
+			return;
+		}
 		cpResponse.getAttributes()
-					 .entrySet()
-					 .removeIf(att -> attributeHasNoDefinition(att.getKey(), cpAttributeDefinitions));
+				.entrySet()
+				.removeIf(att -> attributeHasNoDefinition(att.getKey(), cpAttributeDefinitions));
 	}
 
 	private static boolean attributeHasNoDefinition(Definition key, List<Definition> cpAttributeDefinitions) {

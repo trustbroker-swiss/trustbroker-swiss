@@ -22,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static swiss.trustbroker.config.TestConstants.LATEST_INVALID_DEFINITION_PATH;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -35,9 +34,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.setup.service.GitService;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.service.XmlConfigStatusService;
-import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderDefinitions;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
 import swiss.trustbroker.federation.xmlconfig.FeatureEnum;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
@@ -45,11 +41,12 @@ import swiss.trustbroker.federation.xmlconfig.RelyingPartySetup;
 import swiss.trustbroker.federation.xmlconfig.Sso;
 import swiss.trustbroker.federation.xmlconfig.SsoGroup;
 import swiss.trustbroker.federation.xmlconfig.SsoGroupSetup;
+import swiss.trustbroker.homerealmdiscovery.service.WebResourceProvider;
 import swiss.trustbroker.homerealmdiscovery.util.ClaimsProviderUtil;
 import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
 import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.oidc.ClientConfigInMemoryRepository;
-import swiss.trustbroker.oidc.client.service.AuthorizationCodeFlowService;
+import swiss.trustbroker.oidc.client.service.OidcMetadataCacheService;
 import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
 
@@ -82,7 +79,10 @@ class AppConfigServiceTest {
 	private XmlConfigStatusService xmlConfigStatusService;
 
 	@MockitoBean
-	private AuthorizationCodeFlowService authorizationCodeFlowService;
+	private OidcMetadataCacheService oidcMetadataCacheService;
+
+	@MockitoBean
+	private WebResourceProvider resourceProvider;
 
 	@Autowired
 	private AppConfigService appConfigService;
@@ -116,59 +116,25 @@ class AppConfigServiceTest {
 	}
 
 	@Test
-	void testCheckCpConfigIntegrity() {
-		var existingClaimsProvider = "claimsProvider1";
-		var claimsProvider1 = ClaimsProvider.builder()
-											.id(existingClaimsProvider)
-											.build();
-		var missingClaimsProvider = "claimsProvider2";
-		var claimsProvider2 = ClaimsProvider.builder()
-											.id(missingClaimsProvider)
-											.build();
-		var cpDefinition = ClaimsProviderDefinitions.builder()
-													.claimsProviders(List.of(claimsProvider1, claimsProvider2))
-													.build();
-		var claimsParties = new ArrayList<ClaimsParty>(); // must be mutable
-		var claimsParty1 = ClaimsParty.builder()
-									  .id(existingClaimsProvider)
-									  .build();
-		claimsParties.add(claimsParty1);
-		var cpSetup = ClaimsProviderSetup.builder()
-										 .claimsParties(claimsParties)
-										 .build();
-
-		AppConfigService.checkCpConfigIntegrity(cpDefinition, cpSetup);
-
-		assertThat(claimsParty1.isValid(), is(true));
-		assertThat(claimsParty1.getValidationStatus().hasErrors(), is(false));
-
-		assertThat(cpSetup.getClaimsParties(), hasSize(2));
-		assertThat(cpSetup.getClaimsParties().get(0), is(claimsParty1));
-
-		var invalidCp = cpSetup.getClaimsParties().get(1);
-		assertThat(invalidCp.getId(), is(missingClaimsProvider));
-		assertThat(invalidCp.isValid(), is(false));
-		assertThat(invalidCp.getValidationStatus().hasErrors(), is(true));
-	}
-
-	@Test
 	void testInvalidBase() {
 		var relyingPartySetup = loadRelyingParty("SetupRPInvalidBase.xml");
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 		assertDoesNotThrow(() ->
 				RelyingPartySetupUtil.loadRelyingParty(
 						relyingPartySetup.getRelyingParties(), LATEST_INVALID_DEFINITION_PATH, LATEST_INVALID_DEFINITION_PATH,
-						properties, Collections.emptyList(), scriptService));
+						properties, Collections.emptyList(), scriptService, claimsProviderSetup, null));
 		var rp = relyingPartySetup.getRelyingParties().get(0);
 		assertEquals(FeatureEnum.INVALID, rp.getEnabled());
 	}
 
 	@Test
 	void loadConfigFromFileInvalidFile() {
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 		var relyingPartySetup = loadRelyingParty("SetupRPInvalidCert.xml");
 		assertDoesNotThrow(() ->
 				RelyingPartySetupUtil.loadRelyingParty(
 						relyingPartySetup.getRelyingParties(), LATEST_INVALID_DEFINITION_PATH, LATEST_INVALID_DEFINITION_PATH,
-						properties, Collections.emptyList(), scriptService));
+						properties, Collections.emptyList(), scriptService, claimsProviderSetup, null));
 		var rp = relyingPartySetup.getRelyingParties().get(0);
 		// after RelyingPartySetupUtils validation, it is still valid
 		assertEquals(FeatureEnum.TRUE, rp.getEnabled());

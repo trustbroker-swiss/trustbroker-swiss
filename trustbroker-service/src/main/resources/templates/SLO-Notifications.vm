@@ -96,13 +96,19 @@
       #if ($result.Slo.Protocol == 'SAML2')
         ## form is embedded in iframe srcdoc hence the HTML encoded quotes
         ## there is a different DOM so the form name does not have to be unique
-        #set($form = "<form name=&quot;saml.notify&quot; action=&quot;${result.EncodedUrl}&quot; method=&quot;post&quot;>")
+        #set($form = "<form name=&quot;saml.notify&quot; action=&quot;${result.EncodedUrl}&quot; method=&quot;${result.samlHttpMethod}&quot;>")
         #if($result.SamlRelayState)
           #set($form = "${form}<input type=&quot;hidden&quot; name=&quot;RelayState&quot; value=&quot;${result.SamlRelayState}&quot;/>")
         #end
         #if($result.SamlLogoutRequest)
           #set($form = "${form}<input type=&quot;hidden&quot; name=&quot;SAMLRequest&quot; value=&quot;${result.SamlLogoutRequest}&quot;/>")
         #end
+		#if($result.SamlRedirectSignatureAlgorithm)
+		  #set($form = "${form}<input type=&quot;hidden&quot; name=&quot;SigAlg&quot; value=&quot;${result.SamlRedirectSignatureAlgorithm}&quot;/>")
+	    #end
+		 #if($result.SamlRedirectSignature)
+		  #set($form = "${form}<input type=&quot;hidden&quot; name=&quot;Signature&quot; value=&quot;${result.SamlRedirectSignature}&quot;/>")
+		 #end
         #set($form = "${form}</form>")
         ## first on load based on srcdoc submits the form, second one fails because of cross origin and does the completion hook
         #set($completedHook =

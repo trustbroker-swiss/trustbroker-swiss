@@ -38,7 +38,7 @@
 			<p role="tabpanel" [innerHTML]="'trustbroker.help.generic.text' | translate | safeMarkup"></p>
 		</mat-expansion-panel>
 	</div>
-	@for (idpObject of idpObjects; track idpObject) {
+	@for (idpObject of sortedIdpObjects$ | async; track idpObject) {
 		<div class="helperSidebarContent">
 			<mat-expansion-panel togglePosition="before">
 				<mat-expansion-panel-header>

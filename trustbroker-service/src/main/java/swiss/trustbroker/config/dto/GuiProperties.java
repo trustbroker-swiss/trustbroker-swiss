@@ -37,6 +37,7 @@ public class GuiProperties {
 	/**
 	 * Resource path where images used in the ClaimsProviderDefinitions are stored.
 	 *
+	 * @see swiss.trustbroker.federation.xmlconfig.ClaimsProviderMappings
 	 * @see swiss.trustbroker.federation.xmlconfig.ClaimsProviderDefinitions
 	 */
 	private String images;
@@ -97,6 +98,38 @@ public class GuiProperties {
 	 */
 	@Builder.Default
 	private CookieProperties languageCookie = new CookieProperties();
+
+	/**
+	 * XTB can (via a plugin) support announcements to communicate with the federating user.
+	 * These cookie preferences are used to customize it's client side behavior.
+	 */
+	@Builder.Default
+	private CookieProperties announcementCookie = new CookieProperties();
+
+	/**
+	 * Browser caching max-age in days for resources that have resource version in the path (a hash or version number).
+	 * <br/>
+	 * These resources can be cached for a long period as any change will result in a new resource version.
+	 *
+	 * @since 1.10.0
+	 */
+	private int versionedResourceMaxAgeDay;
+
+	/**
+	 * Paths of resources that have resource version in the path (a hash or version number).
+	 *
+	 * @since 1.10.0
+	 */
+	private String[] versionedResourcePaths; // array as it is used as varargs
+
+	/**
+	 * Browser caching max-age in seconds for resources that have are tagged with an ETAG (a hash or version number).
+	 * <br/>
+	 * These resources can be cached for some time after which the ETAG has to be checked.
+	 *
+	 * @since 1.10.0
+	 */
+	private int taggedResourceMaxAgeSec;
 
 	/**
 	 * @param name

@@ -23,12 +23,12 @@ public class ProcessUtil {
 	private ProcessUtil() {
 	}
 
-	public static void sleep(int delay) {
+	public static void sleep(int delayMs) {
 		try {
-			Thread.sleep(delay);
+			Thread.sleep(delayMs);
 		}
 		catch (InterruptedException e) {
-			log.error("Thread.sleep failed: {}", e.getMessage());
+			log.error("Thread.sleep delayMs={} failed: {}", delayMs, e.getMessage());
 			Thread.currentThread().interrupt();
 		}
 	}

@@ -41,7 +41,7 @@ export class ProfileSelectionComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.route.params.subscribe((params: Params) => {
-			const id = params.id;
+			const id = params['id'];
 			this.profileService.getProfiles(id).subscribe({
 				next: resp => {
 					this.profileResponse = resp;

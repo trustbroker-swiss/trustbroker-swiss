@@ -15,10 +15,12 @@
 
 import { Component, EventEmitter, Input, OnInit, Output, ViewEncapsulation } from '@angular/core';
 
-import { IdpObject } from '../model/IdpObject';
+import { IdpObject, compareByOrder } from '../model/IdpObject';
 import { Theme } from '../model/Theme';
 import { IdpObjectService } from '../services/idp-object.service';
 import { ThemeService } from '../services/theme-service';
+import { map } from 'rxjs/operators';
+import { Observable } from 'rxjs';
 
 @Component({
 	selector: 'app-help-panel',
@@ -27,7 +29,7 @@ import { ThemeService } from '../services/theme-service';
 	encapsulation: ViewEncapsulation.None
 })
 export class HelpPanelComponent implements OnInit {
-	idpObjects: IdpObject[];
+	sortedIdpObjects$: Observable<IdpObject[]>;
 
 	@Input() theme: Theme = ThemeService.defaultTheme;
 
@@ -40,9 +42,7 @@ export class HelpPanelComponent implements OnInit {
 	// else we would set tabindex on the close button and the headers to theme.helpTabindex + 1
 
 	ngOnInit(): void {
-		this.idpObjectService.getIdpObjects().subscribe(value => {
-			this.idpObjects = value;
-		});
+		this.sortedIdpObjects$ = this.idpObjectService.getIdpObjects().pipe(map(objects => [...objects].sort(compareByOrder)));
 	}
 
 	closeHelpPanel(): void {

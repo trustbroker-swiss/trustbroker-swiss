@@ -18,6 +18,8 @@ package swiss.trustbroker.config;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.velocity.app.VelocityEngine;
@@ -91,4 +93,9 @@ public class TrustBrokerConfiguration {
 		};
 	}
 
+	// used for asynchronous config refreshes, the threads can be removed later
+	@Bean
+	public ExecutorService executorService() {
+		return Executors.newCachedThreadPool();
+	}
 }

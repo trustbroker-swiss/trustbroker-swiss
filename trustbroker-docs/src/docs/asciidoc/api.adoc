@@ -1,7 +1,6 @@
 = API and Protocols
 
-XTB provides various endpoints for SAML and OIDC federation handling and has a small single page application for the parts that
-require user interaction.
+XTB provides various endpoints for SAML and OIDC federation handling and has a small single page application for the parts that require user interaction.
 
 These features are provided based on:
 

@@ -17,9 +17,8 @@ import { ChangeDetectionStrategy, Component, HostBinding, computed, input, signa
 import { environment } from '../../environments/environment';
 import { BannerConfig } from '../model/IdpObject';
 import { TranslateService } from '@ngx-translate/core';
-import { BreakpointObserver } from '@angular/cdk/layout';
 import { map } from 'rxjs/operators';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { LanguageService } from '../services/language.service';
 import { Observable, combineLatest, switchMap } from 'rxjs';
 import { Theme } from '../model/Theme';
@@ -57,13 +56,11 @@ export class HrdBannerComponent {
 		})
 	);
 
-	showParagraphsExpanded = computed(() => !this.config().collapseParagraphsOnSmallScreen || !this.isMobile() || this.expandedParagraphs());
-	isMobile = toSignal(this.breakpointObserver.observe('(max-width: 511px)').pipe(map(({ matches }) => matches)));
+	showParagraphsExpanded = computed(() => !this.config().collapseParagraphs || this.expandedParagraphs());
 
 	private readonly expandedParagraphs = signal(false);
 
 	constructor(
-		private readonly breakpointObserver: BreakpointObserver,
 		private readonly translateService: TranslateService,
 		private readonly languageService: LanguageService
 	) {}

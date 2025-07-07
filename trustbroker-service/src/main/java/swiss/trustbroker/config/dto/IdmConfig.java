@@ -28,6 +28,11 @@ import swiss.trustbroker.common.config.RegexNameValue;
 
 /**
  * Configuration for optional IDM integration.
+ * <br>
+ * Potentially breaking changes:
+ * <ul>
+ *     <li>With 1.10.0 value of attributes changed to Object to allow nested structures.</li>
+ * </ul>
  *
  * @see IdmQueryService
  * @see swiss.trustbroker.federation.xmlconfig.IdmLookup
@@ -89,17 +94,11 @@ public class IdmConfig {
 	/**
 	 * Custom attributes that might be needed by the implementation.
  	 */
-	private Map<String, String> attributes;
+	private Map<String, Object> attributes;
 
 	/**
 	 * HTTP trace header supported by service to correlate calls from XTB.
 	 */
 	private String traceIdHeader;
 
-	public String getAttribute(String key) {
-		if (attributes == null) {
-			return null;
-		}
-		return attributes.get(key);
-	}
 }

@@ -105,6 +105,9 @@ public class ScriptService {
 
 	private static final String BEAN_RP_CONFIG = "RPConfig"; // RP config to allow config interaction
 
+	private static final String BEAN_SCRIPT_TYPE = "ScriptType"; // RP config to allow config interaction
+
+
 	private static final String CLAIM_VALUES = "ClaimValues"; // OIDC value converters
 
 	// the only script language we currently support
@@ -177,8 +180,22 @@ public class ScriptService {
 		}
 	}
 
+	// RP and CP side script hooks
+
 	public void processCpBeforeIdm(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_BEFORE_IDM;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, false);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null);
+	}
+
+	public void processRpBeforeIdm(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
+		var hook = SCRIPT_TYPE_BEFORE_IDM;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null);
+	}
+
+	public void processCpAfterIdm(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
+		var hook = SCRIPT_TYPE_AFTER_IDM;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, false);
 		processAllSamlScripts(hook, scripts, cpResponse, response, null);
 	}
@@ -189,13 +206,25 @@ public class ScriptService {
 		processAllSamlScripts(hook, scripts, cpResponse, response, null);
 	}
 
-	public void processBeforeResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
+	public void processCpBeforeResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
+		var hook = SCRIPT_TYPE_BEFORE_RESPONSE;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, false);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null);
+	}
+
+	public void processRpBeforeResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_BEFORE_RESPONSE;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
 		processAllSamlScripts(hook, scripts, cpResponse, response, null);
 	}
 
-	public void processOnResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
+	public void processCpOnResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
+		var hook = SCRIPT_TYPE_ON_SAML_RESPONSE;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, false);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null);
+	}
+
+	public void processRpOnResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_ON_SAML_RESPONSE;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
 		processAllSamlScripts(hook, scripts, cpResponse, response, null);
@@ -217,12 +246,6 @@ public class ScriptService {
 		for (var script : scripts) {
 			processOnRequest(hook, script, null, samlRequest);
 		}
-	}
-
-	public void processRpBeforeIdm(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
-		var hook = SCRIPT_TYPE_BEFORE_IDM;
-		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
-		processAllSamlScripts(hook, scripts, cpResponse, response, null);
 	}
 
 	// OIDC script hooks
@@ -262,7 +285,7 @@ public class ScriptService {
 	// SAML request and a RPRequest object could be future use, for now we keep it small for SPS19 only
 	private void processOnRequest(String hookType, Pair<String, CompiledScript> script,
 			RpRequest rpRequest, RequestAbstractType samlRequest) throws TechnicalException {
-		var bindings = bindRequestBeans(rpRequest, samlRequest);
+		var bindings = bindRequestBeans(hookType, rpRequest, samlRequest);
 		try {
 			if (log.isTraceEnabled()) {
 				log.trace("Executing step={} script={} using {}={} {}={} {}={}",
@@ -287,7 +310,7 @@ public class ScriptService {
 
 	private void processOnResponse(String hookType, Pair<String, CompiledScript> script,
 			CpResponse cpResponse, Response response, List<IdmQuery> idmQueries) throws TechnicalException {
-		var bindings = bindResponseBeans(cpResponse, response, idmQueries);
+		var bindings = bindResponseBeans(hookType, cpResponse, response, idmQueries);
 		try {
 			if (log.isTraceEnabled()) {
 				log.trace("Executing step={} script={} using {}={} {}={} {}={}",
@@ -307,6 +330,7 @@ public class ScriptService {
 		var derivedScriptName = attributeName + VALUE_CONVERTER_POSTFIX;
 		var compiledScript = resolveScript(derivedScriptName);
 		var bindings = scriptEngine.createBindings();
+		bindings.put(BEAN_SCRIPT_TYPE, "Converter");
 		bindings.put(CLAIM_VALUES, values);
 		try {
 			if (log.isTraceEnabled()) {
@@ -320,8 +344,9 @@ public class ScriptService {
 		}
 	}
 
-	private Bindings bindRequestBeans(RpRequest rpRequest, RequestAbstractType samlRequest) {
+	private Bindings bindRequestBeans(String hookType, RpRequest rpRequest, RequestAbstractType samlRequest) {
 		var bindings = scriptEngine.createBindings();
+		bindings.put(BEAN_SCRIPT_TYPE, hookType);
 		// input
 		bindings.put(BEAN_RP_CONFIG, relyingPartySetupService);  // undocumented, unused (even dangerous when modified)
 		bindHttpCommonBeans(bindings);
@@ -333,8 +358,9 @@ public class ScriptService {
 		return bindings;
 	}
 
-	private Bindings bindResponseBeans(CpResponse cpResponse, Response response, List<IdmQuery> idmQueries) {
+	private Bindings bindResponseBeans(String hookType, CpResponse cpResponse, Response response, List<IdmQuery> idmQueries) {
 		var bindings = scriptEngine.createBindings();
+		bindings.put(BEAN_SCRIPT_TYPE, hookType);
 		// input (undocumented, unused, just in case)
 		bindings.put(BEAN_RP_CONFIG, relyingPartySetupService);  // even dangerous when modified
 		bindings.put(BEAN_SAML_RESPONSE, response); // null in OIDC hooks
@@ -364,14 +390,16 @@ public class ScriptService {
 		bindings.put(BEAN_LOGGER, log); // documented
 	}
 
-	// Replace this late response copy of the RPRequest by splitting away the CPResponse related rpMembers
+	// Replace this late response copy of the RPRequest by splitting away the CPResponse related rpMembers and
+	// attach RpRequest to CpResponse for state storage as soon as we know the RP/CP federation relation.
 	private static RpRequest deriveRpRequestFromCpResponse(CpResponse cpResponse) {
 		return RpRequest.builder()
-						.rpIssuer(cpResponse.getRpIssuer())
-						.applicationName(cpResponse.getApplicationName())
-						.contextClasses(cpResponse.getRpContextClasses())
-						.referer(cpResponse.getRpReferer())
-						.build();
+				.rpIssuer(cpResponse.getRpIssuer())
+				.applicationName(cpResponse.getApplicationName())
+				.contextClasses(cpResponse.getRpContextClasses())
+				.context(cpResponse.getRpContext())
+				.referer(cpResponse.getRpReferer())
+				.build();
 	}
 
 	public void prepareRefresh() {

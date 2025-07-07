@@ -13,10 +13,13 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ChangeDetectionStrategy, Component, DestroyRef } from '@angular/core';
+import { ActivatedRoute, Params, Router } from '@angular/router';
 import { ApiService } from '../services/api.service';
-import { of, switchMap } from 'rxjs';
+import { Observable, of, switchMap } from 'rxjs';
+import { HttpResponse } from '@angular/common/http';
+import { IdpObjects } from '../model/IdpObject';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
 	selector: 'app-hrd-cards-container',
@@ -24,10 +27,38 @@ import { of, switchMap } from 'rxjs';
 	changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class HrdCardsContainerComponent {
-	idpObjects$ = this.route.params.pipe(switchMap(({ issuer, authnRequestId }) => (issuer ? this.apiService.getIdpObjects(issuer, authnRequestId) : of({}))));
+	idpObjects$ = this.route.params.pipe(
+		switchMap(params => this.processIdpObjects(params)),
+		takeUntilDestroyed(this.destroyRef)
+	);
 
 	constructor(
 		private readonly route: ActivatedRoute,
-		private readonly apiService: ApiService
+		private readonly apiService: ApiService,
+		private readonly router: Router,
+		private readonly destroyRef: DestroyRef
 	) {}
+
+	private processIdpObjects(params: Params): Observable<IdpObjects> {
+		if (!params['issuer']) {
+			// NOSONAR
+			// console.debug('[HrdCardsContainerComponent] missing issuer');
+			return of({});
+		}
+		return this.apiService.getIdpObjects(params['issuer'], params['authnRequestId']).pipe(
+			switchMap(response => this.processHttpResponse(response)),
+			takeUntilDestroyed(this.destroyRef)
+		);
+	}
+
+	private processHttpResponse(resp: HttpResponse<string>): Observable<IdpObjects> {
+		const url = resp.url.replace(/^.*(\/failure\/.*$)/, '$1');
+		if (url !== resp.url) {
+			// NOSONAR
+			// console.info('[HrdCardsContainerComponent] tiles lookup failed', resp.url);
+			void this.router.navigate([url]).then(() => of({}));
+			return of({});
+		}
+		return of(JSON.parse(resp.body) as IdpObjects);
+	}
 }

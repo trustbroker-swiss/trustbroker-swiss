@@ -29,7 +29,7 @@ public interface IdmRequest {
 
 	String getId();
 
-	public String getName();
+	String getName();
 
 	// attribute filters
 
@@ -53,4 +53,5 @@ public interface IdmRequest {
 
 	String getUserStatusPolicy();
 
+	String getStore();
 }

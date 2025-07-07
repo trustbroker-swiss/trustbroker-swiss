@@ -18,7 +18,6 @@ package swiss.trustbroker.oidc;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.startsWith;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
@@ -42,7 +41,6 @@ import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
 import org.springframework.security.saml2.core.Saml2Error;
 import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticationException;
 import org.springframework.security.web.WebAttributes;
-import org.springframework.security.web.savedrequest.SavedRequest;
 import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.WebUtil;
@@ -53,6 +51,7 @@ import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.oidc.session.HttpExchangeSupport;
+import swiss.trustbroker.oidc.session.OidcSessionSupport;
 
 class CustomFailureHandlerTest {
 
@@ -76,19 +75,19 @@ class CustomFailureHandlerTest {
 	@Mock
 	private TrustBrokerProperties trustBrokerProperties;
 
-	@Mock
-	private SavedRequest savedRequest;
-
 	private CustomFailureHandler customFailureHandler;
+
+	private AutoCloseable mocks;
 
 	@BeforeEach
 	void setUp() {
-		MockitoAnnotations.openMocks(this);
+		mocks = MockitoAnnotations.openMocks(this);
 		customFailureHandler = new CustomFailureHandler("test", relyingPartyDefinitions, trustBrokerProperties);
 	}
 
 	@AfterEach
-	void tearDown() {
+	void tearDown() throws Exception {
+		mocks.close();
 		HttpExchangeSupport.end();
 	}
 
@@ -113,8 +112,7 @@ class CustomFailureHandlerTest {
 		if (redirectUri != null) {
 			var session = new MockHttpSession();
 			request.setSession(session);
-			doReturn(new String[] { redirectUri }).when(savedRequest).getParameterValues(OidcUtil.REDIRECT_URI);
-			session.setAttribute(OidcExceptionHelper.SAVED_REQUEST, savedRequest);
+			OidcSessionSupport.setRedirectUri(session, redirectUri);
 		}
 		var response = new MockHttpServletResponse();
 		var oidcProperties = new OidcProperties();

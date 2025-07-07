@@ -18,6 +18,7 @@ package swiss.trustbroker.samlmock.service;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -34,7 +35,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.net.URIBuilder;
 import org.apache.velocity.app.VelocityEngine;
 import org.opensaml.messaging.context.MessageContext;
-import org.opensaml.messaging.encoder.MessageEncodingException;
 import org.opensaml.saml.common.SAMLObject;
 import org.opensaml.saml.common.SignableSAMLObject;
 import org.opensaml.saml.common.binding.SAMLBindingSupport;
@@ -59,6 +59,7 @@ import org.opensaml.security.credential.Credential;
 import org.opensaml.xmlsec.signature.support.SignatureConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.common.exception.RequestDeniedException;
@@ -138,39 +139,34 @@ public class SamlMockMessageService {
 		if (sign || properties.isSignAuthnRequest()) {
 			resignSamlObject(request);
 		}
-		try {
-			var tbConsumerUrl = request.getDestination();
-			// AuthnRequest without a Destination
-			if (tbConsumerUrl == null) {
-				tbConsumerUrl = properties.getConsumerUrl();
-			}
+		var tbConsumerUrl = request.getDestination();
+		// AuthnRequest without a Destination
+		if (tbConsumerUrl == null) {
+			tbConsumerUrl = properties.getConsumerUrl();
+		}
 
-			var encodedPostMessage = SamlUtil.encode(request);
-			var rpRequest = new SamlMockRpRequest();
-			rpRequest.setSamlPostRequest(encodedPostMessage);
-			// The SAML message is commonly not signed for redirect requests as the signature is part of the binding
-			request.setSignature(null);
-			var relayState = RELAY_STATE_PREFIX + uuid;
-			rpRequest.setRelayState(relayState);
-			var acsUrl = addUriParameter(tbConsumerUrl, SamlIoUtil.SAML_RELAY_STATE, relayState);
-			rpRequest.setAcsUrl(acsUrl);
-			var encodedRedirectMessage = SamlIoUtil.encodeSamlRedirectData(request);
-			rpRequest.setSamlRedirectRequest(encodedRedirectMessage);
-			// arpEntityId (getArtifactResolutionIssuer) determines the RP config used during artifact resolution
-			// use the mock ID, so we only need to configure an artifact resolution / metadata URL for this RP
-			var encodedArtifactMessage = SamlIoUtil.encodeSamlArtifactData(velocityEngine,
-					artifactCacheService.getArtifactMap(), request, buildArtifactResolutionParameters(), relayState);
-			rpRequest.setSamlArtifactRequest(encodedArtifactMessage);
-			var sigAlg = SignatureConstants.ALGO_ID_SIGNATURE_RSA_SHA1;
-			rpRequest.setSigAlg(sigAlg);
-			var signature = SamlIoUtil.buildEncodedSamlRedirectSignature(request, fileService.getAuthnRequestCredential(),
-					sigAlg, relayState, encodedRedirectMessage);
-			rpRequest.setSignature(signature);
-			sampleMap.put(fileName, rpRequest);
-		}
-		catch (MessageEncodingException e) {
-			throw new TechnicalException(String.format("Message Encoding exception: %s", e.getMessage()), e);
-		}
+		var encodedPostMessage = SamlUtil.encode(request);
+		var rpRequest = new SamlMockRpRequest();
+		rpRequest.setSamlPostRequest(encodedPostMessage);
+		// The SAML message is commonly not signed for redirect requests as the signature is part of the binding
+		request.setSignature(null);
+		var relayState = RELAY_STATE_PREFIX + uuid;
+		rpRequest.setRelayState(relayState);
+		var acsUrl = addUriParameter(tbConsumerUrl, SamlIoUtil.SAML_RELAY_STATE, relayState);
+		rpRequest.setAcsUrl(acsUrl);
+		var encodedRedirectMessage = SamlIoUtil.encodeSamlRedirectData(request);
+		rpRequest.setSamlRedirectRequest(encodedRedirectMessage);
+		// arpEntityId (getArtifactResolutionIssuer) determines the RP config used during artifact resolution
+		// use the mock ID, so we only need to configure an artifact resolution / metadata URL for this RP
+		var encodedArtifactMessage = SamlIoUtil.encodeSamlArtifactData(velocityEngine,
+				artifactCacheService.getArtifactMap(), request, buildArtifactResolutionParameters(), relayState);
+		rpRequest.setSamlArtifactRequest(encodedArtifactMessage);
+		var sigAlg = SignatureConstants.ALGO_ID_SIGNATURE_RSA_SHA1;
+		rpRequest.setSigAlg(sigAlg);
+		var signature = SamlIoUtil.buildEncodedSamlRedirectSignature(request, fileService.getAuthnRequestCredential(),
+				sigAlg, relayState, encodedRedirectMessage);
+		rpRequest.setSignature(signature);
+		sampleMap.put(fileName, rpRequest);
 	}
 
 	private String getAcsUrlForRequest(RequestAbstractType request) {
@@ -194,7 +190,8 @@ public class SamlMockMessageService {
 			return uri.toString();
 		}
 		catch (URISyntaxException ex) {
-			throw new IllegalArgumentException("URL is invalid", ex);
+			log.error("URL={} is invalid", url, ex);
+			throw new TechnicalException(String.format("URL=%s is invalid", url), ex);
 		}
 	}
 
@@ -206,10 +203,10 @@ public class SamlMockMessageService {
 	}
 
 	public Map<String, SamlMockCpResponse> getCpResponses(String acsUrl, Issuer samlRequestIssuer,
-			String requestId, String relayState, boolean keepSampleUrls) {
+			String requestId, String relayState, boolean keepSampleUrls, Class<? extends StatusResponseType> allowedResponses) {
 		var sampleFiles = fileService.getMockResponseNames();
 		var requestIssuer = getAuthnRequestIssuer(samlRequestIssuer, properties.getIssuer());
-		return getEncodedResponseMap(sampleFiles, requestId, acsUrl, relayState, requestIssuer, keepSampleUrls);
+		return getEncodedResponseMap(sampleFiles, requestId, acsUrl, relayState, requestIssuer, keepSampleUrls, allowedResponses);
 	}
 
 	private static String getAuthnRequestIssuer(Issuer issuer, String confIssuer) {
@@ -220,22 +217,31 @@ public class SamlMockMessageService {
 	}
 
 	private Map<String, SamlMockCpResponse> getEncodedResponseMap(List<String> fileNames, String authnRequestId,
-			String acsUrlFromInput, String relayState, String requestIssuer, boolean keepSampleUrls) {
+			String acsUrlFromInput, String relayState, String requestIssuer,
+			boolean keepSampleUrls, Class<? extends StatusResponseType> allowedResponses) {
 		Map<String, SamlMockCpResponse> sampleMap = new TreeMap<>();
 		fileNames.stream()
 				.forEach(fileName ->
 						addResponseFromFile(
-								authnRequestId, acsUrlFromInput, relayState, requestIssuer, keepSampleUrls, sampleMap, fileName)
+								authnRequestId, acsUrlFromInput, relayState, requestIssuer, keepSampleUrls, allowedResponses,
+								sampleMap, fileName)
 				);
 		return sampleMap;
 	}
 
+	@SuppressWarnings("java:S107") // internal method of mock, might split it to reduce parameter count
 	private void addResponseFromFile(String authnRequestId, String acsUrlFromInput, String relayState, String requestIssuer,
-			boolean keepSampleUrls, Map<String, SamlMockCpResponse> sampleMap, String fileName) {
+			boolean keepSampleUrls, Class<? extends StatusResponseType> allowedResponses,
+			Map<String, SamlMockCpResponse> sampleMap, String fileName) {
 		try {
 			// update response to be valid again
 			var data = fileService.getMockResponseFile(fileName);
 			StatusResponseType response = SamlIoUtil.unmarshallXmlFile(fileName, new ByteArrayInputStream(data));
+			if (!allowedResponses.isInstance(response)) {
+				log.debug("Ignoring response from file={} of class={} expected={}",
+						fileName, response.getClass().getSimpleName(), allowedResponses.getSimpleName());
+				return;
+			}
 			validateSAMLMockResponseSample(response, fileName);
 			response.setIssueInstant(Instant.now());
 			response.setInResponseTo(authnRequestId);
@@ -342,7 +348,7 @@ public class SamlMockMessageService {
 				properties.getDataEncryptionAlgorithm() != null && assertion != null) {
 			return EncryptionUtil.encryptAssertion(assertion, fileService.getEncryptionCredential(),
 					properties.getDataEncryptionAlgorithm(), properties.getKeyEncryptionAlgorithm(),
-					Encrypter.KeyPlacement.valueOf(properties.getKeyPlacement()), "mock:issuer");
+					Encrypter.KeyPlacement.valueOf(properties.getKeyPlacement()), "mock:issuer", properties.isEmitSki());
 		}
 
 		return null;
@@ -407,9 +413,10 @@ public class SamlMockMessageService {
 	}
 
 	// Mock should not check response validity as we want to be able to produce anything to send to XTB
-	private static void validateSAMLMockResponseSample(StatusResponseType response, String s) {
+	private static void validateSAMLMockResponseSample(StatusResponseType response, String sample) {
 		if (response == null) {
-			throw new TechnicalException(String.format("Response is null in file with name=%s", s));
+			log.error("Response is null in file with name={}", sample);
+			throw new TechnicalException(String.format("Response is null in file with name=%s", sample));
 		}
 	}
 
@@ -523,18 +530,26 @@ public class SamlMockMessageService {
 	public SamlMockMessage<StatusResponseType> decodeAndValidateResponse(HttpServletRequest request) {
 		var peer = buildArtifactPeer(false);
 		var messageContext = decodeSamlMessage(request, peer);
-		var samlResponse = (StatusResponseType) messageContext.getMessage();
-		validateResponse(messageContext, samlResponse);
-		var relayState = SAMLBindingSupport.getRelayState(messageContext);
-		return new SamlMockMessage<>(samlResponse, relayState);
+		if (messageContext.getMessage() instanceof StatusResponseType samlResponse) {
+			validateResponse(messageContext, samlResponse);
+			var relayState = SAMLBindingSupport.getRelayState(messageContext);
+			return new SamlMockMessage<>(samlResponse, relayState);
+		}
+		log.error("Invalid response type class={}", messageContext.getMessage().getClass().getName());
+		throw new RequestDeniedException(String.format("Invalid response type class=%s",
+				messageContext.getMessage().getClass().getName()));
 	}
 
 	public SamlMockMessage<RequestAbstractType> decodeRequest(HttpServletRequest request) {
 		var peer = buildArtifactPeer(true);
 		var messageContext = decodeSamlMessage(request, peer);
-		var samlRequest = (RequestAbstractType) messageContext.getMessage();
-		var relayState = SAMLBindingSupport.getRelayState(messageContext);
-		return new SamlMockMessage<>(samlRequest, relayState);
+		if (messageContext.getMessage() instanceof RequestAbstractType samlRequest) {
+			var relayState = SAMLBindingSupport.getRelayState(messageContext);
+			return new SamlMockMessage<>(samlRequest, relayState);
+		}
+		log.error("Invalid request type class={}", messageContext.getMessage().getClass().getName());
+		throw new RequestDeniedException(String.format("Invalid request type class=%s",
+				messageContext.getMessage().getClass().getName()));
 	}
 
 	public MessageContext decodeSamlMessage(HttpServletRequest request, ArtifactPeer peer) {
@@ -553,8 +568,12 @@ public class SamlMockMessageService {
 					peer, signatureParameters, SignatureValidationParameters.of(false, Collections.emptyList()),
 					Optional.empty());
 		}
+		if (request.getMethod().equals(HttpMethod.GET.name()) && OpenSamlUtil.isSamlRedirectRequest(request)) {
+			log.info("Decoding received SAML REDIRECT message");
+			return OpenSamlUtil.decodeSamlRedirectMessage(request);
+		}
 		else {
-			log.info("Decoding received SAML message");
+			log.info("Decoding received SAML POST message");
 			return OpenSamlUtil.decodeSamlPostMessage(request);
 		}
 	}
@@ -589,6 +608,7 @@ public class SamlMockMessageService {
 						   .metadataUrl(properties.getMetadataUrl())
 						   .artifactResolutionUrl(properties.getArpUrl())
 						   .peerRole(rpSide ? SPSSODescriptor.DEFAULT_ELEMENT_NAME : IDPSSODescriptor.DEFAULT_ELEMENT_NAME)
+						   .connectTimeout(Duration.ofSeconds(30))
 						   .build();
 	}
 
@@ -618,11 +638,17 @@ public class SamlMockMessageService {
 		log.info("Received SAML POST message of type={} for endpoint={} relayState={} issuer={}",
 				messageContext.getMessage().getClass().getName(), endpointUrl, relayState, issuer);
 		var arParams = buildArtifactResolutionParameters();
-		var context = OpenSamlUtil.createMessageContext((SAMLObject) messageContext.getMessage(), null, endpointUrl,
-				relayState);
-		OpenSamlUtil.initAndEncodeSamlArtifactMessage(response, context, issuer, velocityEngine,
-				arParams, artifactCacheService.getArtifactMap());
-		log.info("Returned SAML artifact message with artifactIssuer={} to sender", properties.getArtifactResolutionIssuer());
+		if (messageContext.getMessage() instanceof SAMLObject samlObject) {
+			var context = OpenSamlUtil.createMessageContext(samlObject, null, endpointUrl, relayState);
+			OpenSamlUtil.initAndEncodeSamlArtifactMessage(response, context, issuer, velocityEngine,
+					arParams, artifactCacheService.getArtifactMap());
+			log.info("Returned SAML artifact message with artifactIssuer={} to sender", properties.getArtifactResolutionIssuer());
+		}
+		else {
+			log.error("Invalid artifact message type class={}", messageContext.getMessage().getClass().getName());
+			throw new RequestDeniedException(String.format("Invalid message type class=%s",
+					messageContext.getMessage().getClass().getName()));
+		}
 	}
 
 
@@ -633,7 +659,8 @@ public class SamlMockMessageService {
 		if (messageContext.getMessage() instanceof StatusResponseType samlMessage) {
 			return samlMessage.getIssuer().getValue();
 		}
-		throw new RequestDeniedException(String.format("Invalid type class=%s",
+		log.error("Invalid message type class={}", messageContext.getMessage().getClass().getName());
+		throw new RequestDeniedException(String.format("Invalid message type class=%s",
 				messageContext.getMessage().getClass().getName()));
 	}
 

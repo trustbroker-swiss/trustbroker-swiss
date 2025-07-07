@@ -69,7 +69,7 @@ public class WsTrustEndpoint {
 
 			return marshaller.marshall(response);
 		}
-		catch (RequestDeniedException|TechnicalException e) {
+		catch (RequestDeniedException | TechnicalException e) {
 			throw e;
 		}
 		catch (Exception e) {

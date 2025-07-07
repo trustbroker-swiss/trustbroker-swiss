@@ -343,6 +343,7 @@ class QoaMappingUtilTest {
 				SamlTestBase.Qoa.SOFTWARE_PKI.getLevel());
 		globalMapping.put(SamlTestBase.Qoa.KERBEROS.getName(),
 				SamlTestBase.Qoa.KERBEROS.getLevel());
+		globalMapping.put("ur:qoa:negative", -2);
 		QualityOfAuthenticationConfig qoa = new QualityOfAuthenticationConfig();
 		qoa.setMapping(globalMapping);
 		qoa.setStrongestPossible("urn:qoa:strongest_possible");
@@ -395,6 +396,17 @@ class QoaMappingUtilTest {
 		assertDoesNotThrow(() ->
 				QoaMappingUtil.getMaxQoaOrder(unknownClasses, configQoa, globalMapping)
 		);
+
+		var negativeClassRef = AcClass.builder()
+				.order(-2)
+				.contextClass(classRef)
+				.build();
+		var negativeQoa = Qoa.builder()
+				.classes(List.of(negativeClassRef))
+				.enforce(true)
+				.build();
+		var configNegativeQoa = new QoaConfig(negativeQoa, "testId");
+		assertEquals(0, QoaMappingUtil.getMaxQoaOrder(List.of(classRef), configNegativeQoa, globalMapping));
 	}
 
 	@Test
@@ -434,19 +446,24 @@ class QoaMappingUtilTest {
 		List<AcClass> acClasses = new ArrayList<>();
 
 		acClasses.add(AcClass.builder().contextClass(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName()).build());
-		List<String> maxQoa1 = QoaMappingUtil.getMinQoa(acClasses, Collections.emptyList(), ISSUER, globalMapping);
-		assertEquals(1, maxQoa1.size());
-		assertEquals(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, maxQoa1.get(0));
+		List<String> minQQoa1 = QoaMappingUtil.getMinQoa(acClasses, Collections.emptyList(), ISSUER, globalMapping);
+		assertEquals(1, minQQoa1.size());
+		assertEquals(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, minQQoa1.get(0));
 
 		acClasses.add(AcClass.builder().contextClass(SamlTestBase.Qoa.KERBEROS.getName()).build());
-		List<String> maxQoa2 = QoaMappingUtil.getMinQoa(acClasses, Collections.emptyList(), ISSUER, globalMapping);
-		assertEquals(1, maxQoa2.size());
-		assertEquals(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, maxQoa2.get(0));
+		List<String> minQoa2 = QoaMappingUtil.getMinQoa(acClasses, Collections.emptyList(), ISSUER, globalMapping);
+		assertEquals(1, minQoa2.size());
+		assertEquals(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, minQoa2.get(0));
 
 		acClasses.add(AcClass.builder().contextClass("any").build());
-		List<String> maxQoa3 = QoaMappingUtil.getMinQoa(acClasses, Collections.emptyList(), ISSUER, globalMapping);
-		assertEquals(1, maxQoa3.size());
-		assertEquals(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, maxQoa3.get(0));
+		List<String> minQoa3 = QoaMappingUtil.getMinQoa(acClasses, Collections.emptyList(), ISSUER, globalMapping);
+		assertEquals(1, minQoa3.size());
+		assertEquals(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, minQoa3.get(0));
+
+		acClasses.add(AcClass.builder().contextClass("ur:qoa:negative").build());
+		List<String> minQQoa4 = QoaMappingUtil.getMinQoa(acClasses, Collections.emptyList(), ISSUER, globalMapping);
+		assertEquals(1, minQQoa4.size());
+		assertEquals(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, minQQoa4.get(0));
 	}
 
 
@@ -469,6 +486,11 @@ class QoaMappingUtilTest {
 		List<String> maxQoa3 = QoaMappingUtil.getMaxQoa(acClasses, Collections.emptyList(), ISSUER, globalMapping);
 		assertEquals(1, maxQoa3.size());
 		assertEquals(SamlContextClass.KERBEROS, maxQoa3.get(0));
+
+		acClasses.add(AcClass.builder().contextClass("ur:qoa:negative").build());
+		List<String> maxQoa4 = QoaMappingUtil.getMaxQoa(acClasses, Collections.emptyList(), ISSUER, globalMapping);
+		assertEquals(1, maxQoa4.size());
+		assertEquals(SamlContextClass.KERBEROS, maxQoa4.get(0));
 	}
 
 	@ParameterizedTest

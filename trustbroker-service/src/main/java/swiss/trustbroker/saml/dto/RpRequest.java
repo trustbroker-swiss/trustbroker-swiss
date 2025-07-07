@@ -16,7 +16,9 @@
 package swiss.trustbroker.saml.dto;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,7 +27,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 
 /**
@@ -68,6 +70,12 @@ public class RpRequest extends ResponseStatus {
 	private List<String> contextClasses = new ArrayList<>();
 
 	/**
+	 * Map to store internal processing attributes required during federation.
+	 */
+	@Builder.Default
+	private Map<String, String> context = new HashMap<>();
+
+	/**
 	 * AuthnRequest RequestedAuthnContext.comparisonType.
 	 *
 	 * @since 1.9.0
@@ -86,7 +94,7 @@ public class RpRequest extends ResponseStatus {
 	 * ClaimsProvider mappings for RelyingParty.
 	 */
 	@Builder.Default
-	private List<ClaimsProviderRelyingParty> claimsProviders = new ArrayList<>();
+	private List<ClaimsProvider> claimsProviders = new ArrayList<>();
 
 	/**
 	 * UI objects for the HRD screen.
@@ -98,7 +106,7 @@ public class RpRequest extends ResponseStatus {
 	 * @param id
 	 * @return ClaimsProvider with that ID or null
 	 */
-	public ClaimsProviderRelyingParty getClaimsProvider(String id) {
+	public ClaimsProvider getClaimsProvider(String id) {
 		return claimsProviders.stream().filter(cp -> cp.getId().equals(id)).findFirst().orElse(null);
 	}
 
@@ -134,7 +142,7 @@ public class RpRequest extends ResponseStatus {
 	 * @param id HRD: Remove a specific ClaimsProvider
 	 * @return removed ClaimsProvider
 	 */
-	public ClaimsProviderRelyingParty dropClaimsProvider(String id) {
+	public ClaimsProvider dropClaimsProvider(String id) {
 		var ret = getClaimsProvider(id);
 		if (ret != null) {
 			claimsProviders.remove(ret);
@@ -146,7 +154,7 @@ public class RpRequest extends ResponseStatus {
 	 * @param id HRD: Retain a specific one if present, to automatically dispatch
 	 * @return retained ClaimsProvider
 	 */
-	public ClaimsProviderRelyingParty retainClaimsProvider(String id) {
+	public ClaimsProvider retainClaimsProvider(String id) {
 		var ret = getClaimsProvider(id);
 		if (ret != null) {
 			claimsProviders.retainAll(List.of(ret));
@@ -193,4 +201,29 @@ public class RpRequest extends ResponseStatus {
 		}
 		return false;
 	}
+
+	/**
+	 * Add internal federation context required during federation.
+	 * @return replaced context value or null
+	 */
+	public String addContext(String name, String value) {
+		return context.put(name, value);
+	}
+
+	/**
+	 * Query internal federation context setup during federation.
+	 * @return context value or null if not found.
+	 */
+	public String getContext(String name) {
+		return context.get(name);
+	}
+
+	/**
+	 * Remove internal federation context required during federation.
+	 * @return removed context value or null.
+	 */
+	public String removeContext(String name) {
+		return context.remove(name);
+	}
+
 }

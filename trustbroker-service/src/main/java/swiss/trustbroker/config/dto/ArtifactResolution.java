@@ -35,7 +35,9 @@ import swiss.trustbroker.common.config.KeystoreProperties;
 public class ArtifactResolution {
 
 	/**
-	 *  XTB Artifact Resolution service URL.
+	 *  XTB Artifact Resolution service URL, included in the metadata.
+	 *  <br/>
+	 *  Note: Currently, the path that is requested on XTB needs to be <code>/api/v1/saml/arp</code>.
 	 */
 	private String serviceUrl;
 
@@ -53,7 +55,7 @@ public class ArtifactResolution {
 	private int artifactLifetimeSecs;
 
 	/**
-	 * Artifacts cache reap interval in seconds.
+	 * Artifact cache reap interval in seconds.
 	 */
 	private int artifactReapIntervalSecs;
 

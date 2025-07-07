@@ -19,12 +19,3 @@
 	text-align: left;
 }
 
-button.xtb-default.mat-accent {
-	position: relative;
-	float: right;
-}
-
-button.xtb-default:hover, button.xtb-default:focus {
-	background-color: $focus-background-color !important;
-	color: $focus-color !important;
-}

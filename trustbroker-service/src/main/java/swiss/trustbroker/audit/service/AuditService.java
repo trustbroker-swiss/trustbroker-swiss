@@ -57,8 +57,7 @@ public class AuditService {
 
 	public final MetricsService metricsService;
 
-
-	public void logInboundSamlFlow(AuditDto auditDto) {
+	public void logInboundFlow(AuditDto auditDto) {
 		for (var logger : loggers) {
 			var incomingMessage = buildRoutingMessage(logger, auditDto);
 			logger.log(auditDto.getEventType(), true, incomingMessage.build());

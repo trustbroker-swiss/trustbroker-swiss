@@ -41,11 +41,15 @@ public class OidcProperties {
 
 	/**
 	 * XTB OIDC perimeter URL.
+	 * <br/>
+	 * Note: Currently, the path that is requested on XTB needs to be <code>/login/saml2/sso</code>.
 	 */
 	private String perimeterUrl;
 
 	/**
-	 * XTB OIDC session termination endpoint.
+	 * XTB OIDC session termination endpoint, included in the metadata.
+	 * <br/>
+	 * Note: Currently, the path that is requested on XTB needs to be <code>/logout</code>.
 	 */
 	private String endSessionEndpoint;
 
@@ -134,6 +138,85 @@ public class OidcProperties {
 	private boolean logoutEnabled = true;
 
 	/**
+	 * Enable device authorization endpoint.
+	 * <br/>
+	 * Default: true
+	 * @since 1.10.0
+	 */
+	private boolean deviceAuthorizationEnabled = true;
+
+	/**
+	 * Enable TLS client certificate bound access tokens.
+	 * <br/>
+	 * Default: true
+	 * @since 1.10.0
+	 */
+	private boolean tlsClientCertificateBoundAccessTokens = true;
+
+	/**
+	 * Enabled token endpoint authentication methods.
+	 * <br/>
+	 * @since 1.10.0
+	 */
+	private List<String> tokenEndpointAuthMethods;
+
+	/**
+	 * Enabled introspection endpoint auth methods.
+	 * <br/>
+	 * @since 1.10.0
+	 */
+	private List<String> introspectionEndpointAuthMethods;
+
+	/**
+	 * Enabled revocation endpoint auth methods.
+	 * <br/>
+	 * @since 1.10.0
+	 */
+	private List<String> revocationEndpointAuthMethods;
+
+	/**
+	 * Enabled grant types.
+	 * <br/>
+	 * @since 1.10.0
+	 */
+	private List<String> grantTypes;
+
+	/**
+	 * Enabled response types.
+	 * <br/>
+	 * @since 1.10.0
+	 */
+	private List<String> responseTypes;
+
+	/**
+	 * Enabled subject types.
+	 * <br/>
+	 * @since 1.10.0
+	 */
+	private List<String> subjectTypes;
+
+	/**
+	 * Enabled scopes.
+	 * <br/>
+	 * @since 1.10.0
+	 */
+	private List<String> scopes;
+
+	/**
+	 * Enabled code challenge methods.
+	 * <br/>
+	 * @since 1.10.0
+	 */
+	private List<String> codeChallengeMethods;
+
+	/**
+	 * Enabled ID token signing algorithms methods.
+	 * <br/>
+	 * @since 1.10.0
+	 */
+	private List<String> idTokenSigningAlgorithms;
+
+	/**
 	 * Use opaque refresh token.
 	 * <br/>
 	 * Default: false (i.e. JWT token)
@@ -218,7 +301,7 @@ public class OidcProperties {
 	/**
 	 * 	If we have the same attribute from both original issuer and IDM, drop the original issuer one.
  	 */
-	private String[] dropDuplicatedAttributeFromOriginalIssuer;
+	private List<String> dropDuplicatedAttributeFromOriginalIssuer;
 
 	/**
 	 * Token in form encoded request body parameter allowed.
@@ -226,6 +309,13 @@ public class OidcProperties {
 	 * Default: true
 	 */
 	private boolean tokenInRequestBodyEnabled = true;
+
+	/**
+	 * Default keystore for direct connections to OIDC CPs.
+	 *
+	 * @since 1.10.0
+	 */
+	private KeystoreProperties keystore;
 
 	/**
 	 * Default truststore for direct connections to OIDC CPs.
@@ -240,4 +330,11 @@ public class OidcProperties {
 	 * @since 1.9.0
 	 */
 	private String syncSchedule;
+
+	/**
+	 * Cached CP metadata is only refreshed if cached earlier than this.
+	 *
+	 * @since 1.10.0
+	 */
+	private long minimumMetadataCacheTimeSecs = 60l;
 }

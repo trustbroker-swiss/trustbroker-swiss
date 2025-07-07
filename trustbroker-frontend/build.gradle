@@ -1,4 +1,3 @@
-
 plugins {
 	id 'base'
 	id 'com.github.node-gradle.node'
@@ -13,7 +12,7 @@ node {
 }
 
 task bootRun(dependsOn: ['npm_start'], group: 'Application',
-		description: 'Runs the frontend in node server for development (ng serve)')
+	description: 'Runs the frontend in node server for development (ng serve)')
 
 tasks.register('npmBuild', NpxTask) {
 	dependsOn 'npmInstall'
@@ -40,13 +39,13 @@ task npmClean(type: Delete) {
 }
 
 def mainSourcePaths = [
-		'src',
-		// If this list gets too hard to manage, we should simplify the build by checking changes only in `src`.
-		'package.json', 'package-lock.json',
-		'.browserslistrc',
-		'.angular.json',
-		'proxy.conf.json',
-		'tsconfig.json', 'tsconfig.app.json'
+	'src',
+	// If this list gets too hard to manage, we should simplify the build by checking changes only in `src`.
+	'package.json', 'package-lock.json',
+	'.browserslistrc',
+	'.angular.json',
+	'proxy.conf.json',
+	'tsconfig.json', 'tsconfig.app.json'
 ]
 
 tasks.register('npmRunBuild', NpmTask) {
@@ -59,7 +58,7 @@ tasks.register('npmRunBuild', NpmTask) {
 	outputs.dir "dist"
 }
 
-tasks.register('staticResourceArchive', Zip){
+tasks.register('staticResourceArchive', Zip) {
 	dependsOn 'npmRunBuild'
 	setDestinationDirectory(file("${projectDir}/build/distributions"))
 	from tasks.named('npmRunBuild')

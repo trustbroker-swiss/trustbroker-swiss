@@ -29,6 +29,11 @@ import swiss.trustbroker.common.config.RegexNameValue;
 
 /**
  * Access request configuration.
+ * <br>
+ * Potentially breaking changes:
+ * <ul>
+ *     <li>With 1.10.0 value of attributes changed to Object to allow nested structures.</li>
+ * </ul>
  *
  * @see swiss.trustbroker.api.accessrequest.service.AccessRequestService
  * @see swiss.trustbroker.federation.xmlconfig.AccessRequest
@@ -170,6 +175,11 @@ public class AccessRequestConfig {
 	/**
 	 * Custom attributes that might be needed by the implementation.
  	 */
-	private Map<String, String> attributes;
+	private Map<String, Object> attributes;
+
+	/**
+	 * Special attributes that might be marked as coming from the original issuer i.e. IDP
+	 */
+	private List<String> originalAttributes;
 
 }

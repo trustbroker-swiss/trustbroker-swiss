@@ -60,6 +60,7 @@ class FragmentUtilTest {
 			"https://host?error=a&error_uri=c&code=some, https://host?code=some", // discard
 			"https://host?error=a&error_uri=c#code=some, https://host#code=some", // discard
 			"https://host#code=some&error=a&error_uri=c, https://host#code=some", // discard
+			"https://host#code=some&error=a&error_urI=c, https://host#code=some", // discard - case insensitive
 			"https://host#error=a&error_uri=c&code=some, https://host#code=some" // discard
 	})
 	void discardAmbiguousErrorsInRedirect(String inputLocation, String expectedLocation) {
@@ -74,6 +75,7 @@ class FragmentUtilTest {
 			"https://host?error=a&error_uri=c, https://host", // discard
 			"https://host?error=a&error=b&error_uri=c&error_uri=c, https://host", // discard
 			"https://host?error=a&error=b&error_uri=c&app-param=some, https://host?app-param=some", // discard
+			"https://host?error=a&error=b&Error_Uri=c&app-param=some, https://host?app-param=some", // discard - case insensitive
 			"https://host?error=a&error=b&error_uri=c&error_uri=c&error_description=d&error_description=e, https://host"
 	})
 	void discardAAllErrorsInRedirect(String inputLocation, String expectedLocation) {
@@ -85,6 +87,8 @@ class FragmentUtilTest {
 			"query, https://host?code=some&state=s&error=a&error_uri=c, https://host?code=some&state=s",
 			"form_post, https://host?code=some&state=s&error=a&error_uri=c, https://host?code=some&state=s",
 			"fragment, https://host?code=some&state=s&error=a&error_uri=c, https://host#code=some&state=s",
+			"fragment, https://host?code=some&state=s&eRRor=a&error_uri=c, https://host#code=some&state=s", // case insensitive
+			"fragment, https://host?code=some&state=s&error=a&eRRor_uri=c, https://host#code=some&state=s", // case insensitive
 			"any, https://host?error=a&error_uri=c&error=a&error_uri=c&code=some&state=s, https://host?code=some&state=s",
 	})
 	void checkAndFixRedirectUri(String mode, String inputLocation, String expectedLocation) {

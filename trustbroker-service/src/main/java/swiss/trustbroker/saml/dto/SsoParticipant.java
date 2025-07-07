@@ -32,8 +32,6 @@ public class SsoParticipant implements Serializable {
 
 	private String cpId;
 
-	private String button;
-
 	private String image;
 
 	private String shortcut;

@@ -114,6 +114,19 @@ public class DefinitionUtil {
 		return CollectionUtil.getList(entry);
 	}
 
+	public static <K extends AttributeName, T> Optional<Map.Entry<K, T>> findByNameAndNamespace(
+			String name, String namespaceUri, String source, Map<K, T> definitions) {
+		if (namespaceUri == null) {
+			return findByNameOrNamespace(name, null, definitions);
+		}
+		var ret = definitions.entrySet()
+				.stream()
+				.filter(e -> e.getKey().equalsByName(name) && e.getKey().equalsByNamespace(namespaceUri))
+				.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+		checkAmbiguities(ret, name, source);
+		return ret.isEmpty() ? Optional.empty() : Optional.of(ret.entrySet().iterator().next());
+	}
+
 	// get namespace part after last slash or null if there is no slash
 	public static String truncateNamespace(String namespaceUri) {
 		var name = StringUtils.substringAfterLast(namespaceUri, '/');
@@ -124,32 +137,33 @@ public class DefinitionUtil {
 		return null;
 	}
 
-	public static void mapCpAttributeList(Map<AttributeName, List<String>> attributes,
-			Map<Definition, List<String>> definitions) {
+	public static void mapAttributeList(Map<AttributeName, List<String>> attributes,
+										Map<Definition, List<String>> definitions) {
+		mapAttributeList(attributes, definitions, false);
+	}
+
+	public static void mapAttributeListIgnoringSource(Map<AttributeName, List<String>> attributes,
+													  Map<Definition, List<String>> definitions) {
+		mapAttributeList(attributes, definitions, true);
+	}
+
+	private static void mapAttributeList(Map<AttributeName, List<String>> attributes, Map<Definition, List<String>> definitions,
+										boolean ignoreSource) {
 		if (attributes == null) {
 			return;
 		}
 		for (var attribute : attributes.entrySet()) {
 			var attributeDefinition = attribute.getKey();
-			var key = mapCpAttributeName(attributeDefinition.getName(), attributeDefinition.getNamespaceUri(),
-					attributeDefinition.getSource());
-			definitions.put(key, attribute.getValue());
-		}
-	}
-
-	public static void mapAttributeList(Map<AttributeName, List<String>> attributes, Map<Definition, List<String>> definitions) {
-		if (attributes == null) {
-			return;
-		}
-		for (var attribute : attributes.entrySet()) {
-			var key = mapCpAttributeName(attribute.getKey().getName(), attribute.getKey().getNamespaceUri(), null);
+			var mappers = attributeDefinition instanceof Definition definition ? definition.getMappers() : null;
+			var source = ignoreSource ? null : attributeDefinition.getSource();
+			var key = mapCpAttributeName(attributeDefinition.getName(), attributeDefinition.getNamespaceUri(), source, mappers);
 			if (key != null) {
 				definitions.put(key, attribute.getValue());
 			}
 		}
 	}
 
-	private static Definition mapCpAttributeName(String name, String fqName, String source) {
+	private static Definition mapCpAttributeName(String name, String fqName, String source, String mappers) {
 		if (name == null && fqName == null) {
 			return null;
 		}
@@ -157,6 +171,7 @@ public class DefinitionUtil {
 						 .name(name)
 						 .namespaceUri(fqName)
 						 .source(source)
+				         .mappers(mappers)
 						 .build();
 	}
 
@@ -336,4 +351,13 @@ public class DefinitionUtil {
 		}
 	}
 
+	public static Definition getOrCreateDefinition(String name, String namespaceUri, String source, Map<Definition, List<String>> attributes) {
+		var ret = findByNameAndNamespace(name, namespaceUri, null, attributes);
+
+		if (ret.isPresent()) {
+			var definition = ret.get().getKey();
+			return definition.toBuilder().source(source).build();
+		}
+		return Definition.ofNameNamespaceUriAndSource(name, namespaceUri, source);
+	}
 }

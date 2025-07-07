@@ -14,7 +14,7 @@
  */
 
 import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute, Params, Router } from '@angular/router';
+import { ActivatedRoute, Params } from '@angular/router';
 
 import { environment } from '../../environments/environment';
 
@@ -31,10 +31,7 @@ export class AccessRequestComponent implements OnInit {
 	private _showAbortButton: boolean;
 	private _showLoginButton: boolean;
 
-	constructor(
-		private readonly route: ActivatedRoute,
-		private readonly router: Router
-	) {}
+	constructor(private readonly route: ActivatedRoute) {}
 
 	get showContinueButton(): boolean {
 		return this._showContinueButton;
@@ -54,8 +51,8 @@ export class AccessRequestComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.route.params.subscribe((params: Params) => {
-			this.sessionId = params.sessionId;
-			this._state = params.state;
+			this.sessionId = params['sessionId'];
+			this._state = params['state'];
 			this._showContinueButton = this._state === 'initiate';
 			this._showAbortButton = this._state === 'initiate' || this._state === 'abort';
 			this._showLoginButton = this._state === 'confirm';

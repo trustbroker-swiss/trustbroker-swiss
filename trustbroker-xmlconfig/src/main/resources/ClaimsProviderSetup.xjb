@@ -6,15 +6,15 @@
           version="3.0">
     <bindings schemaLocation="ClaimsProviderSetup.xsd" version="1.0">
         <globalBindings>
-          <xjc:simple />
+            <xjc:simple />
         </globalBindings>
         <schemaBindings>
-            <package name="swiss.trustbroker.homerealmdiscovery.dto"/>
+            <package name="swiss.trustbroker.homerealmdiscovery.dto" />
         </schemaBindings>
         <!-- rename the value element -->
         <bindings node="//xs:complexType[@name='homeName']">
             <bindings node=".//xs:attribute[@name='value']">
-                <property name="attrValue"/>
+                <property name="attrValue" />
             </bindings>
         </bindings>
     </bindings>

@@ -59,8 +59,8 @@ public class IdmResult {
 	 * <br/>
 	 * Currently this data is passed, to the <code>IdmProvisioningService</code> implementations.
 	 *
-	 * @since 1.9.0
 	 * @see IdmProvisioningRequest#getAdditionalData()
+	 * @since 1.9.0
 	 */
 	@Builder.Default
 	private Map<Object, Object> additionalData = new HashMap<>();

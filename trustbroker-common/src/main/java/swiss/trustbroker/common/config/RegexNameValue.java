@@ -26,6 +26,7 @@ import lombok.ToString;
 /**
  * Combination of regular expression, an optional name of an item to match against that regex, and a value to use if matching.
  */
+@ToString // required to ToString.Exclude
 @Data
 @Builder
 public class RegexNameValue {

@@ -117,6 +117,8 @@ public class StateData implements Serializable, SessionState {
 
 	private String hrdHint;
 
+	private Timestamp expirationTimestamp; // lifetime as seen by reaper
+
 	@Builder.Default
 	private Map<String, String> rpContext = new HashMap<>();
 
@@ -174,6 +176,14 @@ public class StateData implements Serializable, SessionState {
 	}
 
 	@JsonIgnore
+	public void reInit() {
+		lifecycle.setLifecycleState(LifecycleState.INIT);
+		if (spStateData != null) {
+			spStateData.reInit();
+		}
+	}
+
+	@JsonIgnore
 	public boolean isOverdueAt(Instant deadline) {
 		return lifecycle.isOverdueAt(Timestamp.from(deadline));
 	}
@@ -225,6 +235,11 @@ public class StateData implements Serializable, SessionState {
 			accessRequest = new AccessRequestSessionState();
 		}
 		return accessRequest;
+	}
+
+	@JsonIgnore
+	public boolean forceAuthn() {
+		return Boolean.TRUE.equals(forceAuthn);
 	}
 
 }

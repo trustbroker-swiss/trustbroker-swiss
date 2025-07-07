@@ -18,13 +18,15 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { RouterTestingModule } from '@angular/router/testing';
 import { TranslateLoader, TranslateModule } from '@ngx-translate/core';
 import { of } from 'rxjs';
-import { anything, mock, when } from 'ts-mockito';
+import { mock, when } from 'ts-mockito';
 
 import { TranslationService } from '../app.module';
 import { HrdCardsComponent } from './hrd-cards.component';
 import { ApiService } from '../services/api.service';
 import { SafeMarkupPipe } from '../pipes/safe-markup.pipe';
 import { ComponentRef } from '@angular/core';
+import { LanguageService } from '../services/language.service';
+import { ThemeService } from '../services/theme-service';
 
 describe('HrdCardsComponent', () => {
 	let component: HrdCardsComponent;
@@ -52,9 +54,15 @@ describe('HrdCardsComponent', () => {
 	beforeEach(() => {
 		// mock services
 		mockApiService = mock(ApiService);
-		when(mockApiService.getIdpObjects(anything(), anything())).thenReturn(of({}));
+		when(mockApiService.getConfiguration()).thenReturn(of());
+		const mockLanguageService = mock(LanguageService);
+		const mockThemeService = mock(ThemeService);
 		TestBed.configureTestingModule({
-			providers: [{ provide: ApiService, useValue: mockApiService }]
+			providers: [
+				{ provide: ApiService, useValue: mockApiService },
+				{ provide: LanguageService, useValue: mockLanguageService },
+				{ provide: ThemeService, useValue: mockThemeService }
+			]
 		});
 
 		fixture = TestBed.createComponent(HrdCardsComponent);

@@ -62,13 +62,14 @@ import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.Flow;
 import swiss.trustbroker.federation.xmlconfig.FlowPolicies;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.dto.ProfileRequest;
 import swiss.trustbroker.homerealmdiscovery.dto.SupportInfo;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.homerealmdiscovery.service.WebResourceProvider;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.DeviceInfoReq;
 import swiss.trustbroker.saml.dto.RpRequest;
@@ -143,6 +144,9 @@ class HrdControllerTest {
 	@MockitoBean
 	private SamlOutputService samlOutputService;
 
+	@MockitoBean
+	private WebResourceProvider resourceProvider;
+
 	@Autowired
 	private WebApplicationContext webApplicationContext;
 
@@ -174,7 +178,7 @@ class HrdControllerTest {
 
 	@Test
 	void handleCheckDeviceInfoNoSsoSingleCp() throws Exception {
-		var cpRp = ClaimsProviderRelyingParty.builder().build();
+		var cpRp = ClaimsProvider.builder().build();
 		var stateDataByAuthnReq = buildStateByAuthnReq();
 		handleCheckDeviceInfo(List.of(cpRp), Optional.empty(), stateDataByAuthnReq, false, null, null);
 		verify(stateCacheService).save(stateDataByAuthnReq, HrdController.class.getSimpleName());
@@ -183,8 +187,8 @@ class HrdControllerTest {
 
 	@Test
 	void handleCheckDeviceInfoNoSsoMultipleCp() throws Exception {
-		var cpRp = ClaimsProviderRelyingParty.builder().build();
-		// just more than one ClaimsProviderRelyingParty
+		var cpRp = ClaimsProvider.builder().build();
+		// just more than one ClaimsProvider
 		var stateDataByAuthnReq = buildStateByAuthnReq();
 		handleCheckDeviceInfo(List.of(cpRp, cpRp), Optional.empty(), stateDataByAuthnReq, false, null, null);
 		verify(stateCacheService, never()).save(stateDataByAuthnReq, "Test");
@@ -192,7 +196,7 @@ class HrdControllerTest {
 
 	@Test
 	void handleCheckDeviceInfoInvalidSsoStateSingleCp() throws Exception {
-		var cpRp = ClaimsProviderRelyingParty.builder().build();
+		var cpRp = ClaimsProvider.builder().build();
 		var stateDataByAuthnReq = buildStateByAuthnReq();
 		var ssoStateData = buildSsoState();
 		handleCheckDeviceInfo(List.of(cpRp), Optional.of(ssoStateData), stateDataByAuthnReq, false, null, null);
@@ -204,7 +208,7 @@ class HrdControllerTest {
 
 	@Test
 	void handleCheckDeviceInfoValidSsoStateSingleNoAccessRequestNoProfile() throws Exception {
-		var cpRp = ClaimsProviderRelyingParty.builder().build();
+		var cpRp = ClaimsProvider.builder().build();
 		var stateDataByAuthnReq = buildStateByAuthnReq();
 		var ssoStateData = buildSsoState();
 		handleCheckDeviceInfo(List.of(cpRp), Optional.of(ssoStateData), stateDataByAuthnReq, true, null, null);
@@ -217,7 +221,7 @@ class HrdControllerTest {
 	@Test
 	void handleCheckDeviceInfoValidSsoStateSingleAccessRequest() throws Exception {
 		var arRedirect = apiSupport.getAccessRequestInitiateApi(AUTHN_REQUEST_ID);
-		var cpRp = ClaimsProviderRelyingParty.builder().build();
+		var cpRp = ClaimsProvider.builder().build();
 		ClaimsParty claimsParty = buildCp();
 		var ssoStateData = buildSsoState();
 		var stateDataByAuthnReq = buildStateByAuthnReq();
@@ -231,7 +235,7 @@ class HrdControllerTest {
 	@Test
 	void handleCheckDeviceInfoValidSsoStateSingleProfileSelection() throws Exception {
 		var profileRedirect = apiSupport.getProfileSelectionUrl(SSO_SESSION_ID);
-		var cpRp = ClaimsProviderRelyingParty.builder().build();
+		var cpRp = ClaimsProvider.builder().build();
 		var ssoStateData = buildSsoState();
 		var stateDataByAuthnReq = buildStateByAuthnReq();
 		handleCheckDeviceInfo(List.of(cpRp), Optional.of(ssoStateData), stateDataByAuthnReq, true, null,
@@ -243,15 +247,15 @@ class HrdControllerTest {
 	}
 
 
-	private void handleCheckDeviceInfo(List<ClaimsProviderRelyingParty> cpRpList, Optional<StateData> ssoStateData,
-			StateData stateDataByAuthnReq, boolean ssoStateValid, String accessRequestRedirect, String profileSelectionRedirect)
+	private void handleCheckDeviceInfo(List<ClaimsProvider> cpRpList, Optional<StateData> ssoStateData,
+                                       StateData stateDataByAuthnReq, boolean ssoStateValid, String accessRequestRedirect, String profileSelectionRedirect)
 			throws Exception {
 		var rp = buildRp();
 		var cp = buildCp();
 		mockLookups(rp, cp, ssoStateData, stateDataByAuthnReq, ssoStateValid);
 		var cookies = buildCookies();
 		doReturn(ssoStateData).when(ssoService).findValidStateFromCookies(rp, cp, cookies);
-		doReturn(Optional.of(stateDataByAuthnReq)).when(stateCacheService).findBySpId(AUTHN_REQUEST_ID,
+		doReturn(Optional.of(stateDataByAuthnReq)).when(stateCacheService).findBySpIdResilient(AUTHN_REQUEST_ID,
 				HrdController.class.getSimpleName());
 		if (ssoStateData.isPresent()) {
 			doReturn(accessRequestRedirect).when(relyingPartyService).performAccessRequestWithDataRefreshIfRequired(

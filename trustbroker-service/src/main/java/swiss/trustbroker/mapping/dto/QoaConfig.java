@@ -23,4 +23,8 @@ public record QoaConfig(Qoa config, String issuerId) {
 		return config != null;
 	}
 
+	public boolean isReplaceInbound() {
+		return config != null && config.replaceInboundQoas();
+	}
+
 }

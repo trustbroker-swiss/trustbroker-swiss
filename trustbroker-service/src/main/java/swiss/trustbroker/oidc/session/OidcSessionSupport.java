@@ -35,7 +35,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.oauth2.core.endpoint.OAuth2ParameterNames;
 import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticatedPrincipal;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.api.sessioncache.dto.AttributeName;
 import swiss.trustbroker.common.dto.CookieParameters;
@@ -59,18 +58,6 @@ import swiss.trustbroker.util.WebSupport;
 @Slf4j
 public class OidcSessionSupport {
 
-	// Spring attaches our SAML principal to the HttpSession and SessionRegistry (the correct abstraction) to deal with it
-	// is too high up in the software stack, as we also need to replicate HttpSession ro oder service instances/pods.
-	static final String SPRING_SECURITY_CONTEXT = HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY;
-
-	// Spring-sec and spring-auth use a (package) private in HttpSessionRequestCache and WebSessionServerRequestCache.
-	// So we cannot make this compile-time save, but it's used for exception improvements only anyway.
-	static final String SPRING_SECURITY_SAVED_REQUEST = "SPRING_SECURITY_SAVED_REQUEST";
-
-	// Just for debugging purposes we want to know when spring is processing the SAML response on OIDC side
-	static final String SAML2_AUTHN_REQUEST = "org.springframework.security.saml2.provider.service.web."
-			+ "HttpSessionSaml2AuthenticationRequestRepository.SAML2_AUTHN_REQUEST";
-
 	// Cookie used by tomcat/spring-sec to track HTTP sessions (for single client support ok)
 	// See also application.yml declaring this one to switch from JSESSIONID default.
 	private static final String CONTAINER_SESSION_COOKIE_NAME = "BSESSION";
@@ -86,6 +73,9 @@ public class OidcSessionSupport {
 
 	// we write our ID in the session to cross-check it for established OIDC clients
 	private static final String OIDC_SESSION_SESSION_ID = "OIDC_SESSION_SESSION_ID";
+
+	// use as a primary source of error redirecting informing failing RPs
+	private static final String OIDC_SESSION_REDIRECT_URI = "OIDC_SESSION_REDIRECT_URI";
 
 	// remember SSO session ID, so we can find our way back
 	private static final String SAML_SSO_SESSION_ID = "SAML_SSO_SESSION_ID";
@@ -349,6 +339,7 @@ public class OidcSessionSupport {
 		return createOidcCookie(clientId, name, cookieValue, false, request, relyingPartyDefinitions, trustBrokerProperties);
 	}
 
+	// Caller must convert the internal value sameSite=Dynamic if used (currently only used by tests).
 	public static Cookie createOidcClientCookie(String clientId, String sessionId, int validSec, boolean secure,
 			String sameSite) {
 		var name = getClientIdRelatedCookieName(clientId);
@@ -405,7 +396,7 @@ public class OidcSessionSupport {
 	}
 
 	private static String getSsoSessionCookieName(String clientId) {
-		return OidcSessionSupport.OIDC_SSO_SESSION_COOKIE_NAME_PREFIX + clientId;
+		return OIDC_SSO_SESSION_COOKIE_NAME_PREFIX + clientId;
 	}
 
 	private static OidcClient verifyNormalizedClientId(String normalizedClientId,
@@ -424,6 +415,14 @@ public class OidcSessionSupport {
 			redirectUri = StringUtil.clean(request.getParameter(OAuth2ParameterNames.REDIRECT_URI));
 		}
 		return redirectUri;
+	}
+
+	public static void setRedirectUri(HttpSession session, String redirectUri) {
+		session.setAttribute(OIDC_SESSION_REDIRECT_URI, redirectUri);
+	}
+
+	public static String getInitialRedirectUri(HttpSession session) {
+		return session != null ? (String)session.getAttribute(OIDC_SESSION_REDIRECT_URI) : null;
 	}
 
 	// Use redirect parameters and HTTP headers to match a single client
@@ -463,20 +462,24 @@ public class OidcSessionSupport {
 		return null;
 	}
 
-	private static String getAttributeFromPrincipal(Saml2AuthenticatedPrincipal principal, AttributeName attributeName) {
+	private static String getAttributeFromPrincipal(Saml2AuthenticatedPrincipal principal,
+													AttributeName attributeName,
+													String clientId) {
 		var attrs = principal.getAttribute(attributeName.getNamespaceUri());
 		if (CollectionUtils.isEmpty(attrs)) {
 			attrs = principal.getAttribute(attributeName.getName());
 		}
 		if (CollectionUtils.isEmpty(attrs)) {
-			log.error("SAML/OIDC session was discarded due to expired session for userPrincipal={}", principal.getName());
+			log.debug("No SSO join due to missing SAML attribute={} for clientId={} userPrincipal={}."
+					+ " HINT: Claim not configured (check ClaimsSelection if you want full /app/sso and GLO support)",
+					attributeName.getNamespaceUri(), clientId, principal.getName());
 			return null;
 		}
 		return String.valueOf(attrs.get(0));
 	}
 
-	static String getSsoSessionIdFromPrincipal(Saml2AuthenticatedPrincipal principal) {
-		return getAttributeFromPrincipal(principal, CoreAttributeName.SSO_SESSION_ID);
+	static String getSsoSessionIdFromPrincipal(Saml2AuthenticatedPrincipal principal, String clientId) {
+		return getAttributeFromPrincipal(principal, CoreAttributeName.SSO_SESSION_ID, clientId);
 	}
 
 	public static StateData getStateData() {
@@ -543,6 +546,16 @@ public class OidcSessionSupport {
 		}
 	}
 
+	// make sure federation session tracking (OIDC session cookie) survives redirect from OIDC to SAML and back
+	public static void checkSessionOnFederationRedirect(String path) {
+		if (ApiSupport.isSpringFederationPath(path) && HttpExchangeSupport.getRunningHttpSession() == null) {
+			throw new TechnicalException(String.format(
+					"Asserting OIDC session cookie on federation redirect missing on path=%s."
+					+ " HINT: Check perimeterUrl and sessionCookieSameSite configurations",
+					path));
+		}
+	}
+
 	public static void setCurrentValuesFromExchange(
 			TomcatSession session,
 			String clientId,
@@ -555,15 +568,24 @@ public class OidcSessionSupport {
 		session.setAttributeInternal(OIDC_SESSION_CLIENT_ID, clientId);
 		session.setAttributeInternal(OIDC_SESSION_SESSION_ID, session.getId());
 
+		// error handling
+		var currentRequest = HttpExchangeSupport.getRunningHttpRequest();
+		if (currentRequest != null) {
+			var redirectUri = getRedirectUri(currentRequest);
+			if (redirectUri != null) {
+				session.setAttributeInternal(OIDC_SESSION_REDIRECT_URI, redirectUri);
+			}
+		}
+
 		// just tracking info (who and if SSO)
 		if (ssoSessionId != null) {
-			session.setAttributeInternal(OidcSessionSupport.SAML_SSO_SESSION_ID, ssoSessionId);
+			session.setAttributeInternal(SAML_SSO_SESSION_ID, ssoSessionId);
 		}
 
 		// login done we have a principal
 		if (principal != null) {
 			// leave a trace of the subject on HTTP and XTB session (DEBUG only)
-			session.setAttributeInternal(OidcSessionSupport.SPRING_PRINCIPAL_NAME, principal.getName());
+			session.setAttributeInternal(SPRING_PRINCIPAL_NAME, principal.getName());
 			session.setPrincipal(new SessionPrincipal(principal.getName()));
 			session.getStateData().setSubjectNameId(principal.getName());
 		}
@@ -598,7 +620,7 @@ public class OidcSessionSupport {
 		else {
 			log.debug("Refresh OIDC authentication for clientId={} oidcSessionId={} conversationId={}"
 							+ " trackingCookie={} on host={} requestUrl={} cookieValidSec={} cookieSecure={}",
-					clientId, session.getId(), oidcSessionCookie.getName(), host, req.getRequestURL(), conversationId,
+					clientId, session.getId(), conversationId, oidcSessionCookie.getName(), host, req.getRequestURL(),
 					oidcSessionCookie.getMaxAge(), oidcSessionCookie.getSecure());
 		}
 	}
@@ -615,8 +637,7 @@ public class OidcSessionSupport {
 			TrustBrokerProperties trustBrokerProperties,
 			StateCacheService stateCacheService, SsoService ssoService) {
 		var securityContext = (SecurityContext) context;
-		var saml2AuthenticatedPrincipal =
-				OidcSessionSupport.getSamlPrincipalFromAuthentication(securityContext.getAuthentication(), null);
+		var saml2AuthenticatedPrincipal = getSamlPrincipalFromAuthentication(securityContext.getAuthentication(), null);
 		if (saml2AuthenticatedPrincipal == null) {
 			log.error("Unexpected call to setDerivedValuesFromAuthentication having authentication={} without a SAMl principal",
 					securityContext.getAuthentication());
@@ -625,7 +646,7 @@ public class OidcSessionSupport {
 
 		// leave some traces of the SAML side in the session
 		var clientId = saml2AuthenticatedPrincipal.getRelyingPartyRegistrationId();
-		var ssoSessionId = OidcSessionSupport.getSsoSessionIdFromPrincipal(saml2AuthenticatedPrincipal);
+		var ssoSessionId = getSsoSessionIdFromPrincipal(saml2AuthenticatedPrincipal, clientId);
 
 		// track in session and on client
 		setCurrentValuesFromExchange(session, clientId,
@@ -638,7 +659,7 @@ public class OidcSessionSupport {
 
 		// finally OIDC client as a participant on the SAML/SSO side
 		// resilient fetch because we could have DB commit delays
-		var ssoSession = stateCacheService.findSessionBySsoSessionIdResilient(ssoSessionId, OidcSessionSupport.class.getName());
+		var ssoSession = stateCacheService.findBySsoSessionIdResilient(ssoSessionId, OidcSessionSupport.class.getName());
 		ssoSession.ifPresent(state -> joinSsoSessionAsParticipant(stateCacheService, ssoService, state,
 				saml2AuthenticatedPrincipal, session.getId()));
 	}
@@ -669,8 +690,7 @@ public class OidcSessionSupport {
 			return;
 		}
 		var securityContext = (SecurityContext) context;
-		var saml2AuthenticatedPrincipal =
-				OidcSessionSupport.getSamlPrincipalFromAuthentication(securityContext.getAuthentication(), null);
+		var saml2AuthenticatedPrincipal = getSamlPrincipalFromAuthentication(securityContext.getAuthentication(), null);
 		if (saml2AuthenticatedPrincipal != null) {
 			var clientId = saml2AuthenticatedPrincipal.getRelyingPartyRegistrationId();
 			clearDerivedValuesFromAuthentication(clientId, session.getId(), saml2AuthenticatedPrincipal.getName(),
@@ -682,12 +702,11 @@ public class OidcSessionSupport {
 		if (tomcatSession == null) {
 			return null;
 		}
-		var context = tomcatSession.getAttribute(SPRING_SECURITY_CONTEXT);
-		if (context == null) {
+		var securityContext = tomcatSession.getSecurityContext();
+		if (securityContext == null) {
 			return null;
 		}
-		var securityContext = (SecurityContext) context;
- 		return OidcSessionSupport.getSamlPrincipalFromAuthentication(securityContext.getAuthentication(), null);
+ 		return getSamlPrincipalFromAuthentication(securityContext.getAuthentication(), null);
 	}
 
 	// SSOService creates a mapping session for the StateData.ssoSessionId on establishing an SSO session.
@@ -709,14 +728,22 @@ public class OidcSessionSupport {
 		log.trace("Updated ssoSessionId={} with oidcSessionId={}", stateData.getId(), oidcSessionId);
 
 		// Adding OIDC application clients as session participant is a nice to have feature
-		var rpId = principal.getRelyingPartyRegistrationId();
-		var cpId = getAttributeFromPrincipal(principal, CoreAttributeName.HOME_REALM);
+		var clientId = principal.getRelyingPartyRegistrationId();
+		var cpId = getAttributeFromPrincipal(principal, CoreAttributeName.HOME_REALM, clientId);
+		if (cpId == null) {
+			log.info("Ignore OIDC participant to join SSO session={}: participant={} (no {})",
+					stateData.getId(), clientId, CoreAttributeName.HOME_REALM.getName());
+			return;
+		}
+
+		// join
 		var participant = SsoSessionParticipant.builder()
-											   .oidcClientId(rpId)
-											   .cpIssuerId(cpId)
-											   .assertionConsumerServiceUrl(stateData.getRpReferer())
-											   .oidcSessionId(oidcSessionId)
-											   .build();
+				.rpIssuerId(null) // OIDC clients are not tracked via RelyingParty.id
+				.oidcClientId(clientId)
+				.cpIssuerId(cpId)
+				.assertionConsumerServiceUrl(stateData.getRpReferer())
+				.oidcSessionId(oidcSessionId)
+				.build();
 		stateData.addSsoParticipant(participant);
 		log.debug("Added OIDC participant to SSO session={}: participant={}", stateData.getId(), participant);
 
@@ -724,8 +751,8 @@ public class OidcSessionSupport {
 
 		// save
 		stateCacheService.save(stateData, OidcSessionSupport.class.getSimpleName());
-		log.info("Updated sessionId={} with oidcSessionId={} userPrincipal=\"{}\" sessionIndexes={} rpId={} cpId={}",
-				stateData.getId(), oidcSessionId, principal.getName(), principal.getSessionIndexes(), rpId, cpId);
+		log.info("Updated sessionId={} with oidcSessionId={} userPrincipal=\"{}\" sessionIndexes={} clientId={} cpIssuer={}",
+				stateData.getId(), oidcSessionId, principal.getName(), principal.getSessionIndexes(), clientId, cpId);
 	}
 
 	private static void addSsoCookie(SsoService ssoService, StateData stateData) {
@@ -749,17 +776,17 @@ public class OidcSessionSupport {
 				.toList();
 		if (matchingStates.size() == 1) {
 			stateData = matchingStates.get(0);
-			log.debug("Found stateId={} from SSO cookies for rpIssuerId={} oidcClientId={}",
+			log.debug("Found stateId={} from SSO cookies for rpIssuer={} clientId={}",
 					stateData.getId(), relyingParty.getId(), oidcClientId);
 		}
 		else if (matchingStates.isEmpty()) {
-			log.debug("Found no states from SSO cookies for rpIssuerId={} oidcClientId={}", relyingParty.getId(), oidcClientId);
+			log.debug("Found no states from SSO cookies for rpIssuer={} clientId={}", relyingParty.getId(), oidcClientId);
 		}
 		else if (log.isInfoEnabled()) {
 			// Cannot decide on the session.
 			// (No OIDC session found, the principal could match some information in session depending on the config.)
 			// The user could be prompted to select the session to logout from, but so far we lack a UI for that.
-			log.info("Ignoring multiple matching stateIds={} from SSO cookies for rpIssuerId={} oidcClientId={}",
+			log.info("Ignoring multiple matching stateIds={} from SSO cookies for rpIssuer={} clientId={}",
 					matchingStates.stream()
 							.map(StateData::getId)
 							.toList(), relyingParty.getId(), oidcClientId);
@@ -877,8 +904,8 @@ public class OidcSessionSupport {
 			return session;
 		}
 
-		// discard session when a QoA stepup might be required
-		if (isAcrValuesStepupRequired(request, session, clientId)) {
+		// discard session when a QoA step-up might be required
+		if (isAcrValuesStepUpRequired(request, session, clientId)) {
 			handleSessionDiscard(clientId, request, OidcUtil.OIDC_ACR_VALUES, networkConfig);
 			return null;
 		}
@@ -926,11 +953,14 @@ public class OidcSessionSupport {
 		}
 		if (WebUtil.isSameSiteDynamic(sameSite)) {
 			var redirectUri = getRedirectUri(request);
-			if (redirectUri != null) {
-				sameSite = WebUtil.getCookieSameSite(trustBrokerProperties.getPerimeterUrl(), redirectUri);
-			}
-			if (sameSite == null) {
-				sameSite = trustBrokerProperties.getCookieSameSite();
+			// Dynamic mapped to STRICT when redirect_uri in message matches perimeterUrl from config, otherwise use global default
+			sameSite = redirectUri == null ?
+					trustBrokerProperties.getCookieSameSite() :
+					WebUtil.getCookieSameSite(trustBrokerProperties.getPerimeterUrl(), redirectUri);
+			// SameSite=None not allowed on insecure transports
+			if (!request.isSecure() && WebUtil.COOKIE_SAME_SITE_NONE.equalsIgnoreCase(sameSite)) {
+				log.debug("Discarding SameSite=None on insecure transport");
+				sameSite = null;
 			}
 		}
 		else if (client.isPresent()) { // must be present
@@ -981,11 +1011,11 @@ public class OidcSessionSupport {
 		}
 	}
 
-	public static boolean isAcrValuesStepupRequired(HttpServletRequest request, TomcatSession session, String clientId) {
+	public static boolean isAcrValuesStepUpRequired(HttpServletRequest request, TomcatSession session, String clientId) {
 		var messageAcrValues = OidcUtil.getAcrValues(request);
 		var sessionAcrValues = session.getStateData().getContextClasses();
 		if (sessionAcrValues != null && !messageAcrValues.equals(sessionAcrValues)) {
-			log.info("OIDC stepup triggerd by clientId={} with messageAcrValues='{}' not matching sessionAcrValues='{}'",
+			log.info("OIDC step-up triggered by clientId={} with messageAcrValues='{}' not matching sessionAcrValues='{}'",
 					clientId, messageAcrValues, sessionAcrValues);
 			return true;
 		}

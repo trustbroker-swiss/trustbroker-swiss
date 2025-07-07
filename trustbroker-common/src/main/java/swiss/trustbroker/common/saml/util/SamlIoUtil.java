@@ -33,7 +33,6 @@ import javax.xml.parsers.ParserConfigurationException;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
-import net.shibboleth.shared.codec.Base64Support;
 import net.shibboleth.shared.collection.Pair;
 import net.shibboleth.shared.net.URLBuilder;
 import net.shibboleth.shared.xml.SerializeSupport;
@@ -61,6 +60,7 @@ import org.opensaml.saml.saml2.core.Response;
 import org.opensaml.saml.saml2.core.StatusResponseType;
 import org.opensaml.security.credential.Credential;
 import org.opensaml.soap.wstrust.RequestSecurityToken;
+import org.opensaml.xmlsec.signature.support.SignatureConstants;
 import org.w3c.dom.Element;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
@@ -138,7 +138,7 @@ public class SamlIoUtil {
 			var context = OpenSamlUtil.createMessageContext(message, null, destination, relayState);
 			OpenSamlUtil.initiateArtifactBindingContext(context, issuer, artifactResolutionParameters);
 			var artifact = super.buildArtifact(context);
-			return Base64Util.encode(artifact.getArtifactBytes(), Base64Support.UNCHUNKED);
+			return Base64Util.encode(artifact.getArtifactBytes(), Base64Util.Base64Encoding.UNCHUNKED);
 		}
 	}
 
@@ -297,17 +297,22 @@ public class SamlIoUtil {
 	}
 
 	public static String decodeSamlPostDataToString(String samlPostData, boolean prettyPrint) throws IOException {
-		var xmlObject = SamlIoUtil.decodeSamlPostData(samlPostData);
+		var xmlObject = decodeSamlPostData(samlPostData);
 		return xmlObjectToString(xmlObject, prettyPrint);
 	}
 
-	public static String decodeSamlRedirectDataToString(String samlPostData, boolean prettyPrint) {
-		var xmlObject = decodeSamlRedirectData(samlPostData);
+	public static String decodeSamlRedirectDataToString(String sankRedirectData, boolean prettyPrint) {
+		var xmlObject = decodeSamlRedirectData(sankRedirectData);
 		return xmlObjectToString(xmlObject, prettyPrint);
 	}
 
-	public static String encodeSamlRedirectData(final SAMLObject message) throws MessageEncodingException {
-		return new SamlRedirectEncoder().encodeSamlMessage(message);
+	public static String encodeSamlRedirectData(final SAMLObject message) {
+		try {
+			return new SamlRedirectEncoder().encodeSamlMessage(message);
+		}
+		catch (MessageEncodingException e) {
+			throw new TechnicalException("SAML redirect message encoding failed", e);
+		}
 	}
 
 	public static XMLObject decodeSamlRedirectData(final String message) {
@@ -398,6 +403,7 @@ public class SamlIoUtil {
 		}
 	}
 
+	@SuppressWarnings("java:S108")
 	public static String getSamlPostDataFromHttpProtocol(HttpServletRequest request, boolean pretty) {
 		var samlData = getSamlDataFromHttpProtocol(request);
 		if (samlData != null && pretty) {
@@ -405,7 +411,7 @@ public class SamlIoUtil {
 				samlData = decodeSamlPostDataToString(samlData, false).replace("\n", "");
 			}
 			catch (Exception e) {
-				// NOSONAR: Decoding samlData failed, error logging data as is
+				// Decoding samlData failed, error logging data as is
 			}
 		}
 		return samlData;
@@ -462,22 +468,25 @@ public class SamlIoUtil {
 
 	public static String buildSignedSamlRedirectQueryString(SAMLObject message, Credential credential, String sigAlg,
 			String relayState) {
-		try {
-			var encodedMessage = SamlIoUtil.encodeSamlRedirectData(message);
-			String signatureEncoded = buildEncodedSamlRedirectSignature(message, credential, sigAlg, relayState, encodedMessage);
-			return SamlIoUtil.buildSamlRedirectQueryString(sigAlg, true, encodedMessage, relayState, signatureEncoded);
+		var encodedMessage = encodeSamlRedirectData(message);
+		var signatureEncoded = buildEncodedSamlRedirectSignature(message, credential, sigAlg, relayState, encodedMessage);
+		return buildSamlRedirectQueryString(sigAlg, true, encodedMessage, relayState, signatureEncoded);
+	}
+
+	public static String getSamlRedirectSignatureAlgorithmWithDefault(String sigAlg) {
+		if (sigAlg == null) {
+			return SignatureConstants.ALGO_ID_SIGNATURE_RSA_SHA256;
 		}
-		catch (MessageEncodingException e) {
-			throw new TechnicalException("SAML message encoding failed", e);
-		}
+		return sigAlg;
 	}
 
 	public static String buildEncodedSamlRedirectSignature(SAMLObject message, Credential credential, String sigAlg,
 			String relayState, String encodedSamlMessage) {
 		var request = message instanceof RequestAbstractType;
-		var query = SamlIoUtil.buildSamlRedirectQueryString(sigAlg, request, encodedSamlMessage, relayState, null);
+		sigAlg = getSamlRedirectSignatureAlgorithmWithDefault(sigAlg);
+		var query = buildSamlRedirectQueryString(sigAlg, request, encodedSamlMessage, relayState, null);
 		var signatureBytes = SamlUtil.buildRedirectBindingSignature(credential, sigAlg, query.getBytes(StandardCharsets.UTF_8));
-		return Base64Util.encode(signatureBytes, false);
+		return Base64Util.encode(signatureBytes, Base64Util.Base64Encoding.UNCHUNKED);
 	}
 
 	// so far used to work around compatibility issues

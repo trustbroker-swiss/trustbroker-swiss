@@ -16,6 +16,7 @@
 package swiss.trustbroker.saml.service;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -147,20 +148,23 @@ public class ArtifactResolutionService {
 			}
 			proxyUrl = endpoints.getProxyUrl();
 		}
+		var artifactResolution = trustBrokerProperties.getSaml().getArtifactResolution();
 		if (proxyUrl == null) {
-			proxyUrl = trustBrokerProperties.getSaml().getArtifactResolution().getProxyUrl();
+			proxyUrl = artifactResolution.getProxyUrl();
 		}
 		if (proxyUrl == null && trustBrokerProperties.getNetwork() != null) {
 			proxyUrl = trustBrokerProperties.getNetwork().getProxyUrl();
 		}
-		var truststoreParameters = trustBrokerProperties.getSaml().getArtifactResolution().getTruststore();
+		var truststoreParameters = artifactResolution.getTruststore();
 		if (certificates != null && certificates.getBackendTruststore() != null) {
 			truststoreParameters = CertificateUtil.toKeystoreProperties(certificates.getBackendTruststore());
 		}
-		var keystoreParameters = trustBrokerProperties.getSaml().getArtifactResolution().getKeystore();
+		var keystoreParameters = artifactResolution.getKeystore();
 		if (certificates != null && certificates.getBackendKeystore() != null) {
 			keystoreParameters = CertificateUtil.toKeystoreProperties(certificates.getBackendKeystore());
 		}
+		var connectTimeout = trustBrokerProperties.getNetwork() != null ?
+				Duration.ofSeconds(trustBrokerProperties.getNetwork().getBackendConnectTimeoutSec()) : null;
 		log.debug("Using Truststore={} Keystore={} proxyUrl={}",
 				truststoreParameters != null  ? truststoreParameters.getSignerCert() : null,
 				keystoreParameters != null ? keystoreParameters.getSignerCert() : null,
@@ -174,11 +178,12 @@ public class ArtifactResolutionService {
 				.artifactResolutionTruststore(truststoreParameters)
 				.artifactResolutionKeystore(keystoreParameters)
 				.keystoreBasePath(trustBrokerProperties.getKeystoreBasePath())
+				.connectTimeout(connectTimeout)
 				.build();
 	}
 
 	private Optional<SignatureParameters> buildSignatureParameters(boolean signArtifactResolve, ClaimsParty cp) {
-		if (signArtifactResolve) {
+		if (cp.doSignArtifactResolve(signArtifactResolve)) {
 			// CP has no credential configured and the original RP is not known at this point - use default signer
 			log.debug("Signing ArtifactResolve with default signer for cpIssuerId={} signerCert={}",
 					cp.getId(), trustBrokerProperties.getSigner().getSignerCert());
@@ -190,12 +195,13 @@ public class ArtifactResolutionService {
 
 	private static SignatureValidationParameters buildSignatureValidationParameters(
 			boolean requireSignedArtifactResponse, ClaimsParty cp) {
-		return SignatureValidationParameters.of(requireSignedArtifactResponse, cp.getCpTrustCredential());
+		return SignatureValidationParameters.of(
+				cp.requireSignedArtifactResponse(requireSignedArtifactResponse), cp.getCpTrustCredential());
 	}
 
 	private static Optional<SignatureParameters> buildSignatureParameters(
 			boolean signArtifactResolve, RelyingParty rp) {
-		if (signArtifactResolve) {
+		if (rp.doSignArtifactResolve(signArtifactResolve)) {
 			log.debug("Signing ArtifactResolve with credential of rpIssuerId={}", rp.getId());
 			return Optional.of(rp.getSignatureParametersBuilder().build());
 		}
@@ -204,7 +210,8 @@ public class ArtifactResolutionService {
 
 	private static SignatureValidationParameters buildSignatureValidationParameters(
 			boolean requireSignedArtifactResponse, RelyingParty rp) {
-			return SignatureValidationParameters.of(requireSignedArtifactResponse, rp.getRpTrustCredentials());
+			return SignatureValidationParameters.of(
+					rp.requireSignedArtifactResponse(requireSignedArtifactResponse), rp.getRpTrustCredentials());
 	}
 
 	public void resolveArtifact(HttpServletRequest request, HttpServletResponse response) {
@@ -340,7 +347,7 @@ public class ArtifactResolutionService {
 				.mapFrom(relyingParty)
 				.mapFrom(claimsParty)
 				.build();
-		auditService.logInboundSamlFlow(auditDto);
+		auditService.logInboundFlow(auditDto);
 	}
 
 	private void auditArtifactResponse(ArtifactResponse artifactResponse, RelyingParty relyingParty,

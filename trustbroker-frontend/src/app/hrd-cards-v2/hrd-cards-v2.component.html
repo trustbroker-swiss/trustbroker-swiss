@@ -15,33 +15,54 @@
 
 @if (theme$ | async; as theme) {
 	<div class="main">
+		<h1 class="sr-only">{{ "trustbroker.hrd.main.title" | translate }}</h1>
+		<p class="sr-only" [innerHTML]="'trustbroker.hrd.main.subtitle' | translate | safeMarkup"></p>
+
 		@for (banner of idpObjects().banners; track banner) {
 			<app-hrd-cards-banner [config]="banner" [theme]="theme" />
 		}
 
-		<div class="cards">
-			@for (idpObjects of idpObjects().tiles | bucketizeIdpObjects; track idpObjects; let bucketIndex = $index) {
-				<section class="card-section" [ngClass]="{ 'expandable-to-half-size': bucketIndex < 2 }">
+		<section class="cards">
+			<h2 class="sr-only">{{ "trustbroker.hrd.cards.title" | translate }}</h2>
+			@for (idpObjects of idpObjects().tiles | bucketizeIdpObjects: 1; track idpObjects; let bucketIndex = $index) {
+				<div class="card-section" [ngClass]="{ 'expandable-to-half-size': bucketIndex < 2 }">
 					@for (idpObject of idpObjects; track idpObject.urn) {
-						<button class="idp-card {{ theme.name }} small" (click)="onCardClick(idpObject)" [disabled]="idpObject.disabled">
-							<img src="{{ baseUrl }}hrd/assets/images/{{ theme.name }}/{{ idpObject.image }}" alt="" />
-							<div
-								[id]="idpObject.title"
-								[innerHTML]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title } | safeMarkup"
-							></div>
+						<div class="idp-card-container">
+							<button class="idp-card {{ theme.name }} small" (click)="onCardClick(idpObject)" [disabled]="idpObject.disabled">
+								<img src="{{ baseUrl }}hrd/assets/images/{{ theme.name }}/{{ idpObject.image }}" alt="" />
+								<div
+									[id]="idpObject.title"
+									[innerHTML]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title } | safeMarkup"
+								></div>
+							</button>
+
 							@if (idpObject.disabled) {
-								<div class="disabled-overlay">
-									@if (bucketIndex < 2) {
-										<p>{{ idpObject.title }} {{ "trustbroker.hrd.cards.IdpCurrentlyUnavailable.info" | translate }}</p>
-									} @else {
-										<p>{{ "trustbroker.hrd.cards.LoginUnavailable.info" | translate }}</p>
-									}
-								</div>
+								<button
+									[id]="'disabledIdp_' + idpObject.name"
+									#overlayDiv
+									class="disabled-overlay"
+									aria-expanded="false"
+									(click)="onOpenDialog(idpObject, overlayDiv, $event)"
+									(keyup)="onOpenDialog(idpObject, overlayDiv, $event)"
+								>
+									<img class="{{ theme.name }} help-icon" src="{{ baseUrl }}hrd/assets/images/{{ theme.name }}/help.svg" alt="" />
+									<p
+										class="title"
+										[innerHTML]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title } | safeMarkup"
+									></p>
+									<p>{{ "trustbroker.hrd.cards." + idpObject.disabled | translate }}</p>
+								</button>
 							}
-						</button>
+						</div>
 					}
-				</section>
+				</div>
 			}
-		</div>
+		</section>
 	</div>
 }
+
+<ng-template #disabledDialogContent let-data>
+	<div id="disabledDialogContent" class="ob-alert ob-alert-warning disabledDialogContent" [attr.aria-labelledby]="data.labeledById">
+		<p>{{ "trustbroker.hrd.cards." + data.disabled + ".info" | translate: { name: data.title } }}</p>
+	</div>
+</ng-template>

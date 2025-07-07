@@ -25,7 +25,7 @@ public interface AttributeName {
 
 	/**
 	 * @return Audit and IDM relevant name, unique
- 	 */
+	 */
 	public String getName();
 
 	/**
@@ -66,7 +66,9 @@ public interface AttributeName {
 	 * @return provisioning configuration of this attribute.
 	 * @since 1.9.0
 	 */
-	default String getProvision() { return null; }
+	default String getProvision() {
+		return null;
+	}
 
 	// default name comparison:
 
@@ -89,7 +91,6 @@ public interface AttributeName {
 	/**
 	 * @param attributeName
 	 * @return true if attributeName is not null and equals this by name (ignoring the namespace)
-	 *
 	 * @see AttributeName#equalsByName(String)
 	 */
 	default boolean equalsByName(AttributeName attributeName) {
@@ -99,7 +100,6 @@ public interface AttributeName {
 	/**
 	 * @param attributeName
 	 * @return true if attributeName is not null and equals this by namespace (ignoring the name)
-	 *
 	 * @see AttributeName#equalsByNamespace(String)
 	 * @since 1.8.0
 	 */
@@ -110,7 +110,6 @@ public interface AttributeName {
 	/**
 	 * @param name
 	 * @return true if name is not null and equals this by name <strong>or</strong> namespace
-	 *
 	 * @see AttributeName#equalsByName(String)
 	 * @see AttributeName#equalsByNamespace(String)
 	 */
@@ -122,7 +121,6 @@ public interface AttributeName {
 	 * @param name
 	 * @param source
 	 * @return true if name is not null and equals this by name <strong>or</strong> namespace and source is null or matches,
-	 *
 	 * @see AttributeName#equalsByName(String)
 	 * @see AttributeName#equalsByNamespace(String)
 	 */
@@ -134,7 +132,6 @@ public interface AttributeName {
 	 * @param attributeName
 	 * @return true if attributeName is not null and equals this by name <strong>or</strong> namespace
 	 * (the matching names/namespaces must not be null)
-	 *
 	 * @see AttributeName#equalsByName(String)
 	 * @see AttributeName#equalsByNamespace(String)
 	 */
@@ -147,7 +144,6 @@ public interface AttributeName {
 	 * @param source
 	 * @return true if attributeName is not null and equals this by name <strong>or</strong> namespace
 	 * (the matching names/namespaces must not be null)
-	 *
 	 * @see AttributeName#equalsByName(String)
 	 * @see AttributeName#equalsByNamespace(String)
 	 */

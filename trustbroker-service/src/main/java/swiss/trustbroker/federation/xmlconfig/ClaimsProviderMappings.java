@@ -31,7 +31,7 @@ import lombok.NoArgsConstructor;
 /**
  * List of CPs mappings for an RP.
  */
-@XmlRootElement(name = "ClaimsProviderMapping")
+@XmlRootElement(name = "ClaimsProviderMappings")
 @XmlAccessorType(XmlAccessType.FIELD)
 @Data
 @Builder
@@ -48,9 +48,17 @@ public class ClaimsProviderMappings implements Serializable {
 	private Boolean enabled;
 
 	/**
+	 * Define a CLaimsProviderMappings.xml definition/profile
+	 *
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "definition")
+	private String definition;
+
+	/**
 	 * List of CP mappings.
 	 */
 	@XmlElement(name="ClaimsProvider")
-	private List<ClaimsProviderRelyingParty> claimsProviderList;
+	private List<ClaimsProvider> claimsProviderList;
 
 }

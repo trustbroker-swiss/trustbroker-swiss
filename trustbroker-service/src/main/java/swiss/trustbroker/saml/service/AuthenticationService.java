@@ -16,6 +16,7 @@
 package swiss.trustbroker.saml.service;
 
 import java.util.Optional;
+import java.util.Set;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -46,6 +47,7 @@ import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.sso.service.SsoService;
 import swiss.trustbroker.util.ApiSupport;
 import swiss.trustbroker.util.HrdSupport;
+import swiss.trustbroker.util.WebSupport;
 
 @Service
 @AllArgsConstructor
@@ -113,8 +115,7 @@ public class AuthenticationService {
 	}
 
 	public String handleAuthnRequest(OutputService outputService, AuthnRequest authnRequest,
-			HttpServletRequest httpRequest, HttpServletResponse httpResponse,
-			SignatureContext signatureContext) {
+			HttpServletRequest httpRequest, HttpServletResponse httpResponse, SignatureContext signatureContext) {
 		log.debug("Process RP SAML request");
 		if (authnRequest.getIssuer() == null) {
 			throw new TechnicalException("Issuer is missing from AuthnRequest");
@@ -132,13 +133,13 @@ public class AuthenticationService {
 		validateBinding(relyingParty, signatureContext.getBinding());
 
 		// single CP dispatching))
-		var directCpSelection = HrdSupport.getClaimsProviderHint(httpRequest, trustBrokerProperties);
-		if (directCpSelection == null) {
-			directCpSelection = OpenSamlUtil.extractIdpScoping(authnRequest);
+		var cpSelectionHint = HrdSupport.getClaimsProviderHint(httpRequest, trustBrokerProperties);
+		if (cpSelectionHint == null) {
+			cpSelectionHint = OpenSamlUtil.extractIdpScoping(authnRequest);
 		}
 
-		// SSO enable only if configured, and we do not have load test or urltester running or a hrd_hint
-		var doSso = doSso(directCpSelection, relyingParty);
+		// SSO enable only if configured, and we do not have load test or hrdHint
+		var doSso = doSso(httpRequest, cpSelectionHint, relyingParty);
 
 		// find state
 		StateData stateDataByAuthnReq;
@@ -182,19 +183,19 @@ public class AuthenticationService {
 		var useSkinnyUi = OperationalUtil.useSkinnyUiForLegacyClients(rpRequest, httpRequest, trustBrokerProperties);
 		var skipForMonitoring = OperationalUtil.skipUiFeaturesForAdminAndMonitoringClients(httpRequest, trustBrokerProperties);
 		var providerName = authnRequest.getProviderName();
-		if (showAnnouncements(relyingParty, providerName, useSkinnyUi, skipForMonitoring)) {
+		if (showAnnouncements(relyingParty, providerName, useSkinnyUi, skipForMonitoring, rpRequest.getFeatureConditions())) {
 			return apiSupport.getAnnouncementsUrl(rpIssuer, authnRequest.getID(), providerName);
 		}
 
 		// get HRD CP dispatching data to display HRD screen or forward to CP
 		if (rpRequest.hasSingleClaimsProvider()) {
-			var claimsProviderUrn = rpRequest.getClaimsProviders().get(0).getId();
+			var cpIssuerId = rpRequest.getClaimsProviders().get(0).getId();
 			if (doSso) {
 				return handleSingleClaimsProviderSsoRedirect(authnRequest, httpRequest, referer, rpIssuer,
-						relyingParty, stateDataByAuthnReq, claimsProviderUrn);
+						relyingParty, stateDataByAuthnReq, cpIssuerId);
 			}
-			return handleSingleClaimsProvider(httpRequest, httpResponse, relyingParty, directCpSelection,
-					stateDataByAuthnReq, claimsProviderUrn);
+			return handleSingleClaimsProvider(httpRequest, httpResponse, relyingParty, cpSelectionHint,
+					stateDataByAuthnReq, cpIssuerId);
 		}
 
 		if (useSkinnyUi != null) {
@@ -205,13 +206,18 @@ public class AuthenticationService {
 	}
 
 	private boolean showAnnouncements(RelyingParty relyingParty, String providerName,
-			String useSkinnyUi, boolean skipForMonitoring) {
-		return announcementService.showAnnouncements(relyingParty.getAnnouncement(), providerName)
+									  String useSkinnyUi, boolean skipForMonitoring, Set<String> conditions) {
+		return announcementService.showAnnouncements(relyingParty.getAnnouncement(), providerName, conditions)
 				&& useSkinnyUi == null && !skipForMonitoring;
 	}
 
-	private static boolean doSso(String directCpSelection, RelyingParty relyingParty) {
-		return directCpSelection == null && relyingParty.isSsoEnabled();
+	private boolean doSso(HttpServletRequest request, String cpSelectionHint, RelyingParty relyingParty) {
+		if (relyingParty.isSsoEnabled() && cpSelectionHint != null && !HrdSupport.isHrdHintTest(request, trustBrokerProperties)) {
+			log.debug("SSO requires HRD round-trip to get {} for rpIssuer={} cpIssuer={}",
+					WebSupport.HTTP_HEADER_DEVICE_ID, relyingParty.getId(), cpSelectionHint);
+			return true;
+		}
+		return cpSelectionHint == null && relyingParty.isSsoEnabled();
 	}
 
 	private static void validateBinding(RelyingParty relyingParty, SamlBinding binding) {
@@ -257,12 +263,12 @@ public class AuthenticationService {
 
 	private String handleSingleClaimsProvider(
 			HttpServletRequest httpRequest, HttpServletResponse httpResponse,
-			RelyingParty relyingParty, String directUrlSelection,
-			StateData stateDataByAuthnReq, String claimsProviderUrn) {
-		log.debug("Direct homeRealm='{}' selection for relyingParty='{}' with ssoEnabled={} urltester='{}'",
-				claimsProviderUrn, relyingParty.getId(), relyingParty.isSsoEnabled(), directUrlSelection);
+			RelyingParty relyingParty, String cpSelectionHint,
+			StateData stateDataByAuthnReq, String cpIssuerId) {
+		log.debug("Direct cpIssuerId='{}' selection for relyingParty='{}' with ssoEnabled={} hint='{}'",
+				cpIssuerId, relyingParty.getId(), relyingParty.isSsoEnabled(), cpSelectionHint);
 		claimsProviderService.sendSamlToCpWithMandatoryIds(httpRequest, httpResponse, stateDataByAuthnReq,
-				claimsProviderUrn);
+				cpIssuerId);
 		return null;
 	}
 

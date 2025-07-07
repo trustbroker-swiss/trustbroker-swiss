@@ -22,9 +22,10 @@ import jakarta.xml.bind.annotation.XmlAccessorType;
 import jakarta.xml.bind.annotation.XmlElement;
 import jakarta.xml.bind.annotation.XmlRootElement;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
 /**
  * Truststore configuration.
@@ -34,10 +35,11 @@ import lombok.NoArgsConstructor;
 @XmlRootElement(name = "SignerTruststore")
 @XmlAccessorType(XmlAccessType.FIELD)
 @Data
-@Builder
+@EqualsAndHashCode(callSuper=true)
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class SignerTruststore implements Serializable {
+public class SignerTruststore extends SignerStore implements Serializable {
 
 	/**
 	 * Path of the certificate.

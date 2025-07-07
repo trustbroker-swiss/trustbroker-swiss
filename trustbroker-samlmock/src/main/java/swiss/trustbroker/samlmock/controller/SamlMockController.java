@@ -26,6 +26,10 @@ import net.shibboleth.shared.xml.SerializeSupport;
 import org.opensaml.messaging.encoder.MessageEncodingException;
 import org.opensaml.saml.saml2.core.AuthnRequest;
 import org.opensaml.saml.saml2.core.Issuer;
+import org.opensaml.saml.saml2.core.LogoutRequest;
+import org.opensaml.saml.saml2.core.LogoutResponse;
+import org.opensaml.saml.saml2.core.Response;
+import org.opensaml.saml.saml2.core.StatusResponseType;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Controller;
@@ -34,6 +38,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.view.UrlBasedViewResolver;
+import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.exception.TrustBrokerException;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
@@ -98,7 +103,8 @@ public class SamlMockController {
 		try {
 			var acsUrl = properties.getConsumerUrl();
 			var relayState = "MOCK_" + UUID.randomUUID();
-			return mockCpResponseProcessing(model, acsUrl, null, null, relayState, properties.isKeepSampleUrlsforCpInitiated());
+			return mockCpResponseProcessing(model, acsUrl, null, null, relayState,
+					properties.isKeepSampleUrlsforCpInitiated(), StatusResponseType.class);
 		}
 		catch (TrustBrokerException e) {
 			log.error("Loading CP initiated response samples failed: {}", e.getInternalMessage());
@@ -112,11 +118,20 @@ public class SamlMockController {
 			var samlMessage = messageService.decodeRequest(request);
 			var samlRequest = samlMessage.message();
 			var requestId = samlRequest.getID();
+			var keepSampleUrls = false;
 			var acsUrl = request.getParameter(HttpHeaders.REFERER);
+			Class<? extends StatusResponseType> allowedResponseType = null;
 			if (samlRequest instanceof AuthnRequest authnRequest) {
 				acsUrl = authnRequest.getAssertionConsumerServiceURL();
+				allowedResponseType = Response.class;
 			}
-			return mockCpResponseProcessing(model, acsUrl, samlRequest.getIssuer(), requestId, samlMessage.relayState(), false);
+			else if (samlRequest instanceof LogoutRequest) {
+				log.info("LogoutRequest - destination from sample files is used");
+				keepSampleUrls = true; // no ACS URL in LogoutRequest
+				allowedResponseType = LogoutResponse.class;
+			}
+			return mockCpResponseProcessing(model, acsUrl, samlRequest.getIssuer(), requestId,
+					samlMessage.relayState(), keepSampleUrls, allowedResponseType);
 		}
 		catch (TrustBrokerException e) {
 			log.error("Loading response samples failed: {}", e.getInternalMessage());
@@ -125,8 +140,9 @@ public class SamlMockController {
 	}
 
 	private String mockCpResponseProcessing(Model model, String acsUrl, Issuer samlRequestIssuer, String requestId,
-			String relayState, boolean keepSampleUrls) {
-		var responses = messageService.getCpResponses(acsUrl, samlRequestIssuer, requestId, relayState, keepSampleUrls);
+			String relayState, boolean keepSampleUrls, Class<? extends StatusResponseType> allowedResponses) {
+		var responses = messageService.getCpResponses(acsUrl, samlRequestIssuer, requestId, relayState,
+				keepSampleUrls, allowedResponses);
 		model.addAttribute("responses", responses);
 		model.addAttribute(TB_APPLICATION_URL, properties.getTbApplicationUrl());
 		return NAVIGATE_SELECT_RESPONSE;
@@ -143,7 +159,7 @@ public class SamlMockController {
 		}
 		catch (MessageEncodingException e) {
 			log.error("Could not generate metadata: {}", e.getMessage(), e);
-			throw new TechnicalException("Could not generate metadata: " + e);
+			throw new TechnicalException(String.format("Could not generate metadata: %s", e.getMessage()), e);
 		}
 	}
 
@@ -173,11 +189,20 @@ public class SamlMockController {
 
 	}
 
+	@PostMapping(path = { "/authn/consumer", "/auth/saml2/slo", "/auth/saml/slo" })
+	public String handleSamlPost(Model model, HttpServletRequest request) {
+		return mockSamlMessageConsumer(model, request);
+	}
+
+	@GetMapping(path = { "/authn/consumer", "/auth/saml2/slo", "/auth/saml/slo" })
+	public String handleSamlGet(Model model, HttpServletRequest request) {
+		return mockSamlMessageConsumer(model, request);
+	}
+
 	// Display the returned XTB SAMl Response in the UI on RP side.
 	// For LogoutResponse the destination is the referrer + /auth/saml2/slo when not explicitly configured on XTB
 	// /auth/saml2/slo used by some clients supported as well.
-	@PostMapping(path = { "/authn/consumer", "/auth/saml2/slo", "/auth/saml/slo" })
-	public String mockAssertionConsumer(Model model, HttpServletRequest request) throws MessageEncodingException {
+	public String mockAssertionConsumer(Model model, HttpServletRequest request) {
 		var messageXml = validateResponseAndExtractMessage(request);
 
 		model.addAttribute(SamlIoUtil.SAML_RESPONSE_NAME, messageXml);
@@ -186,8 +211,35 @@ public class SamlMockController {
 		return NAVIGATE_RESPONSE_FROM_XTB;
 	}
 
+	public String mockSamlMessageConsumer(Model model, HttpServletRequest request) {
+		if (request.getParameter(SamlIoUtil.SAML_REQUEST_NAME) != null) {
+			if (log.isInfoEnabled()) {
+				log.info("Received SAML {} request from referrer={}",
+						request.getMethod(), StringUtil.clean(request.getParameter(HttpHeaders.REFERER)));
+			}
+			return mockCpResponse(model, request);
+		}
+		else if (request.getParameter(SamlIoUtil.SAML_RESPONSE_NAME) != null) {
+			if (log.isInfoEnabled()) {
+				log.info("Received SAML {} response from referrer={}",
+						request.getMethod(), StringUtil.clean(request.getParameter(HttpHeaders.REFERER)));
+			}
+			return mockAssertionConsumer(model, request);
+		}
+		else if (request.getParameter(SamlIoUtil.SAML_ARTIFACT_NAME) != null) {
+			if (log.isInfoEnabled()) {
+				log.info("Received SAML {} artifact message from referrer={}",
+						request.getMethod(), StringUtil.clean(request.getParameter(HttpHeaders.REFERER)));
+			}
+			return mockAssertionConsumer(model, request);
+		}
+		log.error("Missing SAMLRequest/SAMLResponse/SAMLart parameter in method={} query: {}",
+				request.getMethod(), request.getQueryString());
+		throw new RequestDeniedException("Missing SAMLRequest/SAMLResponse parameter in query");
+	}
+
 	@GetMapping(path = "/auth/http/slo")
-	public String mockSloNotificationConsumer(HttpServletRequest request) {
+	public String mockSloHttpNotificationConsumer(HttpServletRequest request) {
 		if (log.isInfoEnabled()) {
 			log.info("Received HTTP GET single logout notification from referrer={}",
 					StringUtil.clean(request.getParameter(HttpHeaders.REFERER)));
@@ -208,8 +260,7 @@ public class SamlMockController {
 	}
 
 	@PostMapping(path = { "/accessrequest/consumer" })
-	public String mockAccessRequestConsumer(HttpServletRequest request)
-			throws MessageEncodingException {
+	public String mockAccessRequestConsumer(HttpServletRequest request) {
 		try {
 			validateResponseAndExtractMessage(request);
 
@@ -233,16 +284,23 @@ public class SamlMockController {
 	private static String getMandatoryQueryParameter(HttpServletRequest request, String queryParam) {
 		var param = request.getParameter(queryParam);
 		if (param == null) {
+			log.error("Missing parameter={} in query: {}", queryParam, request.getQueryString());
 			throw new TechnicalException(String.format("Missing parameter %s in query: %s", queryParam,
 					request.getQueryString()));
 		}
 		return param;
 	}
 
-	private String validateResponseAndExtractMessage(HttpServletRequest request) throws MessageEncodingException {
-		var samlResponse = messageService.decodeAndValidateResponse(request);
-		var domMessage = SamlUtil.marshallMessage(samlResponse.message());
-		return SerializeSupport.prettyPrintXML(domMessage);
+	private String validateResponseAndExtractMessage(HttpServletRequest request) {
+		try {
+			var samlResponse = messageService.decodeAndValidateResponse(request);
+			var domMessage = SamlUtil.marshallMessage(samlResponse.message());
+			return SerializeSupport.prettyPrintXML(domMessage);
+		}
+		catch (MessageEncodingException ex) {
+			log.error("Validating response failed: {}", ex.getMessage(), ex);
+			throw new TechnicalException(String.format("Validating response failed: %s", ex.getMessage()), ex);
+		}
 	}
 
 	@GetMapping(path = "/authn/samples/refresh")

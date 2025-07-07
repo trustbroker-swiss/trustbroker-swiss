@@ -15,13 +15,15 @@
 
 package swiss.trustbroker.common.util;
 
+import org.apache.commons.lang3.StringUtils;
+
 public class StringUtil {
 
 	private static final String WHITE_SPACES = "[\n\r\t]";
 
-	private static final String NULL = "<null>";
+	static final String NULL = "<null>";
 
-	private static final String MASKED = "<SECRET-MASKED>";
+	static final String MASKED = "<SECRET-MASKED>";
 
 	private StringUtil() {
 	}
@@ -55,6 +57,23 @@ public class StringUtil {
 	 */
 	public static String maskSecret(String secret) {
 		return secret == null ? NULL : MASKED;
+	}
+
+	/**
+	 * @param value
+	 * @param secrets
+	 * @return value with secrets masked
+	 */
+	public static String maskSecrets(String value, String... secrets) {
+		if (StringUtils.isEmpty(value)) {
+			return value;
+		}
+		for (var secret : secrets) {
+			if (StringUtils.isNotEmpty(secret)) {
+				value = value.replace(secret, MASKED);
+			}
+		}
+		return value;
 	}
 
 }

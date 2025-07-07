@@ -30,6 +30,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.opensaml.security.credential.Credential;
+import swiss.trustbroker.common.saml.dto.SamlBinding;
 
 /**
  * Single logout (SLO) configurations for an RP.
@@ -59,6 +60,17 @@ public class SloResponse implements Serializable {
 	@XmlAttribute(name = "protocol")
 	@Builder.Default
 	private SloProtocol protocol = SloProtocol.SAML2;
+
+	/**
+	 * The protocol binding for which this entry applies.
+	 * <br/>
+	 * Default: POST (ignored for OIDC)
+	 *
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "binding")
+	@Builder.Default
+	private SamlBinding binding = SamlBinding.POST;
 
 	/**
 	 * Issuer for SAML LogoutResponse.

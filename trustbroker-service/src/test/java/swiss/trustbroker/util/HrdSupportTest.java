@@ -40,7 +40,7 @@ import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.NetworkConfig;
 import swiss.trustbroker.config.dto.OidcProperties;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.oidc.session.HttpExchangeSupport;
 
 @SpringBootTest(classes = WebSupport.class)
@@ -58,6 +58,10 @@ class HrdSupportTest {
 
 	private static final String AUTOLOGIN_COOKIE = "TEST_autoLogin";
 
+	private static final String HINT_TEST_PARAMETER = "test_select_cp";
+
+	private static final String HINT_PARAMETER = "select_cp";
+
 	@MockitoBean
 	private HrdService hrdService;
 
@@ -68,10 +72,10 @@ class HrdSupportTest {
 
 	@ParameterizedTest
 	@CsvSource(value = { "true," + CP_PUBLIC_ID, "false,null" }, nullValues = "null")
-	void testClaimsProviderHintUrlTesterHeader(boolean intranet, String expected) {
+	void testClaimsProviderHrdHintHeader(boolean intranet, String expected) {
 		var request = new MockHttpServletRequest();
 		var properties = givenProperties();
-		request.addHeader(HrdSupport.HTTP_HRD_HINT_HEADER, CP_PUBLIC_ID);
+		request.addHeader(HINT_TEST_PARAMETER, CP_PUBLIC_ID);
 		var network = properties.getNetwork();
 		request.addHeader(network.getNetworkHeader(),
 				intranet ? network.getIntranetNetworkName() : network.getInternetNetworkName());
@@ -80,10 +84,10 @@ class HrdSupportTest {
 
 	@ParameterizedTest
 	@CsvSource(value = { "true," + CP_PUBLIC_ID, "false,null" }, nullValues = "null")
-	void testClaimsProviderHintUrlTesterCookie(boolean intranet, String expected) {
+	void testClaimsProviderHrdHintCookie(boolean intranet, String expected) {
 		var request = new MockHttpServletRequest();
 		var properties = givenProperties();
-		var cookie = new Cookie(HrdSupport.HTTP_HRD_HINT_HEADER, CP_PUBLIC_ID);
+		var cookie = new Cookie(HINT_TEST_PARAMETER, CP_PUBLIC_ID);
 		request.setCookies(cookie);
 		var network = properties.getNetwork();
 		request.addHeader(network.getNetworkHeader(),
@@ -124,10 +128,9 @@ class HrdSupportTest {
 	void testClaimsProviderPreselectionWithHrdHint() {
 		var request = new MockHttpServletRequest();
 		var properties = givenProperties();
-		request.addParameter(HrdSupport.HTTP_HRD_HINT_PARAMETER, CP_ENTERPRISE_ID);
+		request.addParameter(HINT_PARAMETER, CP_ENTERPRISE_ID);
 		assertThat(HrdSupport.getClaimsProviderHint(request, properties), is(CP_ENTERPRISE_ID));
 	}
-
 
 	@Test
 	void testClaimsProviderHintLnClientNetworkInternet() {
@@ -230,26 +233,26 @@ class HrdSupportTest {
 		assertFalse(resultFalse, "Result should be false when the hosts of the destination and perimeter URL do not match.");
 	}
 
-	private static List<ClaimsProviderRelyingParty> givenClaimsProviderMappings() {
-		var ret = new ArrayList<ClaimsProviderRelyingParty>();
+	private static List<ClaimsProvider> givenClaimsProviderMappings() {
+		var ret = new ArrayList<ClaimsProvider>();
 		for (int count = 0; count < 5; count++) {
-			ret.add(ClaimsProviderRelyingParty.builder()
+			ret.add(ClaimsProvider.builder()
 					.id("CP" + count)
 					.clientNetworks("INTRANET,INTERNET")
 					.relyingPartyAlias("RP" + count)
 					.build());
 		}
 		// no aliases, so HRD screen should show these 2
-		ret.add(ClaimsProviderRelyingParty.builder()
+		ret.add(ClaimsProvider.builder()
 				.id(CP_ENTERPRISE_ID)
 				.clientNetworks("INTRANET")
 				.build());
-		ret.add(ClaimsProviderRelyingParty.builder()
+		ret.add(ClaimsProvider.builder()
 				.id(CP_PUBLIC_ID)
 				.clientNetworks("INTERNET")
 				.build());
 		// gateway IP overrides everything else so '*' leads to just eliminate it from HRD screen because it's not working anyway
-		ret.add(ClaimsProviderRelyingParty.builder()
+		ret.add(ClaimsProvider.builder()
 				.id(CP_MOBILE_ID)
 				.clientNetworks("INTRANET,INTERNET")
 				.relyingPartyAlias("RP-ID-123-UNUSED")
@@ -264,6 +267,8 @@ class HrdSupportTest {
 		ret.setEnterpriseIdpId(CP_ENTERPRISE_ID);
 		ret.setMobileIdpId(CP_MOBILE_ID);
 		ret.setPublicAutoLoginCookie(AUTOLOGIN_COOKIE);
+		ret.setHrdHintParameter(HINT_PARAMETER);
+		ret.setHrdHintTestParameter(HINT_TEST_PARAMETER);
 		var network = new NetworkConfig();
 		ret.setNetwork(network);
 		network.setMobileGatewayIpRegex(GW_MOBILE_IP_REGEX);

@@ -14,20 +14,20 @@
  */
 
 import { DOCUMENT, registerLocaleData } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
 import localeDe from '@angular/common/locales/de';
 import localeFr from '@angular/common/locales/fr';
 import localeIt from '@angular/common/locales/it';
 import localeEn from '@angular/common/locales/en';
-import { Inject, Injectable } from '@angular/core';
+import { DestroyRef, Inject, Injectable } from '@angular/core';
 import { LangChangeEvent, TranslateService } from '@ngx-translate/core';
-import { CookieService } from 'ngx-cookie-service';
 import { BehaviorSubject, Connectable, Observable, connectable } from 'rxjs';
 import { map, startWith } from 'rxjs/operators';
-
-import { ApiService } from './api.service';
 import { CookieConfiguration } from '../model/CookieConfiguration';
 import { Constant } from '../shared/constants';
+import { HttpErrorResponse } from '@angular/common/http';
+import { ApiService } from './api.service';
+import { CookieService } from './cookie-service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Injectable({ providedIn: 'root' })
 export class LanguageService {
@@ -57,6 +57,7 @@ export class LanguageService {
 		private readonly cookieService: CookieService,
 		private readonly apiService: ApiService,
 		private readonly translateService: TranslateService,
+		private readonly destroyRef: DestroyRef,
 		@Inject(DOCUMENT) private readonly document: Document
 	) {
 		this.languageCookie = new CookieConfiguration();
@@ -103,24 +104,27 @@ export class LanguageService {
 	}
 
 	private loadConfig() {
-		this.apiService.fetchConfiguration()?.subscribe?.({
-			next: configuration => {
-				const languageCookie: CookieConfiguration = configuration.languageCookie;
-				if (languageCookie?.name == null) {
+		this.apiService
+			.getConfiguration()
+			.pipe(takeUntilDestroyed(this.destroyRef))
+			.subscribe({
+				next: configuration => {
+					const languageCookie: CookieConfiguration = configuration.languageCookie;
+					if (languageCookie?.name == null) {
+						// NOSONAR
+						// console.debug('[LanguageService] Keeping default language cookie', this.languageCookie.name, 'values', languageCookie.values, 'defaultValue', languageCookie.defaultValue);
+						return;
+					}
+					this.languageCookie = languageCookie;
+					this.defaultCookieParameters = false;
 					// NOSONAR
-					// console.debug('[LanguageService] Keeping default language cookie', this.languageCookie.name, 'values', languageCookie.values, 'defaultValue', languageCookie.defaultValue);
-					return;
+					// console.debug('[LanguageService] Server sent language cookie parameters ', this.languageCookie.name, 'values', languageCookie.values, 'defaultValue', languageCookie.defaultValue);
+					this.setLanguage();
+				},
+				error: (errorResponse: HttpErrorResponse) => {
+					console.error(errorResponse);
 				}
-				this.languageCookie = languageCookie;
-				this.defaultCookieParameters = false;
-				// NOSONAR
-				// console.debug('[LanguageService] Server sent language cookie parameters ', this.languageCookie.name, 'values', languageCookie.values, 'defaultValue', languageCookie.defaultValue);
-				this.setLanguage();
-			},
-			error: (errorResponse: HttpErrorResponse) => {
-				console.error(errorResponse);
-			}
-		});
+			});
 	}
 
 	private initTranslationService(): void {
@@ -186,15 +190,7 @@ export class LanguageService {
 		}
 		// NOSONAR
 		// console.debug('[LanguageService] Setting language cookie:', this.languageCookie.name, '=', language, 'on path', this.languageCookie.path, 'and domain', this.languageCookie.domain);
-		this.cookieService.set(
-			this.languageCookie.name,
-			language,
-			this.languageCookie.maxAge,
-			this.languageCookie.path,
-			this.languageCookie.domain,
-			this.languageCookie.secure,
-			this.languageCookie.sameSite
-		);
+		this.cookieService.set(this.languageCookie, language);
 	}
 
 	private registerLocales(): void {

@@ -17,6 +17,7 @@ package swiss.trustbroker.announcement.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -37,7 +38,7 @@ import swiss.trustbroker.api.relyingparty.dto.RelyingPartyConfig;
 public class NoOpAnnouncementService implements AnnouncementService {
 
 	@Override
-	public boolean showAnnouncements(AnnouncementsRpData announcementsRpData, String providerName) {
+	public boolean showAnnouncements(AnnouncementsRpData announcementsRpData, String providerName, Set<String> conditions) {
 		log.debug("{}.showAnnouncements called", this.getClass().getName());
 		return false;
 	}

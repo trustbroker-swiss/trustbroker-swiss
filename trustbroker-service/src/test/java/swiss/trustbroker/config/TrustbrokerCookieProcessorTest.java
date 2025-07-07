@@ -54,6 +54,7 @@ class TrustbrokerCookieProcessorTest {
 	@MethodSource
 	void getSameSiteCookies(String redirectUri, String perimeterUrl, String expected) {
 		var request = new MockHttpServletRequest();
+		request.setSecure(redirectUri != null && redirectUri.startsWith("https"));
 		request.setParameter(OidcUtil.REDIRECT_URI, redirectUri);
 		var response = new MockHttpServletResponse();
 		HttpExchangeSupport.begin(request, response);

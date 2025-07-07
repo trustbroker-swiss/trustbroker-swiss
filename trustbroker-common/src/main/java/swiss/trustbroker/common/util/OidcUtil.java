@@ -21,6 +21,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.function.Function;
 
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSVerifier;
@@ -28,7 +31,6 @@ import com.nimbusds.jose.crypto.ECDSAVerifier;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.JWK;
-import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.KeyType;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jwt.JWTClaimNames;
@@ -38,6 +40,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpHeaders;
+import org.springframework.util.MimeType;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.Base64Util;
@@ -79,7 +82,19 @@ public class OidcUtil {
 
     public static final String OIDC_ACR_VALUES = "acr_values"; // requested QoA by client
 
+    public static final String OIDC_ACR = "acr"; // acr claim
+
     public static final String OIDC_ISSUER = JWTClaimNames.ISSUER; // token claim
+
+    public static final String OIDC_ISSUED_AT = JWTClaimNames.ISSUED_AT;
+
+    public static final String OIDC_NOT_BEFORE = JWTClaimNames.NOT_BEFORE;
+
+    public static final String OIDC_EXPIRATION_TIME = JWTClaimNames.EXPIRATION_TIME;
+
+    public static final String OIDC_NONCE = "nonce";
+
+    public static final String OIDC_JWT_ID = JWTClaimNames.JWT_ID;
 
     public static final String OIDC_STATE_ID = "state"; // client state transfer for clickbait prevention
 
@@ -109,15 +124,19 @@ public class OidcUtil {
 
     public static final String OIDC_HEADER_TYPE_JWT = "JWT";
 
-	public static final String TOKEN_RESPONSE_ID_TOKEN = "id_token";
+    public static final String TOKEN_RESPONSE_ID_TOKEN = "id_token";
 
-	public static final String TOKEN_RESPONSE_ACCESS_TOKEN = "access_token";
+    public static final String TOKEN_RESPONSE_ACCESS_TOKEN = "access_token";
 
-	public static final String TOKEN_RESPONSE_REFRESH_TOKEN = "refresh_token";
+    public static final String TOKEN_RESPONSE_REFRESH_TOKEN = "refresh_token";
 
-	public static final String TOKEN_RESPONSE_TOKEN_TYPE = "token_type";
+    public static final String TOKEN_RESPONSE_TOKEN_TYPE = "token_type";
 
-	public static final String TOKEN_RESPONSE_EXPIRES_IN = "expires_in";
+    public static final String TOKEN_RESPONSE_EXPIRES_IN = "expires_in";
+
+    public static final String CONTENT_TYPE_JWT = "application/jwt";
+
+    public static final MimeType MIME_TYPE_JWT = MimeType.valueOf(CONTENT_TYPE_JWT);
 
     private OidcUtil() {
     }
@@ -173,11 +192,22 @@ public class OidcUtil {
         return basicAuth.split(":")[0];
     }
 
+	// https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication
+	// https://www.rfc-editor.org/rfc/rfc6749.html#section-2.3.1
 	public static String getBasicAuthorizationHeader(String clientId, String clientSecret) {
-		return HTTP_BASIC + ' ' + Base64Util.encode(clientId + ':' + clientSecret, true);
+		return HTTP_BASIC + ' ' + Base64Util.encode(
+				WebUtil.urlEncodeValue(clientId) + ':' + WebUtil.urlEncodeValue(clientSecret),
+				Base64Util.Base64Encoding.UNCHUNKED);
 	}
 
-    private static String getClaimFromAuthorizationHeader(String header, String claimName) {
+	// https://openid.net/specs/openid-connect-core-1_0.html#UserInfo
+	// https://www.rfc-editor.org/rfc/rfc6750#section-2.1
+	// accessToken must be JWT encoded: base64(header).base64(payload).base64(signature)
+	public static String getBearerAuthorizationHeader(String accessToken) {
+		return OIDC_BEARER + ' ' + accessToken;
+	}
+
+	private static String getClaimFromAuthorizationHeader(String header, String claimName) {
         if (header == null || header.isEmpty()) {
             return null;
         }
@@ -322,20 +352,24 @@ public class OidcUtil {
 		return ret.toString();
 	}
 
-	public static JWTClaimsSet verifyJwtToken(String jwtToken, JWKSet keys, String clientId) {
+	public static JWTClaimsSet verifyJwtToken(String jwtToken, Function<String, Optional<JWK>> keySupplier, String clientId) {
 		try {
 			var jwt = SignedJWT.parse(jwtToken);
 			var header = jwt.getHeader();
 			var kid = header.getKeyID();
-			var key = keys.getKeyByKeyId(kid);
-			var verifier = getVerifier(key.getKeyType(), key, clientId);
+			var key = keySupplier.apply(kid);
+			if (key.isEmpty()) {
+				throw new RequestDeniedException(String.format("Invalid keyId=%s token from clientId=%s", kid, clientId));
+			}
+			var verifier = getVerifier(key.get().getKeyType(), key.get(), clientId);
 			if (!jwt.verify(verifier)) {
 				throw new RequestDeniedException(String.format("Invalid JWT token from clientId=%s", clientId));
 			}
 			return jwt.getJWTClaimsSet();
 		}
 		catch (ParseException | JOSEException ex) {
-			throw new TechnicalException(String.format("Cannot parse JWT token from clientId=%s: %s", clientId, ex.getMessage()));
+			throw new TechnicalException(
+					String.format("Cannot parse JWT token from clientId=%s: %s", clientId, ex.getMessage()), ex);
 		}
 	}
 
@@ -347,6 +381,45 @@ public class OidcUtil {
 			return new RSASSAVerifier(new RSAKey.Builder(key.toRSAKey()).build());
 		}
 		throw new TechnicalException(String.format("KeyType=%s clientId=%s not supported", keyType, clientId));
+	}
+
+	// parse JWTClaimsSet from serialized JSON
+	public static JWTClaimsSet parseJwtClaims(String jsonString) {
+		if (StringUtils.isEmpty(jsonString)) {
+			return new JWTClaimsSet.Builder().build();
+		}
+		try {
+			var jsonObject = JsonUtil.parseJsonObject(jsonString, false);
+			return JWTClaimsSet.parse(jsonObject);
+		}
+		catch (ParseException ex) {
+			throw new TechnicalException(String.format("Could not parse JSON: %s", ex.getMessage()), ex);
+		}
+	}
+
+	// combine two sets, values from primary win, either may be null
+	public static JWTClaimsSet mergeJwtClaims(JWTClaimsSet primary, String primarySource,
+			JWTClaimsSet secondary, String secondarySource) {
+		if (primary == null) {
+			return secondary;
+		}
+		if (secondary == null) {
+			return primary;
+		}
+		var claims = new JWTClaimsSet.Builder(secondary);
+		for (var claim : primary.getClaims().entrySet()) {
+			var overWritten = secondary.getClaim(claim.getKey());
+			if (overWritten != null && !overWritten.equals(claim.getValue())) {
+				log.info("Overwriting claim {}={} from secondarySource={} with value={} from primarySource={}",
+						claim.getKey(), overWritten, secondarySource, claim.getValue(), primarySource);
+			}
+			claims.claim(claim.getKey(), claim.getValue());
+		}
+		return claims.build();
+	}
+
+	public static String generateNonce() {
+		return UUID.randomUUID().toString().replace("-", "");
 	}
 
 }

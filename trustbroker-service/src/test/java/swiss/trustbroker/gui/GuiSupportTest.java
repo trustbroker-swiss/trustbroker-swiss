@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 
 @TestConfiguration
@@ -58,6 +59,28 @@ class GuiSupportTest {
 		assertThat(cookie.getValue(), is(VALUE));
 		assertThat(cookie.getDomain(), is(DOMAIN));
 		assertThat(cookie.getPath(), is(PATH));
+		assertThat(cookie.getAttribute(WebUtil.COOKIE_SAME_SITE), is(WebUtil.COOKIE_SAME_SITE_STRICT));
+	}
+
+	@Test
+	void addThemeIndicatorSameSiteFallback() {
+		var response = new MockHttpServletResponse();
+		var config = givenConfig();
+		config.setCookieSameSite(WebUtil.COOKIE_SAME_SITE_LAX);
+		config.getGui().getThemeCookie().setSameSite(null);
+		assertDoesNotThrow(() -> GuiSupport.addThemeIndicator(response, config));
+		var cookie = response.getCookie(NAME);
+		assertThat(cookie.getAttribute(WebUtil.COOKIE_SAME_SITE), is(WebUtil.COOKIE_SAME_SITE_LAX));
+	}
+
+	@Test
+	void addThemeIndicatorIgnoreSameSiteDynamic() {
+		var response = new MockHttpServletResponse();
+		var config = givenConfig();
+		config.getGui().getThemeCookie().setSameSite(WebUtil.COOKIE_SAME_SITE_DYNAMIC);
+		assertDoesNotThrow(() -> GuiSupport.addThemeIndicator(response, config));
+		var cookie = response.getCookie(NAME);
+		assertThat(cookie.getAttribute(WebUtil.COOKIE_SAME_SITE), is(nullValue()));
 	}
 
 	@Test
@@ -113,6 +136,7 @@ class GuiSupportTest {
 		config.getThemeCookie().setDefaultValue(VALUE);
 		config.getThemeCookie().setDomain("." + DOMAIN); // simulate leading dot
 		config.getThemeCookie().setPath(PATH);
+		config.getThemeCookie().setSameSite(WebUtil.COOKIE_SAME_SITE_STRICT);
 		properties.setGui(config);
 		return properties;
 	}

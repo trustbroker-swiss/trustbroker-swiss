@@ -88,7 +88,7 @@ public class WebServiceConfiguration extends WsConfigurerAdapter {
 		return new ServletRegistrationBean<>(servlet, wsTrustApiPath, wsTrustCompatPath);
 	}
 
-	 @Bean
+	@Bean
 	public SoapMessageFactory messageFactory(@Qualifier("1.1") SaajSoapMessageFactory messageFactory11,
 			@Qualifier("1.2") SaajSoapMessageFactory messageFactory12) {
 		var soapVersion = trustBrokerProperties.getWstrust().getSoapVersion();

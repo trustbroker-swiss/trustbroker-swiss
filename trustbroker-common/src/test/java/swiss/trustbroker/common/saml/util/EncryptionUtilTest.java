@@ -25,6 +25,8 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.opensaml.saml.saml2.core.Assertion;
 import org.opensaml.saml.saml2.core.AttributeStatement;
 import org.opensaml.saml.saml2.core.EncryptedAssertion;
@@ -41,12 +43,13 @@ class EncryptionUtilTest {
 		SamlInitializer.initSamlSubSystem();
 	}
 
-	@Test
-	void encryptAssertionTest() {
+	@ParameterizedTest
+	@CsvSource(value = { "true", "false" } )
+	void encryptAssertionTest(boolean useSki) {
 		var inputAssertion = givenAssertion();
 		var encryptedAssertion = EncryptionUtil.encryptAssertion(inputAssertion, givenCredentials().get(0),
 				EncryptionConstants.ALGO_ID_BLOCKCIPHER_AES128, EncryptionConstants.ALGO_ID_KEYTRANSPORT_RSAOAEP,
-				Encrypter.KeyPlacement.PEER,"issuer:TEST");
+				Encrypter.KeyPlacement.PEER,"issuer:TEST", useSki);
 		assertNotNull(encryptedAssertion);
 	}
 
@@ -87,7 +90,7 @@ class EncryptionUtilTest {
 	private EncryptedAssertion givenEncryptedAssertion(Assertion assertion) {
 		return EncryptionUtil.encryptAssertion(assertion, givenCredentials().get(0),
 				EncryptionConstants.ALGO_ID_BLOCKCIPHER_AES128, EncryptionConstants.ALGO_ID_KEYTRANSPORT_RSAOAEP,
-				Encrypter.KeyPlacement.PEER,"issuer:TEST");
+				Encrypter.KeyPlacement.PEER,"issuer:TEST", false);
 	}
 
 	private Assertion givenAssertion() {

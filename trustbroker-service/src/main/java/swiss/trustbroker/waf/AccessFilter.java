@@ -17,6 +17,7 @@ package swiss.trustbroker.waf;
 
 import java.io.IOException;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
@@ -25,7 +26,6 @@ import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -40,37 +40,60 @@ import swiss.trustbroker.util.WebSupport;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 2)
 @Slf4j
-@AllArgsConstructor
 public class AccessFilter implements Filter {
 
-	// all request paths that are allowed by this filter
-	private static final String ALL_ALLOWED_PATH_REGEX = "^("
-			// SPA - see app-routing-module and AppController code
-			+ "/app|/app/.*"
-			// APIs (/adfs/ls included below)
-			+ "|/api/v1/.*"
-			// SAML endpoints
-			+ "|/adfs/.*|/HRD|/HRD/.*|/AdfsGui/.*|/FederationMetadata/.*|/federationmetadata/.*"
-			// assets referenced by UI (some of which are unfortunately in the context root)
-			+ "|/assets/.*|/js/.*|/[^/]*.(js|css|woff2?|ttf|eot|svg|html)"
-			+ "|/favicon.ico"
-			+ "|/robots.txt"
-			// oidc services (spring-authorization-server and Keycloak fake)
-			+ "|/oauth2/.*|/login/.*|/login|/logout|/logout/.*|/realms/.*|/saml2/.*|/userinfo|/.well-known/openid-configuration"
-			+ ")$";
+	private final String allAllowedPathsRegex;
 
-	private static final String INTERNAL_ALLOWED_PATH_REGEX = "^("
-			+ "/actuator/health|/actuator/health/liveness|/actuator/health/readiness|/actuator/info"
-			+ "|" + ApiSupport.RECONFIG_URL
-			+ "|" + ApiSupport.CONFIG_STATUS_API
-			+ "|" + ApiSupport.CONFIG_SCHEMAS_API + "/.*"
-			+ ")$";
+	private final String internalAllowedPathsRegex;
 
-	private static final Pattern ALL_ALLOWED_PATHS = Pattern.compile(ALL_ALLOWED_PATH_REGEX);
+	private final Pattern allAllowedPaths;
 
-	private static final Pattern INTERNAL_ALLOWED_PATHS = Pattern.compile(INTERNAL_ALLOWED_PATH_REGEX);
+	private final Pattern internalAllowedPaths;
 
 	private final TrustBrokerProperties trustBrokerProperties;
+
+	public AccessFilter(TrustBrokerProperties trustBrokerProperties) {
+		this.trustBrokerProperties = trustBrokerProperties;
+		allAllowedPathsRegex = allAllowedPathsRegex(trustBrokerProperties);
+		allAllowedPaths = Pattern.compile(allAllowedPathsRegex);
+		internalAllowedPathsRegex = getInternalAllowedPathsRegex();
+		internalAllowedPaths = Pattern.compile(internalAllowedPathsRegex);
+	}
+
+	// all request paths that are allowed by this filter
+	private static String allAllowedPathsRegex(TrustBrokerProperties trustBrokerProperties) {
+		var perimeterPaths = WebSupport.getOwnPerimeterPaths(trustBrokerProperties);
+		var perimeterPathsRegex = perimeterPaths
+				.stream()
+				.map(Pattern::quote) // escape regex characters
+				.collect(Collectors.joining("|"));
+		return "^("
+				// SPA - see app-routing-module and AppController code
+				+ "/app|/app/.*"
+				// APIs (/adfs/ls included below)
+				+ "|/api/v1/.*"
+				// configured endpoints:
+				+ "|" + perimeterPathsRegex
+				// default SAML endpoints
+				+ "|/adfs/.*|/FederationMetadata/.*|/federationmetadata/.*"
+				// assets referenced by UI (some of which are unfortunately in the context root)
+				+ "|/assets/.*|/js/.*|/[^/]*.(js|css|woff2?|ttf|eot|svg|html)"
+				+ "|/favicon.ico"
+				+ "|/robots.txt"
+				// OIDC services (spring-authorization-server and Keycloak compatibility)
+				+ "|/oauth2/.*|/login/.*|/login|/logout|/logout/.*|/realms/.*|/saml2/.*|/userinfo|/.well-known/openid-configuration"
+				+ ")$";
+	}
+
+	// internal only paths - currently static (but sub-path details depend on Spring config)
+	private static String getInternalAllowedPathsRegex() {
+		return "^("
+				+ "/actuator/health|/actuator/health/liveness|/actuator/health/readiness|/actuator/info"
+				+ "|" + ApiSupport.RECONFIG_URL
+				+ "|" + ApiSupport.CONFIG_STATUS_API
+				+ "|" + ApiSupport.CONFIG_SCHEMAS_API + "/.*"
+				+ ")$";
+	}
 
 	@Override
 	public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
@@ -80,7 +103,7 @@ public class AccessFilter implements Filter {
 		var path = httpRequest.getRequestURI();
 
 		// firewall
-		if (INTERNAL_ALLOWED_PATHS.matcher(path).matches()) {
+		if (internalAllowedPaths.matcher(path).matches()) {
 			if (WebSupport.isClientOnInternet(httpRequest, trustBrokerProperties.getNetwork())) {
 				blockAndLogRequest(httpRequest, httpResponse);
 			}
@@ -88,7 +111,7 @@ public class AccessFilter implements Filter {
 				chain.doFilter(request, response);
 			}
 		}
-		else if (ALL_ALLOWED_PATHS.matcher(path).matches()) {
+		else if (allAllowedPaths.matcher(path).matches()) {
 			chain.doFilter(request, response);
 		}
 		else {
@@ -102,7 +125,7 @@ public class AccessFilter implements Filter {
 		if (log.isDebugEnabled()) {
 			log.debug("Sending HTTP/404 NOT FOUND for path='{}' clientNetwork={} allowedAll='{}' allowedInternal='{}'",
 					path, WebSupport.getClientNetwork(httpRequest, trustBrokerProperties.getNetwork()),
-					ALL_ALLOWED_PATH_REGEX, INTERNAL_ALLOWED_PATH_REGEX);
+					allAllowedPathsRegex, internalAllowedPathsRegex);
 		}
 		httpResponse.sendError(HttpServletResponse.SC_NOT_FOUND);
 	}

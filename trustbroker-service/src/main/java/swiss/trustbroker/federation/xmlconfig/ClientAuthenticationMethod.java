@@ -22,6 +22,7 @@ import jakarta.xml.bind.annotation.XmlEnumValue;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import org.apache.commons.lang3.EnumUtils;
 
 /**
  * OIDC client authentication methods.
@@ -75,6 +76,19 @@ public enum ClientAuthenticationMethod {
 
 	public static List<ClientAuthenticationMethod> defaultValues() {
 		return DEFAULT_VALUES;
+	}
+
+	public static ClientAuthenticationMethod valueOfIgnoreCase(Object value) {
+		if (value == null) {
+			return null;
+		}
+		if (value instanceof ClientAuthenticationMethod enumValue) {
+			return enumValue;
+		}
+		if (value instanceof org.springframework.security.oauth2.core.ClientAuthenticationMethod method) {
+			return EnumUtils.getEnumIgnoreCase(ClientAuthenticationMethod.class, method.getValue());
+		}
+		return EnumUtils.getEnumIgnoreCase(ClientAuthenticationMethod.class, value.toString());
 	}
 
 }

@@ -60,7 +60,7 @@ class DefinitionTest {
 
 	@Test
 	void testFindAttributeName() {
-		var definition = Definition.ofNamespaceUri(CoreAttributeName.NAME);
+		var definition = new Definition(CoreAttributeName.NAME.getNamespaceUri());
 		assertThat(definition.getName(), is(CoreAttributeName.NAME.getNamespaceUri()));
 		assertThat(definition.getNamespaceUri(), is(nullValue()));
 		assertThat(definition.findAttributeName(), is(CoreAttributeName.NAME));
@@ -154,7 +154,7 @@ class DefinitionTest {
 				.mappers(mappers)
 				.oidcMapper(oidcMapper) // oidcMapper fallback
 				.build();
-		assertThat(definition.getMappers(), is(expectedMappers));
+		assertThat(definition.getClaimsMappers(), is(expectedMappers));
 	}
 
 	static Object[][] testGetMappers() {

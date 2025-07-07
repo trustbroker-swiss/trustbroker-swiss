@@ -87,6 +87,45 @@ public class Qoa implements Serializable {
 	private QoaComparison comparison;
 
 	/**
+	 * Drop unmapped Qoa from the request
+	 * <br/>
+	 * Default: false
+	 *
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "dropUnmappable")
+	@Builder.Default
+	private Boolean dropUnmappable = Boolean.FALSE;
+
+	/**
+	 * Default Qoa if there is none in the response
+	 *
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "defaultQoa")
+	private String defaultQoa;
+
+	/**
+	 * Replace incoming Qoa from the request
+	 * Only applied on RP side
+	 * <br/>
+	 * Default: false
+	 *
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "replaceInbound")
+	@Builder.Default
+	private Boolean replaceInbound = Boolean.FALSE;
+
+	/**
+	 * Qoa Claim name
+	 *
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "claim")
+	private String claim;
+
+	/**
 	 * List of SAML AuthnContextClassRef entries.
 	 * <br/>
 	 * If the RP does not send and AuthnRequest class references, the configured context classes are added to the
@@ -110,5 +149,16 @@ public class Qoa implements Serializable {
 	public boolean useSingleQoaInResponse() {
 		return Boolean.TRUE.equals(singleQoaResponse);
 	}
+
+	@JsonIgnore
+	public boolean dropUnmappableQoas() {
+		return Boolean.TRUE.equals(dropUnmappable);
+	}
+
+	@JsonIgnore
+	public boolean replaceInboundQoas() {
+		return Boolean.TRUE.equals(replaceInbound);
+	}
+
 
 }

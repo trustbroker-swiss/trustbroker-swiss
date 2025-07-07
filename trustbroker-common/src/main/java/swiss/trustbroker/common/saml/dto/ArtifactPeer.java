@@ -15,6 +15,7 @@
 
 package swiss.trustbroker.common.saml.dto;
 
+import java.time.Duration;
 import javax.xml.namespace.QName;
 
 import lombok.Builder;
@@ -40,4 +41,6 @@ public class ArtifactPeer {
 	private KeystoreProperties artifactResolutionKeystore;
 
 	private String keystoreBasePath;
+
+	private Duration connectTimeout;
 }

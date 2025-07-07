@@ -15,6 +15,8 @@
 
 package swiss.trustbroker.common.saml.dto;
 
+import java.util.List;
+
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -46,6 +48,7 @@ public enum SamlBinding {
 		return false;
 	}
 
+	// throws RequestDeniedException if not found
 	public static SamlBinding of(String protocolBinding) {
 		if (protocolBinding == null) {
 			return null;
@@ -57,4 +60,26 @@ public enum SamlBinding {
 		}
 		throw new RequestDeniedException(String.format("Unsupported protocolBinding=%s", protocolBinding));
 	}
+
+	// test without exception
+	public boolean is(String protocolBinding) {
+		return bindingUri.equals(protocolBinding);
+	}
+
+	// for enabling checks
+	public boolean isIn(List<String> protocolBindings) {
+		return protocolBindings != null && protocolBindings.contains(bindingUri);
+	}
+
+	// flag conversion - trustbroker-api is not using this class, else it would become an API too
+	public static SamlBinding of(boolean useArtifactBinding, boolean useRedirectBinding) {
+		if (useArtifactBinding) {
+			return SamlBinding.ARTIFACT;
+		}
+		if (useRedirectBinding) {
+			return SamlBinding.REDIRECT;
+		}
+		return SamlBinding.POST;
+	}
+
 }

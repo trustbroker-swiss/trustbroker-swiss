@@ -18,7 +18,7 @@ dependencies {
 	// spring-boot baseline
 	implementation 'org.springframework.boot:spring-boot-starter-web-services'
 	implementation 'org.springframework.boot:spring-boot-actuator'
-	implementation 'org.springframework.cloud:spring-cloud-starter-bootstrap'
+	implementation 'org.springframework.cloud:spring-cloud-starter'
 
 	// security (required for oidc)
 	implementation 'org.springframework.boot:spring-boot-starter-security'
@@ -62,6 +62,7 @@ def buildSchemaDir = 'build/resources/main'
 def schemaGenClass = 'com.sun.tools.jxc.SchemaGeneratorFacade'
 def schemaClasses = [
 		'ClaimsProviderDefinitions',
+		'ClaimsProviderMappings',
 		'ClaimsProviderSetup',
 		'RelyingParty',
 		'RelyingPartySetup',
@@ -71,13 +72,14 @@ def schemaClasses = [
 schemaClasses.each { name ->
 	def srcFile = "${dtoDir}/${name}.java"
 	def destFile = file("${buildSchemaDir}/${name}.xsd")
+	def pathSep = File.pathSeparatorChar
 	task "schemaGen${name}" (type: JavaExec, dependsOn: [compileJava,configurations.schemaGen]) {
 		// dependencies for up-to-date checks
 		inputs.file(srcFile)
 		outputs.file(destFile)
 		classpath configurations.schemaGen
 		mainClass = schemaGenClass
-		args '-d', buildSchemaGenDir , '-classpath', "${compileJava.destinationDir}:${compileJava.classpath.asPath}", srcFile
+		args '-d', buildSchemaGenDir , '-classpath', "${compileJava.destinationDir}${pathSep}${compileJava.classpath.asPath}", srcFile
 		doFirst {
 			file(buildSchemaGenDir).mkdirs()
 			file(buildSchemaDir).mkdirs()

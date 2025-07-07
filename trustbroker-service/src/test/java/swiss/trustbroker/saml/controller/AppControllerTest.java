@@ -43,6 +43,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import javax.xml.validation.Validator;
 
 import jakarta.servlet.ServletException;
@@ -92,10 +93,10 @@ import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.GuiProperties;
 import swiss.trustbroker.config.dto.QualityOfAuthenticationConfig;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.config.dto.SamlProperties;
 import swiss.trustbroker.federation.service.FederationMetadataService;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBindingMode;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.Saml;
 import swiss.trustbroker.homerealmdiscovery.controller.HrdController;
@@ -218,7 +219,8 @@ class AppControllerTest {
 	@BeforeEach
 	void setup() {
 		this.mockMvc = MockMvcBuilders.webAppContextSetup(this.webApplicationContext).build();
-		doReturn(new GuiProperties()).when(trustBrokerProperties).getGui();
+		when(trustBrokerProperties.getGui()).thenReturn(new GuiProperties());
+		when(trustBrokerProperties.getSaml()).thenReturn(new SamlProperties());
 		doAnswer(invocation -> invocation.getArgument(1)).when(hrdService).adaptClaimsProviderMappings(any(), any());
 	}
 
@@ -438,7 +440,7 @@ class AppControllerTest {
 
 	@Test
 	void handleIncomingMessagesValidPostAuthnRequestAnnouncementsTest() throws Exception {
-		doReturn(true).when(announcementService).showAnnouncements(any(), nullable(String.class));
+		doReturn(true).when(announcementService).showAnnouncements(any(), nullable(String.class), eq(Set.of()));
 		var authnRequest = prepareValidIncomingAuthnRequest();
 		var encodedMessage = SamlUtil.encode(authnRequest);
 		var referer = "https://localhost/caller";
@@ -1018,11 +1020,6 @@ class AppControllerTest {
 				.thenReturn(ServiceSamlTestUtil.loadClaimsProviderSetup());
 		when(relyingPartyDefinitions.getSsoGroupSetup())
 				.thenReturn(ServiceSamlTestUtil.loadSsoGroups());
-		doAnswer(invocation -> {
-			String id = invocation.getArgument(0);
-			return cpDefinitions.getClaimsProviders().stream().filter(cpId -> cpId.equals(id)).findFirst().orElse(
-					ClaimsProvider.builder().id(id).build());
-		}).when(relyingPartyDefinitions).getClaimsProviderById(any());
 	}
 
 

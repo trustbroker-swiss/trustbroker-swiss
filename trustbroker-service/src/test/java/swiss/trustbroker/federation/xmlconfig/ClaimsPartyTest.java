@@ -17,8 +17,15 @@ package swiss.trustbroker.federation.xmlconfig;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import java.util.Collections;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import swiss.trustbroker.common.exception.TechnicalException;
 
 class ClaimsPartyTest {
 
@@ -43,4 +50,38 @@ class ClaimsPartyTest {
 		assertThat(cp.getOriginalIssuer(), is(origIssuer));
 	}
 
+	@Test
+	void getSingleOidcClientSuccess() {
+		var client1 = OidcClient.builder().id("id1").build();
+		var oidc1 = Oidc.builder().clients(List.of(client1)).build();
+		var cp = ClaimsParty.builder().oidc(oidc1).build();
+		assertThat(cp.getSingleOidcClient(), is(client1));
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void getSingleOidcClientFailed(ClaimsParty cp) {
+		assertThrows(TechnicalException.class, () -> cp.getSingleOidcClient());
+	}
+
+	static Object[][] getSingleOidcClientFailed() {
+		return new Object[][] {
+				{ ClaimsParty.builder().build() },
+				{ ClaimsParty.builder()
+							 .oidc(new Oidc())
+						.build() },
+				{ ClaimsParty.builder()
+							 .oidc(Oidc.builder().clients(Collections.emptyList()).build())
+						.build() },
+				{ ClaimsParty.builder().oidc(
+						Oidc.builder()
+							.clients(
+								List.of(
+										OidcClient.builder().id("id2").build(),
+										OidcClient.builder().id("id3").build())
+							)
+							.build()
+				  ).build() },
+		};
+	}
 }

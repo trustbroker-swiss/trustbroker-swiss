@@ -20,10 +20,16 @@
 		<span class="ob-master-layout-logo" tabindex="-1">
 			<img class="{{ theme.name }}" [alt]="'trustbroker.header.logo' | translate" src="{{ imageUrl('logo.svg') }}" />
 		</span>
-		<span class="{{ theme.name }} ob-master-layout-brand-app-title">
-			<span class="ob-master-layout-brand-link medium-emphasis">
+		<span class="{{ theme.name }} ob-master-layout-brand-app-title" [ngClass]="{ mobile: isMobile() }">
+			@if (pageTitle$ | async; as pageTitle) {
+				@if (isMobile()) {
+					{{ pageTitle | translate }}
+				} @else {
+					{{ appName }}&nbsp;&ndash;&nbsp;{{ pageTitle | translate }}
+				}
+			} @else {
 				{{ appName }}
-			</span>
+			}
 		</span>
 	</div>
 
@@ -36,9 +42,10 @@
 						help-icon-button
 						class="{{ theme.name }} app-header-button"
 						[attr.tabindex]="theme.helpTabindex"
-						(click)="toggleHelpPanel(true)"
+						(pointerup)="toggleHelpPanel($event)"
+						(keydown)="toggleHelpPanel($event)"
 						[attr.aria-haspopup]="theme.hasHelpPanel"
-						[attr.aria-expanded]="helpExpanded()"
+						[attr.aria-expanded]="helpPanelVisible"
 						[attr.aria-label]="'trustbroker.header.help' | translate"
 					>
 						<span class="{{ theme.name }} ob-icon-wrapper" aria-hidden="true">

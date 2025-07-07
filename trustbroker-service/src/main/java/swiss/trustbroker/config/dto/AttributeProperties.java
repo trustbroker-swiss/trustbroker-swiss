@@ -57,4 +57,9 @@ public class AttributeProperties implements AttributeName {
 	 */
 	private List<String> oidcNameList;
 
+	/**
+	 * The claim mappers used for mapping the values.
+	 */
+	private String mappers;
+
 }

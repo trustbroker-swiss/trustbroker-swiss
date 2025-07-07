@@ -26,7 +26,7 @@ import org.eclipse.jgit.transport.sshd.KeyPasswordProvider;
 public class SshKeyPasswordProvider implements KeyPasswordProvider {
 
 	public SshKeyPasswordProvider(CredentialsProvider provider) {
-		// NOSONAR: Bad design, we only try with the single key we support
+		// Bad design, we only try with the single key we support
 	}
 
 	@Override
@@ -43,7 +43,7 @@ public class SshKeyPasswordProvider implements KeyPasswordProvider {
 
 	@Override
 	public void setAttempts(int maxNumberOfAttempts) {
-		// NOSONAR: Bad design, we only try once which is the default of getAttempts
+		// Bad design, we only try once which is the default of getAttempts
 	}
 
 	@Override

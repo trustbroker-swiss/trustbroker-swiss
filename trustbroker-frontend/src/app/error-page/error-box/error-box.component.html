@@ -21,13 +21,13 @@
 		@if (!supportInfo) {
 			<p class="medium-emphasis" [innerHTML]="infoKey | translate | safeMarkup"></p>
 		}
-		@if (supportInfoData) {
+		@if (supportInfo && supportInfoData) {
 			<div class="app-support">
-				@if (supportInfoData.appUrl) {
+				@if (languageAppUrl) {
 					<div class="app-support-info">
 						<div class="medium-emphasis" [innerHTML]="'trustbroker.error.main.support.furtherinfo' | translate | safeMarkup"></div>
 						<div>
-							<a href="{{ supportInfoData.appUrl }}">{{ "trustbroker.error.main.support.documentation" | translate }}</a>
+							<a href="{{ languageAppUrl }}">{{ "trustbroker.error.main.support.documentation" | translate }}</a>
 						</div>
 					</div>
 				}
@@ -66,9 +66,9 @@
 			</div>
 		}
 		@if (reference) {
-			<p class="medium-emphasis">
+			<div class="medium-emphasis errorReference">
 				<span [innerHTML]="referenceKey | translate | safeMarkup"></span><span>{{ reference }}</span>
-			</p>
+			</div>
 		}
 		@if (continueButton) {
 			<button mat-flat-button color="accent" (click)="continueFlow()" tabindex="1" type="submit" class="{{ theme.name }} button-text mt-2">
@@ -78,6 +78,11 @@
 		@if (reloginButton) {
 			<button mat-flat-button color="accent" (click)="relogin()" tabindex="2" type="submit" class="{{ theme.name }} button-text mt-2">
 				<span>{{ "trustbroker.error.main.button.relogin" | translate }}</span>
+			</button>
+		}
+		@if (linkButton && languageAppUrl) {
+			<button mat-flat-button color="accent" (click)="followLink()" tabindex="1" type="submit" class="{{ theme.name }} button-text mt-2">
+				<span>{{ "trustbroker.error.main.button.link" | translate }}</span>
 			</button>
 		}
 	</div>

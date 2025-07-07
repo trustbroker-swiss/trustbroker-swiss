@@ -245,6 +245,7 @@ class OidcSessionSupportTest {
 			client.getOidcSecurityPolicies().setSessionCookieSameSite(policySameSite);
 		}
 		var request = new MockHttpServletRequest();
+		request.setSecure(redirectUri != null && redirectUri.startsWith("https"));
 		request.setParameter(OidcUtil.REDIRECT_URI, redirectUri);
 		request.setParameter(OidcUtil.LOGOUT_REDIRECT_URI, logoutRedirectUri);
 		var properties = new TrustBrokerProperties();
@@ -342,12 +343,12 @@ class OidcSessionSupportTest {
 		var session = new TomcatSession(null);
 		session.setStateData(StateData.builder().id("1").build());
 		request.setSession(session);
-		assertThat(OidcSessionSupport.isAcrValuesStepupRequired(request, session, "TestClient"), is(false));
+		assertThat(OidcSessionSupport.isAcrValuesStepUpRequired(request, session, "TestClient"), is(false));
 		request.setParameter("acr_values", "acr1 acr2");
 		OidcSessionSupport.rememberAcrValues(request);
-		assertThat(OidcSessionSupport.isAcrValuesStepupRequired(request, session, "TestClient"), is(false));
+		assertThat(OidcSessionSupport.isAcrValuesStepUpRequired(request, session, "TestClient"), is(false));
 		request.setParameter("acr_values", "acr3");
-		assertThat(OidcSessionSupport.isAcrValuesStepupRequired(request, session, "TestClient"), is(true));
+		assertThat(OidcSessionSupport.isAcrValuesStepUpRequired(request, session, "TestClient"), is(true));
 	}
 
 	@ParameterizedTest

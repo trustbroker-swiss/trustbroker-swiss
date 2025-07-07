@@ -26,7 +26,6 @@ import java.util.List;
 import javax.xml.namespace.QName;
 
 import lombok.extern.slf4j.Slf4j;
-import net.shibboleth.shared.codec.Base64Support;
 import net.shibboleth.shared.xml.SerializeSupport;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.collections.CollectionUtils;
@@ -264,7 +263,7 @@ public class SamlUtil {
 		try {
 			final var domMessage = marshallMessage(message);
 			final var messageXml = SerializeSupport.nodeToString(domMessage);
-			return Base64Util.encode(messageXml.getBytes(StandardCharsets.UTF_8), Base64Support.UNCHUNKED);
+			return Base64Util.encode(messageXml.getBytes(StandardCharsets.UTF_8), Base64Util.Base64Encoding.UNCHUNKED);
 		}
 		catch (MessageEncodingException e) {
 			throw new TechnicalException(String.format("Message Encoding exception: %s", e.getMessage()), e);
@@ -391,9 +390,9 @@ public class SamlUtil {
 
 	// e.g. HexEncode(Base64.decode(signature.getKeyInfo().getX509Datas().get(0).getX509SKIs().get(0)))
 	// ...and in the function below the certs need to expose the same information (X509 V.3 SubjectKeyIdentifier)
-	// ...and may be we should only dump the KeyInfo here, the rest of the signature is less interesting.
+	// ...and maybe we should only dump the KeyInfo here, the rest of the signature is less interesting.
 	public static String getKeyInfoHintFromSignature(Signature signature) {
-		// expect keyinfo in the X509 area only
+		// expect key info in the X509 area only
 		if (signature == null || signature.getKeyInfo() == null ||
 				CollectionUtils.isEmpty(signature.getKeyInfo().getX509Datas())) {
 			return null;

@@ -45,4 +45,17 @@ class StringUtilTest {
 		var problematicText = "space\nthe\tfinal\rfrontier";
 		assertThat(StringUtil.clean(problematicText, " "), is("space the final frontier"));
 	}
+
+	@Test
+	void testMaskSecret() {
+		assertThat(StringUtil.maskSecret(null), is(StringUtil.NULL));
+		assertThat(StringUtil.maskSecret("test"), is(StringUtil.MASKED));
+	}
+
+	@Test
+	void testMaskSecrets() {
+		assertThat(StringUtil.maskSecrets(null, "one"), is(nullValue()));
+		assertThat(StringUtil.maskSecrets("one,two,three,four,five","two", "five"),
+				is("one," + StringUtil.MASKED + ",three,four," + StringUtil.MASKED));
+	}
 }

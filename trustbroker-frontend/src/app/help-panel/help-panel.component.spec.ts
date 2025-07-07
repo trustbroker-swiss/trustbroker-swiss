@@ -13,7 +13,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { HttpClient, HttpClientModule } from '@angular/common/http';
+import { HttpClient, HttpClientModule, HttpResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { RouterTestingModule } from '@angular/router/testing';
 import { TranslateLoader, TranslateModule } from '@ngx-translate/core';
@@ -54,7 +54,7 @@ describe('HelpPanelComponent', () => {
 	beforeEach(() => {
 		// mock services
 		mockApiService = mock(ApiService);
-		when(mockApiService.getIdpObjects(anything(), anything())).thenReturn(of({}));
+		when(mockApiService.getIdpObjects(anything(), anything())).thenReturn(of(new HttpResponse<string>({ body: '' })));
 		TestBed.configureTestingModule({
 			providers: [{ provide: ApiService, useValue: mockApiService }]
 		});

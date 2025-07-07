@@ -21,6 +21,7 @@ import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.startsWith;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.opensaml.saml.saml2.core.AuthnRequest;
 import org.opensaml.saml.saml2.core.Response;
+import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
 
 class SamlIoUtilTest {
@@ -99,6 +101,18 @@ class SamlIoUtilTest {
 		var authnRequestParsed = SamlIoUtil.unmarshallAuthnRequest(new ByteArrayInputStream(decoded));
 		assertThat(authnRequestParsed.getID(), is(authnRequest.getID()));
 		assertThat(authnRequestParsed.getIssuer().getValue(), is(issuer));
+	}
+
+	@Test
+	void buildSignedSamlRedirectQueryString() {
+		var relayState = "myRelayState";
+		var authnRequest = SamlFactory.createRequest(AuthnRequest.class, "myIssuer");
+		var credential = SamlTestBase.dummyCredential();
+		var response = SamlIoUtil.buildSignedSamlRedirectQueryString(authnRequest, credential, null, relayState);
+		var encodedData = SamlIoUtil.encodeSamlRedirectData(authnRequest);
+		assertThat(response, startsWith(SamlIoUtil.SAML_REQUEST_NAME + '=' + WebUtil.urlEncodeValue(encodedData)));
+		assertThat(response, containsString('&' + SamlIoUtil.SAML_RELAY_STATE + '=' + relayState));
+		assertThat(response, containsString('&' + SamlIoUtil.SAML_REDIRECT_SIGNATURE + '='));
 	}
 
 }

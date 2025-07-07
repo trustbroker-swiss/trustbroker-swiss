@@ -13,7 +13,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ChangeDetectionStrategy, Component, DestroyRef, effect, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, TemplateRef, ViewChild, effect, input } from '@angular/core';
 import { IdpObject, IdpObjects } from '../model/IdpObject';
 import { environment } from '../../environments/environment';
 import { ThemeService } from '../services/theme-service';
@@ -22,6 +22,8 @@ import { ApiService } from '../services/api.service';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { switchMap } from 'rxjs';
 import { IdpObjectService } from '../services/idp-object.service';
+import { Dialog } from '@angular/cdk/dialog';
+import { Overlay } from '@angular/cdk/overlay';
 
 @Component({
 	selector: 'app-hrd-cards-v2',
@@ -35,13 +37,17 @@ export class HrdCardsV2Component {
 	idpObjects = input.required<IdpObjects>();
 	theme$ = this.themeService.theme$;
 
+	@ViewChild('disabledDialogContent') disabledDialogContentRef: TemplateRef<Element>;
+
 	constructor(
 		private readonly route: ActivatedRoute,
 		private readonly router: Router,
 		private readonly apiService: ApiService,
 		protected readonly themeService: ThemeService,
 		private readonly destroyRef: DestroyRef,
-		private readonly idpObjectService: IdpObjectService
+		private readonly idpObjectService: IdpObjectService,
+		private readonly dialog: Dialog,
+		private readonly overlay: Overlay
 	) {
 		effect(() => {
 			if (this.idpObjects().tiles?.length === 1 && !this.idpObjects().tiles[0].disabled) {
@@ -55,7 +61,7 @@ export class HrdCardsV2Component {
 	public onCardClick(idpObject: IdpObject) {
 		this.route.params
 			.pipe(
-				switchMap(params => this.apiService.selectIdp(params.authnRequestId, idpObject.urn)),
+				switchMap(params => this.apiService.selectIdp(params['authnRequestId'], idpObject.urn)),
 				takeUntilDestroyed(this.destroyRef)
 			)
 			.subscribe({
@@ -85,5 +91,36 @@ export class HrdCardsV2Component {
 					console.error('an error occured', errorResponse);
 				}
 			});
+	}
+
+	onOpenDialog(idpObject: IdpObject, element: Element, event: Event): void {
+		event.stopPropagation(); // avoid the calling the idp represented by the button below
+		if (event instanceof KeyboardEvent && event.key !== 'Enter') {
+			return;
+		}
+
+		element.setAttribute('aria-expanded', 'true');
+		const strategy = this.overlay
+			.position()
+			.flexibleConnectedTo(element)
+			.withPositions([
+				{ originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: 0 },
+				{ originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 0 }
+			]);
+
+		this.dialog.openDialogs.forEach(dialogRef => dialogRef.close());
+
+		const dialogRef = this.dialog.open(this.disabledDialogContentRef, {
+			minWidth: element.clientWidth,
+			maxWidth: element.clientWidth,
+			positionStrategy: strategy,
+			data: {
+				disabled: idpObject.disabled,
+				title: idpObject.title,
+				labeledById: element.id
+			}
+		});
+
+		dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => element.setAttribute('aria-expanded', 'false'));
 	}
 }

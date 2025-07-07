@@ -53,8 +53,14 @@ public class Banner implements Serializable {
 
 	/**
 	 * Display banner paragraphs collapsed on a small screen.
+	 * <br/>
+	 * Default: true, disable if all information is required on small screens as well.
+	 *
+	 * @since v1.10.0
+	 * Previously named collapseParagraphsOnSmallScreen with default false.
 	 */
-	private Boolean collapseParagraphsOnSmallScreen;
+	@Builder.Default
+	private Boolean collapseParagraphs = Boolean.TRUE;
 
 	/**
 	 * Optional main image.
@@ -66,8 +72,8 @@ public class Banner implements Serializable {
 	 */
 	private List<String> secondaryImages;
 
-	public boolean collapseParagraphsOnSmallScreen() {
-		return Boolean.TRUE.equals(collapseParagraphsOnSmallScreen);
+	public boolean collapseParagraphs() {
+		return Boolean.TRUE.equals(collapseParagraphs);
 	}
 
 	public boolean isGlobal() { return Boolean.TRUE.equals(global); }

@@ -19,7 +19,6 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
-import static org.mockito.Mockito.doReturn;
 
 import java.security.Principal;
 import java.util.ArrayList;
@@ -50,13 +49,11 @@ import org.springframework.security.saml2.core.Saml2Error;
 import org.springframework.security.saml2.core.Saml2ErrorCodes;
 import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticationException;
 import org.springframework.security.web.WebAttributes;
-import org.springframework.security.web.savedrequest.SavedRequest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.saml.util.SamlFactory;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
-import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.config.dto.SamlNamespace;
+import swiss.trustbroker.oidc.session.OidcSessionSupport;
 
 @SpringBootTest(classes = OidcExceptionHelper.class)
 class OidcExceptionHelperTest {
@@ -64,9 +61,6 @@ class OidcExceptionHelperTest {
 	private MockHttpSession session;
 
 	private MockHttpServletRequest request;
-
-	@MockitoBean
-	private SavedRequest savedRequest;
 
 	@BeforeEach
 	void setUp() {
@@ -244,8 +238,7 @@ class OidcExceptionHelperTest {
 		}
 		if (redirectUri != null) {
 			request.setSession(session);
-			doReturn(new String[] { redirectUri }).when(savedRequest).getParameterValues(OidcUtil.REDIRECT_URI);
-			session.setAttribute(OidcExceptionHelper.SAVED_REQUEST, savedRequest);
+			OidcSessionSupport.setRedirectUri(session, redirectUri);
 		}
 	}
 

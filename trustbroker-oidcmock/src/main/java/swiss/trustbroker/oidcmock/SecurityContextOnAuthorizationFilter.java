@@ -22,7 +22,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.context.SecurityContextHolderStrategy;
 import org.springframework.security.web.authentication.logout.CompositeLogoutHandler;
@@ -30,7 +29,6 @@ import org.springframework.security.web.authentication.logout.CookieClearingLogo
 import org.springframework.security.web.authentication.logout.LogoutHandler;
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
 import org.springframework.web.filter.OncePerRequestFilter;
-import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 
 // Remove the Security context after every successful authorization
@@ -49,7 +47,8 @@ public class SecurityContextOnAuthorizationFilter extends OncePerRequestFilter {
 			ServletException, IOException {
 		try {
 			filterChain.doFilter(request, response);
-		} finally {
+		}
+		finally {
 			var locationHeader = response.getHeader(HttpHeaders.LOCATION);
 			if (locationHeader != null) {
 				var uriComponents = UriComponentsBuilder.fromUriString(locationHeader).build();

@@ -112,20 +112,16 @@ class RelyingPartySetupServiceTest {
 		assertThat(result.getId(), is(expected));
 	}
 
-	@Test
-	void getIdmLookUp() {
+	@ParameterizedTest
+	@CsvSource(value = {
+			"urn:test:TESTRP,true",
+			"urn:test:NOIDM,false"
+	})
+	void getIdmLookUp(String issuer, boolean expected) {
 		mockRelyingPartyConfiguration();
-		var issuer = "urn:test:TESTRP";
-		var idmLookup = relyingPartySetupService.getIdmLookUp(issuer, null);
-		assertThat(idmLookup.isPresent(), is(true));
-	}
-
-	@Test
-	void getIdmLookUpMissing() {
-		mockRelyingPartyConfiguration();
-		var issuer = "urn:test:NOIDM";
-		var idmLookup = relyingPartySetupService.getIdmLookUp(issuer, null);
-		assertThat(idmLookup.isPresent(), is(false));
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(issuer, null);
+		var idmLookup = relyingPartySetupService.getIdmLookUp(relyingParty);
+		assertThat(idmLookup.isPresent(), is(expected));
 	}
 
 	@Test
@@ -381,18 +377,20 @@ class RelyingPartySetupServiceTest {
 
 	@Test
 	void getQoaConfigurationTest() {
-		String rpId = "urn:test:TESTRP";
-		String qoaRp = "urn:test:MOCKRP-QOA";
+		var rpId = "urn:test:TESTRP";
+		var qoaRp = "urn:test:MOCKRP-QOA";
 		mockRelyingPartyConfiguration();
-		assertNull(relyingPartySetupService.getQoaConfiguration(null, rpId, null, null).config());
-		assertNotNull(relyingPartySetupService.getQoaConfiguration(null, qoaRp, null, null).config());
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpId, null);
+		var qoaRelyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(qoaRp, null);
+		assertNull(relyingPartySetupService.getQoaConfiguration(null, relyingParty, null).config());
+		assertNotNull(relyingPartySetupService.getQoaConfiguration(null, qoaRelyingParty, null).config());
 
 		var stateData = StateData.builder().id("any").oidcClientId(qoaRp).build();
-		Qoa qoa = Qoa.builder().build();
-		OidcClient oidcClient = OidcClient.builder().qoa(qoa).build();
+		var qoa = Qoa.builder().build();
+		var oidcClient = OidcClient.builder().qoa(qoa).build();
 		doReturn(Optional.of(oidcClient)).when(relyingPartyDefinitions).getOidcClientConfigById(qoaRp, null);
 
-		assertEquals(qoa, relyingPartySetupService.getQoaConfiguration(stateData, qoaRp, null, null).config());
+		assertEquals(qoa, relyingPartySetupService.getQoaConfiguration(stateData, qoaRelyingParty, null).config());
 	}
 
 	private void mockTokenLifeTime(long tokenLifeTime) {

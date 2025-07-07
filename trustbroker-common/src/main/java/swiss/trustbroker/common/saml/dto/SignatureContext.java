@@ -29,7 +29,7 @@ public class SignatureContext {
 	@Builder.Default
 	private boolean requireSignature = true;
 
-	// required for REDIRECT binding - path and query string only
+	// required for validation of inbound REDIRECT binding requests - path and query string only
 	private String requestUrl;
 
 	public static SignatureContext forRedirectBinding(String requestUrl) {
@@ -49,5 +49,13 @@ public class SignatureContext {
 		return SignatureContext.builder()
 				.binding(SamlBinding.ARTIFACT)
 				.build();
+	}
+
+	public static SignatureContext forBinding(SamlBinding binding, String requestUrl) {
+		return switch (binding) {
+			case REDIRECT -> SignatureContext.forRedirectBinding(requestUrl);
+			case POST -> SignatureContext.forPostBinding();
+			case ARTIFACT -> SignatureContext.forArtifactBinding();
+		};
 	}
 }

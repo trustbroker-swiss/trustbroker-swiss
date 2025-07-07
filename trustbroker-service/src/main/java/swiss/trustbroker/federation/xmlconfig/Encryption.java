@@ -59,6 +59,16 @@ public class Encryption implements Serializable {
 	 * Default: PEER
 	 */
 	@XmlElement(name = "KeyPlacement")
-	private String keyPlacement;
+	@Builder.Default
+	private EncryptionKeyPlacement keyPlacement = EncryptionKeyPlacement.PEER;
 
+	/**
+	 * Value emitted in Key Info (CERTIFICATE, SKI).
+	 * <br/>
+	 * Default: CERTIFICATE
+	 * @since 1.10.0
+	 */
+	@XmlElement(name = "KeyInfo")
+	@Builder.Default
+	private EncryptionKeyInfo keyInfo = EncryptionKeyInfo.CERTIFICATE;
 }

@@ -27,6 +27,8 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.NetworkConfig;
+import swiss.trustbroker.config.dto.OidcProperties;
+import swiss.trustbroker.config.dto.SamlProperties;
 import swiss.trustbroker.util.ApiSupport;
 
 class AccessFilterTest {
@@ -39,6 +41,13 @@ class AccessFilterTest {
 	void setUp() {
 		trustBrokerProperties = new TrustBrokerProperties();
 		trustBrokerProperties.setNetwork(new NetworkConfig());
+		trustBrokerProperties.setOidc(new OidcProperties());
+		// see WebSupport.getOwnPerimeterUris for what can be customized:
+		trustBrokerProperties.getOidc().setSessionIFrameEndpoint("https://localhost/session/i.frame");
+		trustBrokerProperties.getOidc().setPerimeterUrl("https://localhost/custom/oidc");
+		trustBrokerProperties.setSaml(new SamlProperties());
+		trustBrokerProperties.getSaml().setConsumerUrl("https://localhost/custom/consumer");
+		trustBrokerProperties.setPerimeterUrl("https://localhost/custom/perimeter");
 		accessFilter = new AccessFilter(trustBrokerProperties);
 	}
 
@@ -62,13 +71,10 @@ class AccessFilterTest {
 			"/api/v1/saml/metadata,200",
 			"/api/v1/saml/metadata/idp,200",
 			"/api/v1/saml/metadata/sp,200",
-			"/FederationMetadata/2007-06/FederationMetadata.xml,200", // XTB and ADFS
-			"/federationmetadata/2007-06/federationmetadata.xml,200", // XTB and ADFS
-			"/FederationMetadata/2007-06/federationmetadata.xml,200", // ADFS only - filter allows it, but not mapped
-			"/Federationmetadata/2007-06/federationmetadata.xml,404", // ADFS only - fallback removed
-			"/FederaTionmetadaTa/2007-06/federationmetadata.xml,404", // ADFS only - fallback removed
-			"/AdfsGui/,200",
-			"/HRD/,200",
+			"/federationmetadata/2007-06/federationmetadata.xml,200", // XTB /case-sensitive) and ADFS (case-insensitive)
+			"/FederationMetadata/2007-06/FederationMetadata.xml,200", // ADFS docs
+			"/Federationmetadata/2007-06/FederationMetadata.xml,404", // blocked case
+			"/HRD/,404", // blocked since v1.10
 			// Search engines
 			"/robots.txt,200",
 			// Spring actuators
@@ -102,6 +108,12 @@ class AccessFilterTest {
 			"/oauth2/jwks,200",
 			"/oauth2/revoke,200",
 			"/oauth2/introspect,200",
+			// custom config endpoints:
+			"/custom/oidc,200",
+			"/session/i.frame,200",
+			"/session/i_frame,404", // . escaped
+			"/custom/consumer,200",
+			"/custom/perimeter,200",
 			// Inaccessible URLs
 			"/api/v2/incubating,404",
 			"/hidden/secret,404",

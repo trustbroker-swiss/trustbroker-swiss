@@ -99,8 +99,7 @@ public class AttributeRegistry {
 		}
 	}
 
-	private static AttributeName putName(String name, String description,
-			AttributeName attributeName) {
+	private static AttributeName putName(String name, String description, AttributeName attributeName) {
 		if (name != null) {
 			var previous = ATTRIBUTE_NAME_MAP.putIfAbsent(name, attributeName);
 			if (previous != null) {

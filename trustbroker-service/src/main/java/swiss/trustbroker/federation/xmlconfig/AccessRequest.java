@@ -16,8 +16,9 @@
 package swiss.trustbroker.federation.xmlconfig;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collections;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
@@ -28,6 +29,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.apache.commons.lang3.tuple.Pair;
 
 /**
  * This class describes the configuration of the AccessRequest for an RP.
@@ -60,9 +62,13 @@ public class AccessRequest implements Serializable {
 		return Boolean.TRUE.equals(enabled);
 	}
 
-	public List<String> getAllTriggerRoles() {
+	public Map<String, String> getAllTriggerRoles() {
 		var config = authorizedApplications.getAuthorizedApplicationLists();
-		return config != null ?	config.stream().map(AuthorizedApplication::getTriggerRole).toList() : new ArrayList<>();
+		if (config == null) {
+			return Collections.emptyMap();
+		}
+		return config.stream().map(app -> Pair.of(app.getName(), app.getTriggerRole()))
+					   .collect(Collectors.toMap(Pair::getKey, Pair::getValue));
 	}
 
 }

@@ -15,16 +15,24 @@
 
 package swiss.trustbroker.common.util;
 
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
+import com.nimbusds.jwt.JWTClaimsSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import swiss.trustbroker.common.exception.TechnicalException;
 
 class OidcUtilTest {
 
@@ -90,9 +98,74 @@ class OidcUtilTest {
 		assertThat(clId, nullValue());
 	}
 
+	@ParameterizedTest
+	@CsvSource(value = {
+			"https://trustbroker.swiss,secret:1,Basic aHR0cHMlM0ElMkYlMkZ0cnVzdGJyb2tlci5zd2lzczpzZWNyZXQlM0Ex",
+			"client,1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890,Basic Y2xpZW50OjEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyMzQ1Njc4OTA="
+	})
+	void testGetBasicAuthorizationHeader(String clientId, String secret, String expected) {
+		assertThat(OidcUtil.getBasicAuthorizationHeader(clientId, secret), is(expected));
+	}
+
+	@ParameterizedTest
+	@CsvSource(value = {
+			"token,Bearer token",
+			"1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890,Bearer 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"
+	})
+	void testGetBearerAuthorizationHeader(String token, String expected) {
+		assertThat(OidcUtil.getBearerAuthorizationHeader(token), is(expected));
+	}
+
 	@Test
-	void testGetBasicAuthorizationHeader() {
-		assertThat(OidcUtil.getBasicAuthorizationHeader("test", "secret"), is("Basic dGVzdDpzZWNyZXQ="));
+	void testParseJwtClaimsEmpty() {
+		var emptyResult = new JWTClaimsSet.Builder().build();
+		assertThat(OidcUtil.parseJwtClaims(null), is(emptyResult));
+		assertThat(OidcUtil.parseJwtClaims(""), is(emptyResult));
+	}
+
+	@Test
+	void testParseJwtClaimsInvalid() {
+		assertThrows(TechnicalException.class, () -> OidcUtil.parseJwtClaims("{"));
+	}
+
+	@Test
+	void testParseJwtClaims() {
+		var result = OidcUtil.parseJwtClaims("""
+				{ "sub": "subject", "numbers": [ 1, 2, 3 ]}
+				""");
+		assertThat(result.getSubject(), is("subject"));
+		assertThat(result.getClaim("numbers"), instanceOf(List.class));
+	}
+
+	@Test
+	void testMergeJwtClaims() throws Exception {
+		var primary = JWTClaimsSet.parse(Map.of(
+				OidcUtil.OIDC_SUBJECT, "sub1",
+				OidcUtil.OIDC_SESSION_ID, "session1",
+				OidcUtil.OIDC_AUTHORIZED_PARTY, "party1"
+		));
+		assertThat(OidcUtil.mergeJwtClaims(primary, "primary", null, null), is(primary));
+		var secondary = JWTClaimsSet.parse(Map.of(
+				OidcUtil.OIDC_SUBJECT, "sub1",
+				OidcUtil.OIDC_ACR, "acr1",
+				OidcUtil.OIDC_AUTHORIZED_PARTY, "party2"
+		));
+		assertThat(OidcUtil.mergeJwtClaims(null, "primary", secondary, null), is(secondary));
+		var result = OidcUtil.mergeJwtClaims(primary, "primary", secondary, "secondary");
+		// same
+		assertThat(result.getSubject(), is("sub1"));
+		// primary wins
+		assertThat(result.getClaim(OidcUtil.OIDC_AUTHORIZED_PARTY), is("party1"));
+		// primary or secondary only
+		assertThat(result.getClaim(OidcUtil.OIDC_ACR), is("acr1"));
+		assertThat(result.getClaim(OidcUtil.OIDC_SESSION_ID), is("session1"));
+	}
+
+	@Test
+	void testGenerateNonce() {
+		var nonce = OidcUtil.generateNonce();
+		assertThat(nonce.length(), is(32));
+		assertThat(nonce, not(containsString("-")));
 	}
 
 }

@@ -29,10 +29,10 @@ public class CustomUserDetailsService implements UserDetailsService {
 		// accept any user
 		PasswordEncoder encoder = PasswordEncoderFactories.createDelegatingPasswordEncoder();
 		return User.builder()
-				.username(username)
-				.password(username)
-				.passwordEncoder(encoder::encode)
-				.roles("USER")
-				.build();
+				   .username(username)
+				   .password(username)
+				   .passwordEncoder(encoder::encode)
+				   .roles("USER")
+				   .build();
 	}
 }

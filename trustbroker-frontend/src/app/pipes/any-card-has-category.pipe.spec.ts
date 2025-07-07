@@ -46,11 +46,10 @@ describe('AnyCardHasCategoryPipe', () => {
 		urn: 'urn:trustbroker.swiss:idp:SAML-MOCK-1',
 		title: 'saml-mock-1',
 		image: 'Tile_SAML-Mock.svg',
-		button: null,
 		name: 'saml-mock-1',
 		shortcut: '',
 		color: null,
-		disabled: false,
+		disabled: undefined,
 		order: undefined
 	};
 });

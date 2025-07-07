@@ -56,6 +56,8 @@ public class SamlTestBase {
 
 		private List<String> oidcNameList;
 
+		private String mappers;
+
 		public static TestAttributeName of(AttributeName attributeName) {
 			return TestAttributeName.builder()
 									.name(attributeName.getName())
@@ -98,13 +100,15 @@ public class SamlTestBase {
 	// test-key.pem only the key, test-cert.pem only the cert, test-ca.pem the same self-signed cert (we could set up a test CA)
 	public static final String X509_RSAENC_PEM = "test-keystore.pem";
 
-	// openssl pkcs12 -export -in test-keystore.pem -inkey test-keystore.pem -passin pass:testit -passout pass:testit > test-keystore.p12
+	// openssl pkcs12 -export -in test-keystore.pem -inkey test-keystore.pem -passin pass:testit -passout pass:testit >
+	// test-keystore.p12
 	public static final String X509_RSAENC_P12 = "test-keystore.p12";
 
 	// pfx is the windows naming
 	public static final String X509_RSAENC_PFX = "test-keystore.pfx";
 
-	// keytool -importkeystore -srckeystore test-keystore.p12 -srcstoretype pkcs12 -destkeystore test-keystore.jks  -deststoretype jks -deststorepass testit
+	// keytool -importkeystore -srckeystore test-keystore.p12 -srcstoretype pkcs12 -destkeystore test-keystore.jks
+	// -deststoretype jks -deststorepass testit
 	public static final String X509_RSAENC_JKS = "test-keystore.jks";
 
 	@SuppressWarnings("java:S2068") // (test JKS password)
@@ -173,7 +177,11 @@ public class SamlTestBase {
 	}
 
 	private static String filePathStringFromClassloader(String fileName) {
-		return SamlUtil.class.getClassLoader().getResource(fileName).getFile();
+		var resource = SamlUtil.class.getClassLoader().getResource(fileName);
+		if (resource == null) {
+			throw new IllegalArgumentException("Missing file on classpath: " + fileName);
+		}
+		return resource.getFile();
 	}
 
 	public static String buildRedirectQueryString(RequestAbstractType request, boolean doubleSignature) {

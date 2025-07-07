@@ -39,7 +39,8 @@ import swiss.trustbroker.common.util.WSSConstants;
 
 public class WsTrustUtil {
 
-	private WsTrustUtil() {}
+	private WsTrustUtil() {
+	}
 
 	public static Lifetime createLifeTime() {
 		Lifetime lifetime = (Lifetime) XMLObjectSupport.buildXMLObject(Lifetime.ELEMENT_NAME);
@@ -51,7 +52,7 @@ public class WsTrustUtil {
 	public static Expires createExpires() {
 		Expires expires = (Expires) XMLObjectSupport.buildXMLObject(Expires.ELEMENT_NAME);
 		Instant dateTime = Instant.now();
-		Instant expiresDate = dateTime.plus(8,  ChronoUnit.HOURS);
+		Instant expiresDate = dateTime.plus(8, ChronoUnit.HOURS);
 		expires.setDateTime(expiresDate);
 		return expires;
 	}

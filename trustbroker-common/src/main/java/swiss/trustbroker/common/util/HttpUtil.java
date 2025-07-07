@@ -31,6 +31,7 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -38,6 +39,7 @@ import javax.net.ssl.SSLContext;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
@@ -45,6 +47,7 @@ import org.apache.hc.client5.http.ssl.DefaultClientTlsStrategy;
 import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.HttpStatus;
 import org.apache.hc.core5.ssl.SSLContextBuilder;
+import org.apache.hc.core5.util.Timeout;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -69,23 +72,26 @@ public class HttpUtil {
 
 	// Java HTTP client
 
-	public static HttpClient createHttpClient(String scheme, KeystoreProperties truststoreParameters) {
-		return createHttpClient(scheme, truststoreParameters, null, null, null, HttpClient.Version.HTTP_2);
+	public static HttpClient createHttpClient(String scheme, KeystoreProperties truststoreParameters, Duration connectTimeout) {
+		return createHttpClient(scheme, truststoreParameters, null, null, null, HttpClient.Version.HTTP_2, connectTimeout);
 	}
 
 	public static HttpClient createHttpClient(String scheme,
 			KeystoreProperties truststoreParameters, KeystoreProperties keystoreParameters, String keystoreBasePath,
-			URI proxyUri, HttpClient.Version protocolVersion) {
+			URI proxyUri, HttpClient.Version protocolVersion, Duration connectTimeout) {
 		var sslContext = createSslContext(scheme, truststoreParameters, keystoreParameters, keystoreBasePath);
 		if (protocolVersion == null) {
 			protocolVersion = HttpClient.Version.HTTP_1_1;
 		}
 		var proxySelector = createProxySelector(proxyUri);
-		return HttpClient.newBuilder()
+		var builder = HttpClient.newBuilder()
 				.sslContext(sslContext)
 				.proxy(proxySelector)
-				.version(protocolVersion)
-				.build();
+				.version(protocolVersion);
+		if (connectTimeout != null) {
+			builder.connectTimeout(connectTimeout); // not nullable
+		}
+		return builder.build();
 	}
 
 	private static ProxySelector createProxySelector(URI proxyUri) {
@@ -114,8 +120,32 @@ public class HttpUtil {
 				.uri(uri)
 				.POST(HttpRequest.BodyPublishers.ofString(formPost))
 				.header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_FORM_URLENCODED_VALUE);
+		return getHttpResponse(httpClient, uri, HttpMethod.POST, headers, bodyHandler, request);
+	}
+
+	public static Optional<String> getHttpString(HttpClient httpClient, URI uri, Map<String, String> headers) {
+		return getHttpResponse(httpClient, uri,headers, HttpResponse.BodyHandlers.ofString())
+				.map(HttpResponse::body);
+	}
+
+	public static Optional<HttpResponse<String>> getHttpStringResponse(
+			HttpClient httpClient, URI uri, Map<String, String> headers) {
+		return getHttpResponse(httpClient, uri,headers, HttpResponse.BodyHandlers.ofString());
+	}
+
+	private static <T> Optional<HttpResponse<T>> getHttpResponse(HttpClient httpClient, URI uri, Map<String, String> headers,
+			HttpResponse.BodyHandler<T> bodyHandler) {
+		var request = HttpRequest.newBuilder()
+				.uri(uri)
+				.GET();
+		return getHttpResponse(httpClient, uri, HttpMethod.GET, headers, bodyHandler, request);
+	}
+
+	private static <T> Optional<HttpResponse<T>> getHttpResponse(HttpClient httpClient,
+			URI uri, HttpMethod method, Map<String, String> headers,
+			HttpResponse.BodyHandler<T> bodyHandler, HttpRequest.Builder request) {
 		headers.forEach(request::header);
-		return fetchHttpResponse(httpClient, HttpMethod.POST, uri, request.build(), bodyHandler);
+		return fetchHttpResponse(httpClient, method, uri, request.build(), bodyHandler);
 	}
 
 	private static String encodeFormParameters(Map<String, String> params) {
@@ -169,13 +199,16 @@ public class HttpUtil {
 
 	public static CloseableHttpClient createApacheHttpClient(String scheme,
 			KeystoreProperties truststoreParameters, KeystoreProperties keystoreParameters,
-			String keystoreBasePath, String proxyUrl) {
+			String keystoreBasePath, String proxyUrl, Duration connectTimeout) {
 		var sslContext = createSslContext(scheme, truststoreParameters, keystoreParameters, keystoreBasePath);
 		var httpProxy = createHttpProxy(proxyUrl);
 		var sslSocketFactory = new DefaultClientTlsStrategy(sslContext);
-		var cm = PoolingHttpClientConnectionManagerBuilder.create()
-														  .setTlsSocketStrategy(sslSocketFactory)
-														  .build();
+		var cmBuilder = PoolingHttpClientConnectionManagerBuilder.create().setTlsSocketStrategy(sslSocketFactory);
+		if (connectTimeout != null) {
+			var connectionConfig = ConnectionConfig.custom().setConnectTimeout(Timeout.of(connectTimeout)).build();
+			cmBuilder.setDefaultConnectionConfig(connectionConfig);
+		}
+		var cm = cmBuilder.build();
 		return HttpClients.custom()
 						  .setConnectionManager(cm)
 						  .setProxy(httpProxy)

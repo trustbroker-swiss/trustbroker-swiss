@@ -38,7 +38,6 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.tracing.TraceSupport;
-import swiss.trustbroker.common.util.ProcessUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.config.dto.TomcatSessionMode;
@@ -161,21 +160,6 @@ public class TomcatSessionManager extends ManagerBase {
 				.build();
 	}
 
-	public TomcatSession findSessionWithRetry(String id) {
-		var session = findSession(id);
-		if (session == null) {
-			var txRetryDelayMs = trustBrokerProperties.getStateCache().getTxRetryDelayMs();
-			if (txRetryDelayMs > 0) {
-				ProcessUtil.sleep(txRetryDelayMs);
-				session = findSession(id);
-				if (session != null) {
-					log.warn("Delayed DB save handled, retrying after {}ms returned session={} on 2nd try", txRetryDelayMs, id);
-				}
-			}
-		}
-		return session;
-	}
-
 	@Override
 	public TomcatSession findSession(String id) {
 		// session check without a key? no way
@@ -221,7 +205,7 @@ public class TomcatSessionManager extends ManagerBase {
 			// Fetch from DB because request could run in another POD
 			// WARN: All the request.getSession(false) could trigger this, so we have a bit of a DB query overhead
 			// NOTE: Finding web session by token is deprecated as we use the oauth2_authorization table after login too.
-			Optional<StateData> stateData = stateCacheService.findOptional(sessionId, NAME);
+			Optional<StateData> stateData = stateCacheService.findOptionalResilient(sessionId, NAME);
 			if (stateData.isEmpty()) {
 				return null;
 			}
@@ -379,7 +363,7 @@ public class TomcatSessionManager extends ManagerBase {
 		}
 
 		// if found, make sure we also cached it during execution, and it was not expiring in the meantime in sessiondb
-		var session = findSessionWithRetry(sessionId);
+		var session = findSession(sessionId);
 		if (isSessionValid(session)) {
 			ensureSessionIsCached(session);
 			// we now run on the OIDC session
@@ -619,7 +603,7 @@ public class TomcatSessionManager extends ManagerBase {
 		}
 	}
 
-	// since v16 we do not need websession backing anymore for /token retrieval
+	// we do not need web session backing for /token retrieval
 	void validateOidcTokenState(TomcatSession session, Object context) {
 		logSession(session, "validateOidcTokenState");
 		if (context == null) {
@@ -635,14 +619,15 @@ public class TomcatSessionManager extends ManagerBase {
 		}
 	}
 
-	void validateSamlFederationState(TomcatSession session, Object context) {
+	void validateSamlFederationState(TomcatSession session, Object context, String missingAttribute) {
 		logSession(session, "validateSamlFederationState");
 		if (context == null) {
 			var clientId = OidcSessionSupport.getSamlExchangeClientId();
 			if (clientId != null) {
+				var attrNames = session.getAttributeNamesInternal();
 				throw OidcExceptionHelper.createOidcException(OAuth2ErrorCodes.SERVER_ERROR,
-						String.format("SAML AuthnRequest state lost for clientId=%s sessionId=%s", clientId, session.getId()),
-						"Lost session");
+						String.format("SAML AuthnRequest state lost for clientId=%s sessionId=%s missingAttr=%s allAttrs='%s'",
+								clientId, session.getId(), missingAttribute, attrNames), "Lost session");
 			}
 		}
 	}

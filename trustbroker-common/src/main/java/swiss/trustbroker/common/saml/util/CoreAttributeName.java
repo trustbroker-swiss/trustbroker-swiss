@@ -130,5 +130,4 @@ public enum CoreAttributeName implements MutableAttributeName {
 	public void setOidcNameList(List<String> oidcNameList) {
 		this.oidcNameList = oidcNameList;
 	}
-
 }

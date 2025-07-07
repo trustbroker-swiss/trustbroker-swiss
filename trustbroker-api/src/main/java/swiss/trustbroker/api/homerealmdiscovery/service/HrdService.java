@@ -28,7 +28,7 @@ public interface HrdService {
 	/**
 	 * Perform manipulation of CP to RP mappings.
 	 *
-	 * @param httpData HTTP exchange information
+	 * @param httpData   HTTP exchange information
 	 * @param cpMappings input mappings (not null)
 	 * @return if there is no modification, return the original cpMappings, don't return null
 	 */

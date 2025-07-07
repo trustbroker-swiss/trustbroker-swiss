@@ -64,6 +64,16 @@ public class OidcClient implements Serializable {
 	private String federationId;
 
 	/**
+	 * CP issuer ID override for <code>iss</code> claim validation.
+	 * <br/>
+	 * Fallback to CP ID.
+	 *
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "issuerId")
+	private String issuerId;
+
+	/**
 	 * Optional support to be able to map back /oauth2/authorize
 	 */
 	@XmlAttribute(name = "realm")
@@ -76,7 +86,6 @@ public class OidcClient implements Serializable {
 	 */
 	@XmlAttribute(name = "usePepQoa")
 	private String usePepQoa;
-
 
 	/**
 	 * OpenID endpoints a single CP side OIDC client uses for federated login.
@@ -132,7 +141,17 @@ public class OidcClient implements Serializable {
 	@XmlElement(name = "Scopes")
 	private Scopes scopes;
 
-	// v13 new attributes for 1:n handling of OIDC clients to relying-parties, see RelyingParty class
+	/**
+	 * Response mode to be requested from CP.
+	 * <br/>
+	 * Default: form_post
+	 * @since 1.10.0
+	 */
+	@XmlElement(name = "ResponseMode")
+	@Builder.Default
+	private ResponseMode responseMode = ResponseMode.FORM_POST;
+
+	// attributes for 1:n handling of OIDC clients to relying-parties, see RelyingParty class
 
 	/**
 	 * QoAs to use.
@@ -145,6 +164,18 @@ public class OidcClient implements Serializable {
 	 */
 	@XmlElement(name = "ClaimsSelection")
 	private AttributesSelection claimsSelection;
+
+	/**
+	 * Sources of claims for OIDC CPs.
+	 * <br/>
+	 * Default: id_token
+	 * @since 1.10.0
+	 */
+	@XmlElement(name = "ClaimsSources")
+	@Builder.Default
+	private OidcClaimsSources claimsSources = OidcClaimsSources.builder()
+															   .claimsSourceList(List.of(OidcClaimsSource.ID_TOKEN))
+															   .build();
 
 	@JsonIgnore
 	@XmlTransient
@@ -180,5 +211,9 @@ public class OidcClient implements Serializable {
 
 	public boolean hasScopes() {
 		return scopes != null && CollectionUtils.isNotEmpty(scopes.getScopeList());
+	}
+
+	public boolean useClaimsFromSource(OidcClaimsSource claimsSource) {
+		return claimsSources.getClaimsSourceList().contains(claimsSource);
 	}
 }

@@ -38,8 +38,6 @@ import { map } from 'rxjs/operators';
 import { ObAlertModule, ObIconModule, ObMasterLayoutConfig, ObMasterLayoutModule, ObPopoverModule } from '@oblique/oblique';
 
 import { AccessRequestComponent } from './access-request/access-request.component';
-import { AnnouncementComponent } from './announcements/announcement/announcement.component';
-import { AnnouncementsComponent } from './announcements/announcements.component';
 import { AppComponent } from './app.component';
 import { routes } from './app-routing.module';
 import { BackdropComponent } from './backdrop/backdrop.component';
@@ -119,8 +117,6 @@ export class MissingTranslationHelper implements MissingTranslationHandler {
 		HelpPanelComponent,
 		ProfileSelectionComponent,
 		SmallCardComponent,
-		AnnouncementsComponent,
-		AnnouncementComponent,
 		AccessRequestComponent,
 		DisabledCardComponent,
 		ProfileSelectionCardComponent,

@@ -106,7 +106,9 @@ public class OidcConfigurationUtil {
 						authorizationGrantTypes.forEach(
 								grantType -> grantTypes.add(grantType.getType())))
 				.scopes(scopes -> scopes.addAll(configuredScopes))
-				// RedirectUris is a mandatory field for a Registered client
+				// RedirectUris is a mandatory field for a Registered client (we don't distinguish between login and logout URIs)
+				// postLogoutRedirectUris is not set, required for Spring's OidcLogoutAuthenticationValidator,
+				// but not without CustomEndpointInterceptor
 				.redirectUris(uris -> uris.addAll(client.getRedirectUris().getRedirectUrls()))
 				.tokenSettings(tokenSettings)
 				.build();
@@ -159,7 +161,8 @@ public class OidcConfigurationUtil {
 			attributes.forEach((k, v) -> {
 				if (v != null && v.size() > 1) {
 					// List must be mutable otherwise Jackson ObjectMapper can not deserialize
-					var setList = v.stream().distinct().collect(Collectors.toList()); // NOSONAR
+					@SuppressWarnings("java:S6204")
+					var setList = v.stream().distinct().collect(Collectors.toList());
 					if (setList.size() < v.size()) {
 						attributes.put(k, setList);
 					}
@@ -486,6 +489,10 @@ public class OidcConfigurationUtil {
 		if (!oidcProperties.isUserInfoEnabled()) {
 			claimMap.remove(OidcProviderMetadataClaimNames.USER_INFO_ENDPOINT);
 		}
+		if (!oidcProperties.isDeviceAuthorizationEnabled()) {
+			claimMap.remove(OAuth2AuthorizationServerMetadataClaimNames.DEVICE_AUTHORIZATION_ENDPOINT);
+		}
+		// authorization, token, and JWKS endpoints are always required
 	}
 
 	static String computeEndSessionEndpoint(OidcProperties oidcProperties) {
@@ -502,11 +509,19 @@ public class OidcConfigurationUtil {
 	static void setEndSessionEndpoint(OidcProperties oidcProperties,
 			OidcProviderConfiguration.Builder providerConfiguration) {
 		String finalEndSessionEndpoint = computeEndSessionEndpoint(oidcProperties);
-		addClaimToProviderConfiguration(providerConfiguration,"end_session_endpoint", finalEndSessionEndpoint);
+		addClaimToProviderConfiguration(providerConfiguration,
+				OidcProviderMetadataClaimNames.END_SESSION_ENDPOINT, finalEndSessionEndpoint);
+	}
+
+	public static void addOptionalClaimToProviderConfiguration(OidcProviderConfiguration.Builder providerConfiguration,
+			String claimName, Object claimValue) {
+		if (claimValue != null) {
+			addClaimToProviderConfiguration(providerConfiguration, claimName, claimValue);
+		}
 	}
 
 	public static void addClaimToProviderConfiguration(OidcProviderConfiguration.Builder providerConfiguration,
-			String claimName, String claimValue) {
+			String claimName, Object claimValue) {
 		providerConfiguration
 				.claim(claimName, claimValue)
 				.build();

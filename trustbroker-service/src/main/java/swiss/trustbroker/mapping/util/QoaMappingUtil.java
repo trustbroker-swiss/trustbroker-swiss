@@ -123,16 +123,14 @@ public class QoaMappingUtil {
 		if (!cpQoaConf.hasConfig() && !rpQoaConf.hasConfig()) {
 			return;
 		}
+		var msg = String.format(
+				"Invalid Qoa in request actualCtxClasses=%s cpIssuer=%s expectedCtxClasses=%s comparison=%s rpIssuer=%s",
+				actualContextClasses, cpQoaConf.issuerId(), expectedContextClasses, comparison, rpQoaConf.issuerId());
 		if (enforceQoa(rpQoaConf, cpQoaConf)) {
-			throw new RequestDeniedException(
-					String.format("Invalid Qoa in request actualCtxClasses=%s cpIssuer=%s expectedCtxClasses=%s comparison=%s "
-									+ "rpIssuer=%s",
-							actualContextClasses, cpQoaConf.issuerId(), expectedContextClasses, comparison, rpQoaConf.issuerId()));
+			throw new RequestDeniedException(msg);
 		}
 		else {
-			log.warn("Qoa.enforce=false. Invalid Qoa in request actualCtxClasses=\"{}\" cpIssuer=\"{}\" "
-							+ "expectedCtxClasses=\"{}\" comparison=\"{}\" rpIssuer=\"{}\"",
-					actualContextClasses, cpQoaConf.issuerId(), expectedContextClasses, comparison, rpQoaConf.issuerId());
+			log.warn("Qoa.enforce=false: {}", msg);
 		}
 	}
 
@@ -265,6 +263,7 @@ public class QoaMappingUtil {
 		// usually
 		var maxQoa = classRefs.stream()
 				.flatMap(contextClass -> getQoaOrders(contextClass, configQoa, globalMapping, null).stream())
+				.filter(qoaOrder -> qoaOrder >= 0)
 				.max(Integer::compareTo)
 				.orElse(0);
 		log.debug("issuer={} returned contextClasses={} with max qoa={}", configQoa.issuerId(), classRefs, maxQoa);
@@ -288,16 +287,16 @@ public class QoaMappingUtil {
 			if (!configQoa.hasConfig()) {
 				return Set.of(CustomQoa.UNDEFINED_QOA_ORDER);
 			}
+			// level must be defined in global or RP config
+			var msg = String.format(
+					"Missing Qoa in config ctxClass=%s issuer=%s, cannot determine order"
+							+ " (HINT: Check trustbroker.config.qoa or SetupRP.xml/SetupCP.xml)",
+					classRef, configQoa.issuerId());
 			if (configQoa.config().isEnforce()) {
-				// level must be defined in Global or RP config, otherwise SSO will not work
-				throw new TechnicalException(String.format("Missing Qoa in config ctxClass=%s issuer=%s, cannot determine order"
-						+ "(HINT: check trustbroker.config.qoa or the SetupRP.xml/SetupCP.xml)",
-						classRef, configQoa.issuerId()));
+				throw new TechnicalException(msg);
 			}
 			else {
-				log.warn("Qoa.enforce=false. Missing Qoa in config ctxClass=\"{}\" issuer=\"{}\", cannot determine "
-						+ "order (HINT: check trustbroker.config.qoa or the SetupRP.xml/SetupCP.xml)",
-						classRef, configQoa.issuerId());
+				log.warn("Qoa.enforce=false: {}", msg);
 			}
 			return Set.of(CustomQoa.UNDEFINED_QOA_ORDER);
 		}
@@ -331,11 +330,11 @@ public class QoaMappingUtil {
 	}
 
 	static List<String> getMinQoa(List<AcClass> classes, List<String> matchContextClasses, String issuerId,
-			Map<String, Integer> globalMapping) {
+								  Map<String, Integer> globalMapping) {
 		var minQOa = classes.stream()
 				.filter(acClass -> matchContextClass(acClass, matchContextClasses))
-				.min(
-						(acClass1, acClass2) -> compare(acClass1, acClass2, issuerId, globalMapping, Integer.MAX_VALUE));
+				.filter(acClass -> getAcClassOrder(acClass, issuerId, globalMapping, Integer.MAX_VALUE) >= 0)
+				.min((acClass1, acClass2) -> compare(acClass1, acClass2, issuerId, globalMapping, Integer.MAX_VALUE));
 		return getContextClassList(minQOa);
 	}
 
@@ -343,8 +342,8 @@ public class QoaMappingUtil {
 			Map<String, Integer> globalMapping) {
 		var maxQoa = classes.stream()
 				.filter(acClass -> matchContextClass(acClass, matchContextClasses))
-				.max(
-				(acClass1, acClass2) -> compare(acClass1, acClass2, issuerId, globalMapping, Integer.MIN_VALUE));
+				.filter(acClass -> getAcClassOrder(acClass, issuerId, globalMapping, Integer.MAX_VALUE) >= 0)
+				.max((acClass1, acClass2) -> compare(acClass1, acClass2, issuerId, globalMapping, Integer.MIN_VALUE));
 		return getContextClassList(maxQoa);
 	}
 
@@ -380,5 +379,18 @@ public class QoaMappingUtil {
 					issuerId, acClass.getContextClass(), order);
 		}
 		return order;
+	}
+
+	public static Optional<List<String>> getReplacementAcClasses(Qoa qoa) {
+		if (qoa != null && qoa.getClasses() != null) {
+			List<String> classes = new ArrayList<>();
+			for (AcClass acClass : qoa.getClasses()) {
+				if (acClass.getReplaceInbound()) {
+					classes.add(acClass.getContextClass());
+				}
+			}
+			return Optional.of(classes);
+		}
+		return Optional.empty();
 	}
 }

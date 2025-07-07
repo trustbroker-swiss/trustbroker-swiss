@@ -30,7 +30,7 @@ import swiss.trustbroker.api.sessioncache.dto.CpResponseData;
  * <br/>
  * An implementation can be configured via Spring @Value binding or by injecting swiss.trustbroker.config.TrustbrokerProperties
  * and using swiss.trustbroker.config.dto.IdmConfig (${trustbroker.config.idm}).
- *
+ * <br/>
  * Breaking changes:
  * <ul>
  *     <li>With 1.8.0 getAttributesFromIdm renamed to getAttributes.</li>
@@ -44,7 +44,6 @@ public interface IdmQueryService {
 	 * @param idmRequests          Defines the requests to be performed by this call to query the IDM.
 	 * @param statusPolicyCallback callback for status policy enforcement
 	 * @return Optional.empty if this service does not apply for these queries. A non-null result otherwise
-	 *
 	 * @since 1.8.0
 	 */
 	Optional<IdmResult> getAttributes(RelyingPartyConfig relyingPartyConfig, CpResponseData cpResponse,
@@ -62,7 +61,7 @@ public interface IdmQueryService {
 	}
 
 	/**
-	 * @param idmRequests        Defines the requests to be performed by the call to query the IDM.
+	 * @param idmRequests Defines the requests to be performed by the call to query the IDM.
 	 * @return ClientExtId if defined in idmRequests and relevant for this service.
 	 */
 	default Optional<String> getClientExtId(IdmRequests idmRequests) {

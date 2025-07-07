@@ -39,8 +39,8 @@ import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.AccessRequest;
 import swiss.trustbroker.federation.xmlconfig.AuthorizedApplication;
 import swiss.trustbroker.federation.xmlconfig.AuthorizedApplications;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderMappings;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
 import swiss.trustbroker.federation.xmlconfig.FeatureEnum;
 import swiss.trustbroker.federation.xmlconfig.Oidc;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
@@ -55,6 +55,8 @@ class RelyingPartyDefinitionsTest {
 	private static final String CP_ENTERPRISE = "ENTERPRISE-LOGIN";
 
 	private static final String CP_MOBILE = "MOBILE-LOGIN";
+
+	private static final String HRD_HINT = "cp_hint";
 
 	private static final String MOB_GW_IP = "192.168.1.1";
 
@@ -86,6 +88,7 @@ class RelyingPartyDefinitionsTest {
 		var clientId1 = "OidcClient1";
 		var clientId2 = "OidcClient2";
 		var clientId3 = "OidcClient3";
+		var clientId4 = "OidcClient4";
 		var rpMainId = "RP1";
 		var rp11Id = "RP1-PRIV";
 		var rp12Id = "RP1-FED";
@@ -93,6 +96,7 @@ class RelyingPartyDefinitionsTest {
 		var rp31Id = "RP3-PRIV";
 		var rp32Id = "RP3-FED";
 		var rp33Id = "RP3-MDM";
+		var rp41Id = "RP4";
 		var intranetNetwork = "INTRANET";
 
 		// 1 file with aliases
@@ -100,12 +104,18 @@ class RelyingPartyDefinitionsTest {
 		var rp12 = givenRelyingParty(rp11Id, rpMainId, intranetNetwork, CP_ENTERPRISE, CP_PUBLIC, CP_MOBILE);
 		var rp13 = givenRelyingParty(rp12Id, rpMainId, intranetNetwork, CP_ENTERPRISE, CP_PUBLIC, CP_MOBILE);
 		var rp14 = givenRelyingParty(rp13Id, rpMainId, intranetNetwork, CP_ENTERPRISE, CP_PUBLIC, CP_MOBILE);
-		// oidc client duplicate file2 for MDM no alias
+		// 2 oidc client duplicate file2 for MDM no alias
 		var rp21 = givenRelyingParty(rp13Id, null, intranetNetwork, CP_MOBILE);
-		//3 files without aliases
+		// 3 files without aliases
 		var rp31 = givenRelyingParty(rp31Id, rp31Id, "INTERNET", CP_PUBLIC);
 		var rp32 = givenRelyingParty(rp32Id, rp32Id, intranetNetwork, CP_ENTERPRISE);
 		var rp33 = givenRelyingParty(rp33Id, rp33Id, "ABC", CP_MOBILE);
+		// 4 HRD hint alias
+		var rp41 = givenRelyingParty(rp41Id, null, intranetNetwork, CP_PUBLIC);
+		var hrdAlias = "public";
+		var hrdName = "hrdCp";
+		rp41.getClaimsProviderMappings().getClaimsProviderList().get(0).setHrdHintAlias(hrdAlias);
+		rp41.getClaimsProviderMappings().getClaimsProviderList().get(0).setName(hrdName);
 
 		// copy of clients federated with different SetupRP
 		var cl1 = OidcClient.builder().id(clientId1).build();
@@ -114,6 +124,7 @@ class RelyingPartyDefinitionsTest {
 		var cl31 = OidcClient.builder().id(clientId3).federationId(rp31Id).build();
 		var cl32 = OidcClient.builder().id(clientId3).federationId(rp32Id).build();
 		var cl33 = OidcClient.builder().id(clientId3).federationId(rp33Id).build();
+		var cl41 = OidcClient.builder().id(clientId4).federationId(rp41Id).build();
 
 		// setup
 		var properties= givenProperties();
@@ -147,16 +158,23 @@ class RelyingPartyDefinitionsTest {
 		RelyingPartyDefinitions.addOidcClient(newConfigurations, cl32, rp32);
 		RelyingPartyDefinitions.addOidcClient(newConfigurations, cl33, rp33);
 
+		// RP4, OIDC4
+		RelyingPartyDefinitions.addOidcClient(newConfigurations, cl41, rp41);
+
 		// verify OIDC mapping table (4 accepted entries + null and one rejected)
-		assertThat(newConfigurations.size(), equalTo(7));
+		assertThat(newConfigurations.size(), equalTo(11));
 		assertThat(newConfigurations.keySet(), containsInAnyOrder(
 				clientId1,
 				clientId1 + ">>" + CP_MOBILE,
 				clientId2,
 				clientId3,
+				clientId4,
 				clientId3 + ">>" + CP_PUBLIC,
 				clientId3 + ">>" + CP_ENTERPRISE,
-				clientId3 + ">>" + CP_MOBILE
+				clientId3 + ">>" + CP_MOBILE,
+				clientId4 + ">>" + CP_PUBLIC,
+				clientId4 + ">>" + hrdName,
+				clientId4 + ">>" + hrdAlias
 		));
 
 		// test
@@ -181,10 +199,20 @@ class RelyingPartyDefinitionsTest {
 
 		// LB for INTRANET
 		request.removeHeader(WebUtil.HTTP_HEADER_X_FORWARDED_FOR);
-		request.addHeader(properties.getNetwork().getNetworkHeader(), "INTRANET");
+		request.addHeader(properties.getNetwork().getNetworkHeader(), intranetNetwork);
 		var def4 = relyingPartyDefinitions.getOidcClientConfigById(clientId3, properties);
 		assertTrue(def4.isPresent());
 		assertThat(def4.get().getFederationId(), equalTo(rp32.getId()));
+
+		request.addHeader(HRD_HINT, hrdAlias);
+		var def5 = relyingPartyDefinitions.getOidcClientConfigById(clientId4, properties);
+		assertTrue(def5.isPresent());
+		assertThat(def5.get().getFederationId(), equalTo(rp41.getId()));
+
+		request.addHeader(HRD_HINT, hrdName);
+		var def6 = relyingPartyDefinitions.getOidcClientConfigById(clientId4, properties);
+		assertTrue(def6.isPresent());
+		assertThat(def6.get().getFederationId(), equalTo(rp41.getId()));
 	}
 
 	@Test
@@ -261,9 +289,9 @@ class RelyingPartyDefinitionsTest {
 	}
 
 	private RelyingParty givenRelyingParty(String rpId, String alias, String net, String... cpIds) {
-		var cps = new ArrayList<ClaimsProviderRelyingParty>();
+		var cps = new ArrayList<ClaimsProvider>();
 		for (var cpId : cpIds) {
-			cps.add(ClaimsProviderRelyingParty.builder()
+			cps.add(ClaimsProvider.builder()
 											  .id(cpId)
 											  .clientNetworks(net)
 											  .build());
@@ -282,6 +310,7 @@ class RelyingPartyDefinitionsTest {
 		ret.setPublicIdpId(CP_PUBLIC);
 		ret.setEnterpriseIdpId(CP_ENTERPRISE);
 		ret.setMobileIdpId(CP_MOBILE);
+		ret.setHrdHintTestParameter(HRD_HINT);
 		ret.setPublicAutoLoginCookie(AUTOLOGIN_COOKIE);
 		var network = new NetworkConfig();
 		ret.setNetwork(network);

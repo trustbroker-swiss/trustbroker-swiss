@@ -19,6 +19,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Collections;
@@ -214,19 +215,19 @@ class DefinitionUtilTest {
 
 	private static Map<AttributeName, List<String>> givenAttributeMap() {
 		return Map.of(CoreAttributeName.FIRST_NAME, List.of("name1"),
-				Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME), List.of("name2"),
+				Definition.ofNames(CoreAttributeName.FIRST_NAME), List.of("name2"),
 				CoreAttributeName.CLAIMS_NAME, List.of("wrong"),
 				new Definition(null, CoreAttributeName.FIRST_NAME.getNamespaceUri()), List.of("name3"));
 	}
 
 	private static Map<AttributeName, List<String>> givenAttributeMapFilteredByFirstNameNamespaceUri() {
 		return Map.of(CoreAttributeName.FIRST_NAME, List.of("name1"),
-				Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME), List.of("name2"),
+				Definition.ofNames(CoreAttributeName.FIRST_NAME), List.of("name2"),
 				new Definition(null, CoreAttributeName.FIRST_NAME.getNamespaceUri()), List.of("name3"));
 	}
 
 	@Test
-	void mapCpAttributeList() {
+	void mapAttributeList() {
 		var firstName = List.of("first1");
 		var lastName = List.of("last1");
 		Map<AttributeName, List<String>> attributes = Map.of(
@@ -239,11 +240,11 @@ class DefinitionUtilTest {
 				Definition.builder().name(CoreAttributeName.FIRST_NAME.getName()).build(), firstName);
 
 		HashMap<Definition, List<String>> result = new HashMap<>();
-		DefinitionUtil.mapCpAttributeList(attributes, result);
+		DefinitionUtil.mapAttributeList(attributes, result);
 		assertThat(result, is(expected));
 
 		Map<Definition, List<String>> definitions = new HashMap<>();
-		DefinitionUtil.mapCpAttributeList(attributes, definitions);
+		DefinitionUtil.mapAttributeList(attributes, definitions);
 		assertThat(definitions, is(expected));
 	}
 
@@ -347,7 +348,7 @@ class DefinitionUtilTest {
 				{ CoreAttributeName.FIRST_NAME, CoreAttributeName.EMAIL, false },
 				{ CoreAttributeName.FIRST_NAME, Definition.ofName(CoreAttributeName.FIRST_NAME), true },
 				{ CoreAttributeName.FIRST_NAME, Definition.ofName(CoreAttributeName.NAME), false },
-				{ CoreAttributeName.FIRST_NAME, Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME), false }
+				{ CoreAttributeName.FIRST_NAME, new Definition(CoreAttributeName.FIRST_NAME.getNamespaceUri()), false }
 		};
 	}
 
@@ -361,7 +362,7 @@ class DefinitionUtilTest {
 		return new Object[][] {
 				{ CoreAttributeName.FIRST_NAME, null, false },
 				{ CoreAttributeName.FIRST_NAME, CoreAttributeName.FIRST_NAME.getNamespaceUri(), true },
-				{ CoreAttributeName.FIRST_NAME, Definition.ofNamespaceUri(CoreAttributeName.FIRST_NAME).getName(), true },
+				{ CoreAttributeName.FIRST_NAME, Definition.ofNames(CoreAttributeName.FIRST_NAME).getNamespaceUri(), true },
 				{ CoreAttributeName.FIRST_NAME, CoreAttributeName.EMAIL.getNamespaceUri(), false }
 		};
 	}
@@ -473,6 +474,32 @@ class DefinitionUtilTest {
 				{ definitionsWithSource, CoreAttributeName.HOME_NAME, null, Optional.of(homeNameSource) },
 				{ definitionsWithSource, CoreAttributeName.CLAIMS_NAME, source2, Optional.of(claimsNameSource) },
 				{ definitionsWithSource, CoreAttributeName.CLAIMS_NAME, "idm", Optional.of(claimsNameSource) } // source prefix
+		};
+	}
+
+
+	@ParameterizedTest
+	@MethodSource
+	void getOrCreateDefinitionTest(String name, String namespace, String source, Map<Definition, List<String>> inputAttributes, String expectedName) {
+		var result = DefinitionUtil.getOrCreateDefinition(name, namespace, source, inputAttributes);
+		assertThat(expectedName, is(result.getName()));
+		assertNotNull(result.getSource());
+		if (namespace != null) {
+			assertThat(namespace, is(result.getNamespaceUri()));
+		}
+	}
+
+	static Object[][] getOrCreateDefinitionTest() {
+
+		var attributes = Map.of(
+				Definition.ofName(CoreAttributeName.FIRST_NAME), List.of("name1"),
+				Definition.ofNameNamespaceUriAndSource(CoreAttributeName.HOME_NAME.getName(), CoreAttributeName.HOME_NAME.getNamespaceUri(), "CP"), List.of("name2"),
+				Definition.ofNameNamespaceUriAndSource(CoreAttributeName.CLAIMS_NAME.getName(), CoreAttributeName.CLAIMS_NAME.getNamespaceUri(), "CP"), List.of("name3"));
+		return new Object[][]{
+				{CoreAttributeName.NAME.getName(), null, "CP", attributes, CoreAttributeName.NAME.getName()},
+				{CoreAttributeName.HOME_NAME.getName(), null, "CP", attributes, CoreAttributeName.HOME_NAME.getName()},
+				{CoreAttributeName.CLAIMS_NAME.getName(), CoreAttributeName.CLAIMS_NAME.getNamespaceUri(),
+						"CP", attributes, CoreAttributeName.CLAIMS_NAME.getName()},
 		};
 	}
 

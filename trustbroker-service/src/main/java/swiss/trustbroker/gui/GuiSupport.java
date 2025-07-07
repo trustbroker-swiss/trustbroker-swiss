@@ -78,7 +78,11 @@ public class GuiSupport {
 	private static String getCookieSameSite(CookieProperties config, TrustBrokerProperties trustBrokerProperties) {
 		var sameSite = config.getSameSite();
 		if (sameSite == null) {
-			return trustBrokerProperties.getCookieSameSite();
+			sameSite = trustBrokerProperties.getCookieSameSite();
+		}
+		if (WebUtil.isSameSiteDynamic(sameSite)) {
+			log.warn("Ignoring invalid config sameSite={} not supported for GUI cookie={}", sameSite, config.getName());
+			return null;
 		}
 		return sameSite;
 	}
@@ -99,6 +103,7 @@ public class GuiSupport {
 		return GuiConfig.builder()
 				.languageCookie(buildConfig(config.getLanguageCookie()))
 				.themeCookie(buildConfig(config.getThemeCookie()))
+				.announcementCookie(buildConfig(config.getAnnouncementCookie()))
 				.buttons(config.getButtons())
 				.features(config.getFeatures())
 				.build();

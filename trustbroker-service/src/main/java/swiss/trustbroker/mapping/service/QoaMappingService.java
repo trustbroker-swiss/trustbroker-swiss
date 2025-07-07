@@ -199,6 +199,14 @@ public class QoaMappingService {
 				responseContextClasses, inboundQoaConfig.issuerId(), mappedQoas,
 				outboundComparisonType, outboundQoaConfig.issuerId(), requestComparisonType,
 				requestContextClasses, matchContextClasses);
+
+		// Don't apply mapping or order validation on default
+		if (mappedQoas.isEmpty() && inboundQoaConfig.hasConfig() && inboundQoaConfig.config().getDefaultQoa() != null)  {
+			mappedQoas.add(inboundQoaConfig.config().getDefaultQoa());
+			log.debug("Mapped responseContextClasses={} set to defaultQoa={} inboundIssuer={} outboundIssuer={} ",
+					responseContextClasses, inboundQoaConfig.config().getDefaultQoa(), inboundQoaConfig.issuerId(), inboundQoaConfig.issuerId());
+		}
+
 		return mappedQoas;
 	}
 
@@ -207,7 +215,7 @@ public class QoaMappingService {
 			QoaComparison outboundComparisonType, QoaConfig outboundQoaConfig, List<String> matchContextClasses) {
 
 		if (CollectionUtils.isEmpty(inboundContextClasses)) {
-			return inboundContextClasses;
+			return Collections.emptyList();
 		}
 		if (!outboundQoaConfig.hasConfig() || CollectionUtils.isEmpty(outboundQoaConfig.config().getClasses())) {
 			log.debug("Missing outbound Qoa config outboundIssuer={}, skipping Qoa mapping", outboundQoaConfig.issuerId());
@@ -219,27 +227,33 @@ public class QoaMappingService {
 		}
 
 		List<AcClass> mappedQoas = new ArrayList<>();
+		List<AcClass> unmappedQoas = new ArrayList<>();
 		var globalMapping = trustBrokerProperties.getQoaMap();
+		var dropUnmappableQoas = outboundQoaConfig.config().dropUnmappableQoas();
 		// map inbound context class to outbound context class
 		for (var contextClass : inboundContextClasses) {
 			var qoaOrders = QoaMappingUtil.getQoaOrders(contextClass, inboundQoaConfig, globalMapping, false);
-			var configAcClasses = QoaMappingUtil.getConfigAcClassesByOrders(
-					outboundQoaConfig, qoaOrders, globalMapping, true);
+			var configAcClasses = QoaMappingUtil.getConfigAcClassesByOrders(outboundQoaConfig, qoaOrders, globalMapping, true);
 			if (!configAcClasses.isEmpty()) {
 				mappedQoas.addAll(configAcClasses);
 			}
 			else {
-				log.warn("contextClass={} could not be mapped for outboundIssuer={}", contextClass, outboundQoaConfig.issuerId());
+				log.debug("contextClass={} could not be mapped for outboundIssuer={}", contextClass, outboundQoaConfig.issuerId());
 				for (var qoaOrder : qoaOrders) {
-					mappedQoas.add(AcClass.builder().contextClass(contextClass).order(qoaOrder).build());
+					unmappedQoas.add(AcClass.builder().contextClass(contextClass).order(qoaOrder).build());
 				}
 			}
 		}
+
+		// drop only if dropUnmappable=true and there is at least one mappable Qoa
+		if (!dropUnmappableQoas || mappedQoas.isEmpty()) {
+			mappedQoas.addAll(unmappedQoas);
+		}
+
 		var configQoa = new QoaConfig(Qoa.builder()
 										 .comparison(outboundComparisonType)
 										 .classes(mappedQoas)
-										 .build(),
-				outboundQoaConfig.issuerId());
+										 .build(), outboundQoaConfig.issuerId());
 		return QoaMappingUtil.computeQoasForComparisonType(configQoa, trustBrokerProperties.getQoaMap(), matchContextClasses);
 	}
 

@@ -54,6 +54,7 @@ import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
+import swiss.trustbroker.oidc.client.dto.AuthorizationCodeFlowRequest;
 import swiss.trustbroker.saml.dto.ClaimSource;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.util.ClaimSourceUtil;
@@ -101,9 +102,10 @@ public abstract class AuditMapper {
 			setIfNotNull(builder::oidcClientId, cpResponse.getOidcClientId());
 			setIfNotNull(builder::principal, cpResponse.getNameId());
 			setIfNotNull(builder::cpNameId, cpResponse.getOriginalNameId());
+			setIfNotNull(builder::mappedNameId, cpResponse.getMappedNameId());
 			setIfNotNull(builder::destination, cpResponse.getDestination());
 			setIfNotNull(builder::authLevel, cpResponse.getAuthLevel()); // config not helpful, we need the actual data...
-			setIfNotNull(builder::ctxClasses, ctxClasses != null ? Arrays.toString(ctxClasses.toArray()) : null); // ... here
+			setIfNotNull(builder::ctxClasses, listToString(ctxClasses)); // ... here
 			setIfNotNull(builder::eventType, EventType.RESPONSE);
 			mapAttributes(cpResponse);
 		}
@@ -126,7 +128,7 @@ public abstract class AuditMapper {
 		if (request instanceof AuthnRequest authnRequest) {
 			var ctxClasses = OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest);
 			setIfNotNull(builder::assertionConsumerUrl, authnRequest.getAssertionConsumerServiceURL());
-			setIfNotNull(builder::ctxClasses, !ctxClasses.isEmpty() ? Arrays.toString(ctxClasses.toArray()) : null);
+			setIfNotNull(builder::ctxClasses, listToString(ctxClasses));
 			setIfNotNull(builder::eventType, EventType.AUTHN_REQUEST);
 		}
 		else if (request instanceof LogoutRequest) {
@@ -135,6 +137,20 @@ public abstract class AuditMapper {
 		else if (request instanceof ArtifactResolve) {
 			setIfNotNull(builder::eventType, EventType.ARTIFACT_RESOLVE);
 		}
+		return this;
+	}
+
+	public AuditMapper mapFrom(AuthorizationCodeFlowRequest request) {
+		if (request == null) {
+			return this;
+		}
+		setIfNotNull(builder::oidcClientId, request.clientId());
+		setIfNotNull(builder::destination, request.destination());
+		setIfNotNull(builder::assertionConsumerUrl, request.assertionConsumerUrl());
+		setIfNotNull(builder::ctxClasses, listToString(request.acrValues()));
+		setIfNotNull(builder::scopes, listToString(request.scopes()));
+		setIfNotNull(builder::eventType, EventType.AUTHN_REQUEST);
+
 		return this;
 	}
 
@@ -365,7 +381,7 @@ public abstract class AuditMapper {
 				ctxClasses.add(contextClass);
 			}
 		}
-		setIfNotNull(builder::ctxClasses, !ctxClasses.isEmpty() ? Arrays.toString(ctxClasses.toArray()) : null);
+		setIfNotNull(builder::ctxClasses, listToString(ctxClasses));
 	}
 
 	private void mapStatus(StatusResponseType response) {
@@ -436,6 +452,10 @@ public abstract class AuditMapper {
 		var finalQuerySource = querySource != null && querySource.contains(ClaimSourceUtil.SEPARATOR) ?
 				querySource.split(ClaimSourceUtil.SEPARATOR)[1] : querySource;
 		putResponseAttribute(name, namespaceUri, value, source, finalQuerySource, cid);
+	}
+
+	private static String listToString(List<String> ctxClasses) {
+		return CollectionUtils.isNotEmpty(ctxClasses) ? Arrays.toString(ctxClasses.toArray()) : null;
 	}
 
 	private static Object flattenList(Object value) {

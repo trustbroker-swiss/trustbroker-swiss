@@ -22,4 +22,5 @@ export class Configuration {
 	features: GuiFeature[];
 	themeCookie: CookieConfiguration;
 	languageCookie: CookieConfiguration;
+	announcementCookie: CookieConfiguration;
 }

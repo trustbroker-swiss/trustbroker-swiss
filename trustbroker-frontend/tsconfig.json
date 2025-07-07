@@ -6,7 +6,7 @@
     /* as in empty angular application */
     "strict": false,
     "noImplicitOverride": true,
-    "noPropertyAccessFromIndexSignature": false,
+    "noPropertyAccessFromIndexSignature": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
@@ -23,10 +23,6 @@
       "ES2022",
       "dom"
     ],
-
-    /* additional settings */
-    "downlevelIteration": true,
-    "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "baseUrl": "./",
     "types": [],
@@ -36,10 +32,14 @@
     "enableI18nLegacyMessageIdFormat": false,
     "strictInjectionParameters": true,
     "strictInputAccessModifiers": true,
-    "strictTemplates": false
+    "strictTemplates": true
   },
   "references": [
-    { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.spec.json" }
+    {
+      "path": "./tsconfig.app.json"
+    },
+    {
+      "path": "./tsconfig.spec.json"
+    }
   ]
 }

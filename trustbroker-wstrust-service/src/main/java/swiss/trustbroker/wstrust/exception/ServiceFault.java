@@ -33,6 +33,7 @@ import lombok.NoArgsConstructor;
 public class ServiceFault implements Serializable {
 
 	private String code;
+
 	private String description;
 
 	public String getCode() {

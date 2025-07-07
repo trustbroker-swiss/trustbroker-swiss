@@ -17,11 +17,10 @@ export interface IdpObject {
 	urn: string;
 	title: string;
 	image: string;
-	button: string;
 	name: string;
 	shortcut: string;
 	color: string;
-	disabled: boolean;
+	disabled?: string;
 	order?: number;
 }
 
@@ -29,11 +28,21 @@ export interface BannerConfig {
 	name: string;
 	mainImage?: string;
 	secondaryImages?: string[];
-	collapseParagraphsOnSmallScreen?: boolean;
+	collapseParagraphs?: boolean;
 	order?: number;
 }
 
 export interface IdpObjects {
 	tiles?: IdpObject[];
 	banners?: BannerConfig[];
+}
+
+export function compareByOrder(a: IdpObject, b: IdpObject): number {
+	if (!a.order) {
+		return 1;
+	}
+	if (!b.order) {
+		return -1;
+	}
+	return a.order - b.order;
 }

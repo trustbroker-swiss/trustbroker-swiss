@@ -15,240 +15,220 @@
 
 package swiss.trustbroker.oidc.client.service;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Optional;
+import java.util.function.Function;
 
-import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jwt.JWTClaimsSet;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.util.OidcUtil;
-import swiss.trustbroker.config.TrustBrokerProperties;
-import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
-import swiss.trustbroker.exception.GlobalExceptionHandler;
-import swiss.trustbroker.federation.xmlconfig.Certificates;
+import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
-import swiss.trustbroker.federation.xmlconfig.Definition;
+import swiss.trustbroker.federation.xmlconfig.OidcClaimsSource;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.Scope;
+import swiss.trustbroker.mapping.dto.QoaSpec;
+import swiss.trustbroker.oidc.client.dto.AuthorizationCodeFlowRequest;
 import swiss.trustbroker.oidc.client.dto.OpenIdProviderConfiguration;
-import swiss.trustbroker.oidc.client.util.OidcClientUtil;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.util.ApiSupport;
 
 /**
  * OIDC client for Authorization Code Flow.
- * 
- * Note: With 1.9.0 this feature is still unfinished, some parts to be completed in the NEXT release marked as such.
+ *
+ * @see <a href="https://openid.net/specs/openid-connect-core-1_0.html#CodeFlowAuth">OIDC Authorization Code Flow</a>
  */
 @Component
 @AllArgsConstructor
 @Slf4j
 public class AuthorizationCodeFlowService {
 
-	// NEXT: improve cache
-	private static final Map<String, OpenIdProviderConfiguration> OIDC_CONFIGURATIONS = new ConcurrentHashMap<>();
-
-	private final RelyingPartyDefinitions relyingPartyDefinitions;
-
-	private final GlobalExceptionHandler globalExceptionHandler;
-
 	private final ApiSupport apiSupport;
 
-	private final TrustBrokerProperties trustBrokerProperties;
+	private final OidcMetadataCacheService oidcMetadataCacheService;
 
-	// fire /authorize
-	public String redirectUserWithRequest(ClaimsParty claimsParty, StateData stateData) {
-		var client = getOidcClient(claimsParty);
-		var configuration = getOidcConfiguration(claimsParty, client);
+	private final OidcTokenService oidcTokenService;
+
+	private final OidcUserinfoService userinfoService;
+
+	private final JwtClaimsService jwtClaimsService;
+
+	private final OidcClaimValidatorService oidcClaimValidatorService;
+
+	/**
+	 * Create Authorization Code Flow request URL with its parameters for auditing.
+	 */
+	public AuthorizationCodeFlowRequest createAuthnRequest(ClaimsParty claimsParty, StateData stateData, QoaSpec qoaSpec) {
+		var client = claimsParty.getSingleOidcClient();
 		var scopes = client.hasScopes() ?
 				client.getScopes().getScopeList() :
 				Scope.defaultNames();
-		var responseUrl = apiSupport.getOidcResponseApi(client.getRealm());
-		// NEXT: ForceAuthn / prompt
-		var authorizeUrl = OidcClientUtil.buildCodeFlowAuthorizationUrl(client, configuration, stateData, scopes, responseUrl);
+		var redirectUri = apiSupport.getOidcResponseApi(client.getRealm());
+		var configuration = oidcMetadataCacheService.getOidcConfiguration(claimsParty);
+		var result = buildCodeFlowAuthorizationRequest(client, claimsParty, configuration, stateData, qoaSpec, scopes,
+				redirectUri);
 		log.info("OIDC authorization code flow for cpIssuerId={} clientId={} sessionId={} "
-						+ "redirecting to authorizationRequest=\"{}\"",
-				claimsParty.getId(), client.getId(), stateData.getId(), authorizeUrl);
-		return authorizeUrl.toString();
+						+ "redirecting to requestUri=\"{}\"",
+				claimsParty.getId(), result.clientId(), stateData.getId(), result.requestUri());
+		return result;
 	}
 
-	public void handleCpResponse(String realm, String code, ClaimsParty claimsParty, StateData stateData) {
-		log.info("Processing code response for sessionId={} realm={} not yet implemented", stateData.getId(), realm);
-		var client = getOidcClient(claimsParty);
+	/**
+	 * Process response to Authorization Code Flow request, fetch tokens, and convert to <codeCpResponse></code>.
+	 */
+	public CpResponse handleCpResponse(String realm, String code, ClaimsParty claimsParty, StateData stateData) {
+		log.info("Processing code response for sessionId={} realm={}", stateData.getId(), realm);
+		var client = claimsParty.getSingleOidcClient();
 		// realm should match, but technically and security-wise not relevant
 		if (realm != null && !realm.equals(client.getRealm())) {
 			log.warn("Inbound realm={} does not match clientId={} clientRealm={} for sessionId={}",
 					realm, client.getId(), client.getRealm(), stateData.getId());
 		}
 		// fetch tokens (back-channel):
-		var configuration = getOidcConfiguration(claimsParty, client);
-		var tokenUri = configuration.getTokenEndpoint();
-		var responseUrl = apiSupport.getOidcResponseApi(client.getRealm());
-		var tokenResponse = OidcClientUtil.fetchTokens(claimsParty, client, configuration, trustBrokerProperties, tokenUri,
-				responseUrl, code);
+		var configuration = oidcMetadataCacheService.getOidcConfiguration(claimsParty);
+		var keySupplier = jwtKeySupplier(claimsParty);
+		var redirectUri = apiSupport.getOidcResponseApi(client.getRealm());
+		var tokenResponse = oidcTokenService.fetchTokens(client, claimsParty.getCertificates(), configuration, redirectUri, code);
+		var idTokenClaims = getClaimsFromIdToken(claimsParty, stateData, client, configuration, tokenResponse, keySupplier);
+		var userinfoClaims = getClaimsFromUserinfo(claimsParty, client, tokenResponse, configuration, keySupplier);
+		var claims = mergeClaims(client, idTokenClaims, userinfoClaims);
+		return buildCpResponseFromClaims(claimsParty, client, claims);
+	}
+
+	private JWTClaimsSet getClaimsFromIdToken(ClaimsParty claimsParty, StateData stateData, OidcClient client,
+			OpenIdProviderConfiguration configuration, Map<String, Object> tokenResponse,
+			Function<String, Optional<JWK>> keySupplier) {
+		if (!client.useClaimsFromSource(OidcClaimsSource.ID_TOKEN)) {
+			log.debug("No claims from {} required", OidcUtil.TOKEN_RESPONSE_ID_TOKEN);
+			return null;
+		}
 		var idToken = tokenResponse.get(OidcUtil.TOKEN_RESPONSE_ID_TOKEN);
 		if (!(idToken instanceof String idTokenString)) {
 			throw new RequestDeniedException(
-					String.format("Did not receive OIDC ID token from client=%s tokenUri=%s", client.getId(), tokenUri));
+					String.format("Did not receive OIDC %s from client=%s tokenEndpoint=%s",
+							OidcUtil.TOKEN_RESPONSE_ID_TOKEN, client.getId(), configuration.getTokenEndpoint()));
 		}
-		var claims = OidcUtil.verifyJwtToken(idTokenString, configuration.getJwkSet(), client.getId());
-		log.debug("OIDC ID client={} tokenUri={} claims={}", client.getId(), tokenUri, claims);
-		validateClaims(claims, client);
-		var cpResponse = buildCpResponseFromClaims(claimsParty, claims);
-		log.info("OIDC ID client={} returned claims={}", client.getId(), cpResponse);
-		// NEXT: audit
-		stateData.setCpResponse(cpResponse);
+		var claims = OidcUtil.verifyJwtToken(idTokenString, keySupplier, client.getId());
+		log.debug("OIDC {} client={} tokenEndpoint={} claims={}", OidcUtil.TOKEN_RESPONSE_ID_TOKEN, client.getId(),
+				configuration.getTokenEndpoint(), claims);
+		oidcClaimValidatorService.validateClaims(claims, claimsParty, client, configuration.getIssuerId(),
+				stateData.getSpStateData().getOidcNonce());
+		return claims;
 	}
 
-	private static void validateClaims(JWTClaimsSet claims, OidcClient client) {
-		var audience = claims.getAudience();
-		if (!audience.contains(client.getId())) {
-			throw new RequestDeniedException(
-					String.format("Did not receive OIDC ID token from client=%s aud=%s", client.getId(), audience));
+	private JWTClaimsSet getClaimsFromUserinfo(ClaimsParty claimsParty, OidcClient client,
+			Map<String, Object> tokenResponse, OpenIdProviderConfiguration configuration,
+			Function<String, Optional<JWK>> keySupplier) {
+		if (!client.useClaimsFromSource(OidcClaimsSource.USERINFO)) {
+			log.debug("No claims from userinfo required");
+			return null;
 		}
-		var authorizedParty = claims.getClaim(OidcUtil.OIDC_AUTHORIZED_PARTY);
-		if (authorizedParty != null && !authorizedParty.equals(client.getId())) {
+		log.debug("OIDC client={} requires call to userinfo", client.getId());
+		var accessToken = tokenResponse.get(OidcUtil.TOKEN_RESPONSE_ACCESS_TOKEN);
+		if (!(accessToken instanceof String accessTokenString)) {
 			throw new RequestDeniedException(
-					String.format("Did not receive OIDC ID token from client=%s azp=%s", client.getId(), authorizedParty));
+					String.format("Did not receive OIDC %s from client=%s tokenEndpoint=%s",
+							OidcUtil.TOKEN_RESPONSE_ACCESS_TOKEN, client.getId(), configuration.getTokenEndpoint()));
 		}
-		// NEXT: verify iat, exp, iss
+		var claims = userinfoService.fetchUserInfo(client, claimsParty.getCertificates(), configuration,
+				accessTokenString, keySupplier);
+		log.debug("OIDC client={} userinfoEndpoint={} returned claims={}",
+				client.getId(), configuration.getUserinfoEndpoint(), claims);
+		return claims;
 	}
 
-	private static CpResponse buildCpResponseFromClaims(ClaimsParty claimsParty, JWTClaimsSet claims) {
-		Map<Definition, List<String>> attributes = mapClaimsToAttributes(claimsParty, claims);
+	static JWTClaimsSet mergeClaims(OidcClient client, JWTClaimsSet idTokenClaims, JWTClaimsSet userinfoClaims) {
+		JWTClaimsSet claims = null;
+		OidcClaimsSource claimsSource = null;
+		for (var source : client.getClaimsSources().getClaimsSourceList()) {
+			var sourceClaims = switch (source) {
+				case ID_TOKEN -> idTokenClaims;
+				case USERINFO -> userinfoClaims;
+			};
+			claims = OidcUtil.mergeJwtClaims(claims, claimsSource != null ? claimsSource.name() : null,
+					sourceClaims, source.name());
+			claimsSource = source;
+		}
+		log.debug("OIDC client={} merged from sources={} claims={}",
+				client.getId(), client.getClaimsSources().getClaimsSourceList(), claims);
+		if (claims == null) {
+			// should not happen due to default
+			throw new TechnicalException(String.format("OIDC client=%s has no ClaimsSources", client.getId()));
+		}
+		return claims;
+	}
+
+	private Function<String, Optional<JWK>> jwtKeySupplier(ClaimsParty claimsParty) {
+		return id -> oidcMetadataCacheService.getKey(claimsParty, id);
+	}
+
+	private CpResponse buildCpResponseFromClaims(ClaimsParty claimsParty, OidcClient oidcClient, JWTClaimsSet claims) {
+		var attributes = jwtClaimsService.mapClaimsToAttributes(claims, claimsParty);
+		if (claimsParty.getHomeName() == null) {
+			throw new TechnicalException(String.format("Missing HomeName for cpIssuerId=%s", claimsParty.getId()));
+		}
+		var contextClasses = jwtClaimsService.getCtxClasses(claims, claimsParty);
 		return CpResponse.builder()
-								   .issuer(claims.getIssuer())
+								   .issuer(claimsParty.getId()) // use CP ID, claims.issuer can be OidcClient.issuerId
 								   .nameId(claims.getSubject())
 								   .claims(claims.getClaims())
+						 		   .homeName(claimsParty.getHomeName().getName())
 								   .attributes(attributes)
+						 	       .oidcClientId(oidcClient.getId())
+								   .contextClasses(contextClasses)
 								   .build();
 	}
 
-	private static Map<Definition, List<String>> mapClaimsToAttributes(ClaimsParty claimsParty, JWTClaimsSet claims) {
-		Map<Definition, List<String>> attributes = new HashMap<>();
-		if (claimsParty.getAttributesSelection() == null
-						|| CollectionUtils.isEmpty(claimsParty.getAttributesSelection().getDefinitions())) {
-			return attributes;
+	private AuthorizationCodeFlowRequest buildCodeFlowAuthorizationRequest(OidcClient client, ClaimsParty claimsParty,
+			OpenIdProviderConfiguration providerConfiguration, StateData stateData, QoaSpec qoaSpec, List<String> scopes,
+			String redirectUri) {
+		var endpointUri = providerConfiguration.getAuthorizationEndpoint();
+		var scopeString = String.join(" ", scopes);
+		var qoaString = String.join(" ", qoaSpec.contextClasses());
+		// audience not sent
+		var endpoint = endpointUri.toString();
+		var queryString = new StringBuilder(endpoint)
+				// we only support code flow so far
+				.append("?response_type=code&response_mode=")
+				.append(client.getResponseMode().getName())
+				.append("&client_id=")
+				.append(WebUtil.urlEncodeValue(client.getId()))
+				.append("&state=")
+				.append(WebUtil.urlEncodeValue(stateData.getSpStateData().getId()))
+				.append("&scope=")
+				.append(WebUtil.urlEncodeValue(scopeString))
+				.append("&nonce=")
+				.append(WebUtil.urlEncodeValue(stateData.getSpStateData().getOidcNonce()))
+				.append("&acr_values=")
+				.append(WebUtil.urlEncodeValue(qoaString))
+				.append("&redirect_uri=")
+				.append(WebUtil.urlEncodeValue(redirectUri));
+		var forceAuthn = stateData.forceAuthn() || claimsParty.forceAuthn(true);
+		if (forceAuthn) {
+			queryString.append("&prompt=login");
 		}
-		for (var claim : claims.getClaims().entrySet()) {
-			for (var definition : claimsParty.getAttributesSelection().getDefinitions()) {
-				if (definition.equalsByNameOrNamespace(claim.getKey())) {
-					attributes.put(definition, convertClaimValue(claim.getValue()));
-				}
-			}
-		}
-		return attributes;
-	}
-
-	private static List<String> convertClaimValue(Object claimValue) {
-		List<String> values = new ArrayList<>();
-		if (claimValue instanceof String claimString) {
-			values.add(claimString);
-		}
-		else if (claimValue instanceof List<?> claimList) {
-			for (var singleValue : claimList) {
-				values.add(singleValue.toString());
-			}
-		}
-		// NEXT: apply mappers to handle other types
-		else if (claimValue != null) {
-			values.add(claimValue.toString());
-		}
-		return values;
-	}
-
-	// token check by backend
-	public JWKSet getKeySet(ClaimsParty claimsParty, String expectedKid) {
-		var keySet = getOidcConfiguration(claimsParty).getJwkSet();
-		if (expectedKid != null && keySet.getKeyByKeyId(expectedKid) == null) {
-			// single retry to check, if we missed a key rotation
-			// NEXT minimal caching time (DOS prevention)
-			log.info("Unknown kid={} from cpIssuer={}, try retrieving JWKs once", expectedKid, claimsParty.getId());
-			var config = reloadConfiguration(getOidcClient(claimsParty), claimsParty.getCertificates());
-			keySet = config.getJwkSet();
-		}
-		return keySet;
-	}
-
-	// ClaimsParty => OidcClient
-	private static OidcClient getOidcClient(ClaimsParty claimsParty) {
-		if (claimsParty.getOidc() == null) {
-			throw new TechnicalException(String.format("Invalid ClaimsParty id=%s (not an Oidc Client)",
-					claimsParty.getId()));
-		}
-		var oidcClientCount = claimsParty.getOidc().getClients().size();
-		if (oidcClientCount != 1) {
-			throw new TechnicalException(String.format("Invalid ClaimsParty id=%s count=%s",
-					claimsParty.getId(), oidcClientCount));
-		}
-		return claimsParty.getOidc().getClients().get(0);
-	}
-
-	// ClaimsParty => OidcClient => OidcConfiguration (from OpenId provider)
-	private OpenIdProviderConfiguration getOidcConfiguration(ClaimsParty claimsParty) {
-		var oidcClient = getOidcClient(claimsParty);
-		return getOidcConfiguration(claimsParty, oidcClient);
-	}
-
-	private OpenIdProviderConfiguration getOidcConfiguration(ClaimsParty claimsParty, OidcClient oidcClient) {
-		var oidcClientConfig = OIDC_CONFIGURATIONS.get(oidcClient.getId());
-		if (oidcClientConfig == null) {
-			oidcClientConfig = reloadConfiguration(oidcClient, claimsParty.getCertificates());
-			OIDC_CONFIGURATIONS.put(oidcClient.getId(), oidcClientConfig);
-		}
-		return oidcClientConfig;
-	}
-
-	// cache miss or missing JWK, trigger a refresh
-	private OpenIdProviderConfiguration reloadConfiguration(OidcClient client, Certificates certificates) {
-		return OidcClientUtil.fetchProviderMetadata(client, certificates, trustBrokerProperties);
-	}
-
-	// On startup or scheduled reload all OIDC configuration endpoints
-	@Scheduled(initialDelay = 0, fixedDelay=Long.MAX_VALUE)
-	public void initConfiguration() {
-		refreshConfigurations();
-	}
-
-	@Scheduled(cron = "${trustbroker.config.oidc.syncSchedule}")
-	public void refreshConfigurations() {
-		var loadCount = 0;
-		var start = System.currentTimeMillis();
-		var claimsParties = relyingPartyDefinitions
-				.getClaimsProviderSetup()
-				.getClaimsParties()
-				.stream()
-				.filter(ClaimsParty::useOidc)
-				.toList();
-		log.info("OIDC client configuration update for claimsPartyCount={}", claimsParties.size());
-		for (var claimsParty : claimsParties) {
-			try {
-				var oidcClient = getOidcClient(claimsParty);
-				var config = reloadConfiguration(oidcClient, claimsParty.getCertificates());
-				if (config != null) {
-					OIDC_CONFIGURATIONS.put(oidcClient.getId(), config);
-					++loadCount;
-				}
-			}
-			catch (RuntimeException ex) {
-				globalExceptionHandler.logException(ex);
-			}
-		}
-
-		var dTms = System.currentTimeMillis() - start;
-		var failCount = claimsParties.size() - loadCount;
-		log.info("OIDC client configuration update done for claimsPartyCount={} in dtMs={} with failCount={}",
-				claimsParties.size(), dTms, failCount);
+		// concat as URI::resolve cuts the last part of path without trailing slash, e.g. trailing /authorize is lost
+		var uri = WebUtil.getValidatedUri(queryString.toString());
+		var request = uri.toString();
+		log.debug("OIDC authorization request to authorizationEndpoint={} for clientId={} state={} scope={} redirectUri={} "
+						+ "is authorizationRequest=\"{}\"",
+				endpoint, client.getId(), stateData.getId(), scopes, redirectUri, request);
+		return AuthorizationCodeFlowRequest.builder()
+										   .clientId(client.getId())
+										   .scopes(scopes)
+										   .acrValues(qoaSpec.contextClasses())
+										   .forceAuthn(forceAuthn)
+										   .destination(endpoint)
+										   .assertionConsumerUrl(redirectUri)
+										   .requestUri(request)
+										   .build();
 	}
 
 }

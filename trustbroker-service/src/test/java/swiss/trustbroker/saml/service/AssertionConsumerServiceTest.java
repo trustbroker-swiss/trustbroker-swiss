@@ -63,7 +63,6 @@ import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.Banner;
 import swiss.trustbroker.config.dto.NetworkConfig;
-import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.config.dto.SamlNamespace;
 import swiss.trustbroker.config.dto.SamlProperties;
 import swiss.trustbroker.config.dto.SecurityChecks;
@@ -71,7 +70,7 @@ import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBindingMode;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.Flow;
 import swiss.trustbroker.federation.xmlconfig.FlowPolicies;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
@@ -87,7 +86,6 @@ import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.sessioncache.service.StateCacheService;
 import swiss.trustbroker.sso.service.SsoService;
 import swiss.trustbroker.util.ApiSupport;
-import swiss.trustbroker.util.HrdSupport;
 
 @SpringBootTest
 @ContextConfiguration(classes = { AssertionConsumerService.class, ApiSupport.class })
@@ -108,14 +106,13 @@ class AssertionConsumerServiceTest {
 
 	private static final String RELAY_STATE = "relay";
 
+	private static final String HINT_PARAMETER = "select_cp";
+
 	@Autowired
 	private AssertionConsumerService assertionConsumerService;
 
 	@MockitoBean
 	private TrustBrokerProperties trustBrokerProperties;
-
-	@MockitoBean
-	private RelyingPartyDefinitions relyingPartyDefinitions;
 
 	@MockitoBean
 	private RelyingPartySetupService relyingPartySetupService;
@@ -160,7 +157,7 @@ class AssertionConsumerServiceTest {
 		var request = new MockHttpServletRequest();
 		request.addHeader(trustBrokerProperties.getNetwork().getNetworkHeader(), network);
 		var rpRequest = assertionConsumerService.getRpRequestDetails(TEST_RP, "REF", "APPL", request, "TEST", null);
-		assertThat(rpRequest.getClaimsProviders().stream().map(ClaimsProviderRelyingParty::getId).toList(),
+		assertThat(rpRequest.getClaimsProviders().stream().map(ClaimsProvider::getId).toList(),
 				containsInAnyOrder(TEST_CP_MOCK, TEST_CP_ID));
 		assertEquals("REF", rpRequest.getReferer());
 		assertEquals("TEST", rpRequest.getRequestId());
@@ -171,7 +168,7 @@ class AssertionConsumerServiceTest {
 				cp.isValidForNetwork(network))); // valid for both networks
 		assertEquals(List.of(TEST_CP_ID), rpRequest.getClaimsProviders().stream().filter(cp ->
 				cp.isValidForNetwork(trustBrokerProperties.getNetwork().getInternetNetworkName()))
-																		.map(ClaimsProviderRelyingParty::getId).toList());
+																		.map(ClaimsProvider::getId).toList());
 	}
 
 	@Test
@@ -181,7 +178,7 @@ class AssertionConsumerServiceTest {
 		var request = new MockHttpServletRequest();
 		request.addHeader(trustBrokerProperties.getNetwork().getNetworkHeader(), network);
 		var rpRequest = assertionConsumerService.getRpRequestDetails(TEST_RP,"REF", "APPL", request, "TEST", null);
-		assertEquals(List.of(TEST_CP_ID), rpRequest.getClaimsProviders().stream().map(ClaimsProviderRelyingParty::getId).toList());
+		assertEquals(List.of(TEST_CP_ID), rpRequest.getClaimsProviders().stream().map(ClaimsProvider::getId).toList());
 		assertTrue(rpRequest.getClaimsProviders().stream().allMatch(cp -> cp.isValidForNetwork(network)));
 		assertTrue(rpRequest.getClaimsProviders().stream().allMatch(cp ->
 				cp.isValidForNetwork(trustBrokerProperties.getNetwork().getIntranetNetworkName()))); // valid for both networks
@@ -192,7 +189,7 @@ class AssertionConsumerServiceTest {
 		mockRequestConfiguration(TEST_RP_ALIAS);
 		var request = new MockHttpServletRequest();
 		var rpRequest = assertionConsumerService.getRpRequestDetails(TEST_RP_ALIAS, "REF", null, request, "TEST", null);
-		assertEquals(List.of("urn:test:URLTESTER"), rpRequest.getClaimsProviders().stream().map(ClaimsProviderRelyingParty::getId).toList());
+		assertEquals(List.of("urn:test:URLTESTER"), rpRequest.getClaimsProviders().stream().map(ClaimsProvider::getId).toList());
 		assertEquals("REF", rpRequest.getReferer());
 		assertEquals("TEST", rpRequest.getRequestId());
 		assertEquals(TEST_RP_ALIAS, rpRequest.getRpIssuer());
@@ -200,19 +197,20 @@ class AssertionConsumerServiceTest {
 
 	@ParameterizedTest
 	@MethodSource
-	void testRelyingPartyToSelectedCpByUrlTester(boolean intranet, String[] expected) {
+	void testRelyingPartyToSelectedCpByHrdHint(boolean intranet, String[] expected) {
 		mockRequestConfiguration(TEST_RP);
 		var request = new MockHttpServletRequest();
-		request.setCookies(new Cookie(HrdSupport.HTTP_HRD_HINT_HEADER, TEST_CP_MOCK));
+		when(trustBrokerProperties.getHrdHintTestParameter()).thenReturn(HINT_PARAMETER);
+		request.setCookies(new Cookie(HINT_PARAMETER, TEST_CP_MOCK));
 		var network = trustBrokerProperties.getNetwork();
 		request.addHeader(network.getNetworkHeader(),
 				intranet ? network.getIntranetNetworkName() : network.getInternetNetworkName());
 		var rpRequest = assertionConsumerService.getRpRequestDetails(TEST_RP,"REF", null, request, "TEST", null);
-		assertThat(rpRequest.getClaimsProviders().stream().map(ClaimsProviderRelyingParty::getId).toList(),
+		assertThat(rpRequest.getClaimsProviders().stream().map(ClaimsProvider::getId).toList(),
 				containsInAnyOrder(expected));
 	}
 
-	static Object[][] testRelyingPartyToSelectedCpByUrlTester() {
+	static Object[][] testRelyingPartyToSelectedCpByHrdHint() {
 		return new Object[][] {
 				{ true, new String[] { TEST_CP_MOCK } }, // mock selected due to HRD hint
 				{ false, new String[] { TEST_CP_ID }} // mock filtered out due to network
@@ -271,6 +269,7 @@ class AssertionConsumerServiceTest {
 		var state = mockState(RELAY_STATE);
 		state.setIssuer(TEST_CP);
 		mockSecurityChecks(false, false, false, true);
+		when(trustBrokerProperties.getSaml()).thenReturn(new SamlProperties());
 		var responseData = ResponseData.of(response, RELAY_STATE, SignatureContext.forArtifactBinding());
 		assertDoesNotThrow(() -> assertionConsumerService.handleSuccessCpResponse(responseData));
 	}
@@ -308,14 +307,14 @@ class AssertionConsumerServiceTest {
 
 	@ParameterizedTest
 	@CsvSource(value = {
-			"true,true,true,false,true,false",
-			"true,true,false,false,true,false",
-			"true,false,false,true,true,false",
-			"true,false,false,false,false,true",
-			"false,false,false,false,false,true",
+			"true,true,true,false,true",
+			"true,true,false,false,true",
+			"true,false,false,true,true",
+			"true,false,false,false,false",
+			"false,false,false,false,false",
 	})
 	void handleFailedCpResponseFlowPolicies(boolean flowPolicies, boolean supportInfo, boolean reLogin, boolean appContinue,
-			boolean aborted, boolean invalidate) {
+			boolean aborted) {
 		// cp
 		mockCp(TEST_CP, null);
 		// response
@@ -357,7 +356,8 @@ class AssertionConsumerServiceTest {
 			assertThat(result.nestedStatusCode(saml), is(StatusCode.UNKNOWN_PRINCIPAL));
 			assertThat(result.statusMessage(saml), is(StatusCode.UNKNOWN_PRINCIPAL));
 		}
-		verify(stateCacheService, times(invalidate ? 1 : 0)).invalidate(state, AssertionConsumerService.class.getSimpleName());
+		// invalidation is handled RP side, keep the idpState until then (flow might even define a screen for user interaction)
+		verify(stateCacheService, times(0)).invalidate(state, AssertionConsumerService.class.getSimpleName());
 	}
 
 	@ParameterizedTest
@@ -489,8 +489,6 @@ class AssertionConsumerServiceTest {
 
 	private void mockRequestConfiguration(String rpId) {
 		var relyingPartySetup = ServiceSamlTestUtil.loadRelyingPartySetup();
-		when(relyingPartyDefinitions.getRelyingPartySetup())
-				.thenReturn(relyingPartySetup);
 		when(relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(eq(rpId), any()))
 				.thenReturn(getRelyingParty(relyingPartySetup, rpId));
 	}

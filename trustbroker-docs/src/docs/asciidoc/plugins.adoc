@@ -1,6 +1,7 @@
 = Plugin APIs
 
-XTB provides various API hooks for implementing certain features. They are defined in the ``trustbroker-api`` module.
+XTB provides various API hooks for implementing certain features.
+They are defined in the ``trustbroker-api`` module.
 
 [cols="1,10,1"]
 |===

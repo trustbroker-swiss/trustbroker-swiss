@@ -16,6 +16,8 @@
 package swiss.trustbroker.federation.xmlconfig;
 
 import java.io.Serializable;
+import java.util.Collections;
+import java.util.List;
 import javax.annotation.Nonnull;
 
 import jakarta.xml.bind.annotation.XmlTransient;
@@ -27,6 +29,7 @@ import lombok.experimental.SuperBuilder;
 import swiss.trustbroker.common.saml.dto.SamlBinding;
 import swiss.trustbroker.common.saml.dto.SignatureParameters;
 import swiss.trustbroker.mapping.dto.QoaConfig;
+import swiss.trustbroker.util.PropertyUtil;
 
 /**
  * Abstraction for shared features of RP and CP.
@@ -57,6 +60,7 @@ public abstract class CounterParty implements PathReference, Serializable {
 	/**
 	 * @return enabled flag from config or overridden due to validation errors
 	 */
+	@XmlTransient
 	public abstract FeatureEnum getEnabled();
 
 	/**
@@ -76,9 +80,19 @@ public abstract class CounterParty implements PathReference, Serializable {
 	public abstract SubjectNameMappings getSubjectNameMappings();
 
 	/**
+	 * @return Global security policy overrides for this party.
+	 */
+	public abstract SecurityPolicies getSecurityPolicies();
+
+	/**
 	 * @return SAML configuration
 	 */
 	public abstract Saml getSaml();
+
+	/**
+	 * @return Selection of attributes.
+	 */
+	public abstract AttributesSelection getAttributesSelection();
 
 	/**
 	 * @return Scripts
@@ -166,5 +180,57 @@ public abstract class CounterParty implements PathReference, Serializable {
 
 	public QoaConfig getQoaConfig() {
 		return new QoaConfig(getQoa(), getId());
+	}
+
+	public boolean requireSignedAuthnRequest() {
+		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getRequireSignedAuthnRequest,
+				() -> true);
+	}
+
+	public boolean requireSignedLogoutRequest() {
+		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getRequireSignedLogoutRequest,
+				() -> true);
+	}
+
+	public boolean requireSignedLogoutNotificationRequest() {
+		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getRequireSignedLogoutNotificationRequest,
+				() -> true);
+	}
+
+	public boolean requireSignedResponse(boolean defaultValue) {
+		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getRequireSignedResponse,
+				() -> defaultValue);
+	}
+
+	public boolean requireEncryptedAssertion() {
+		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getRequireEncryptedAssertion,
+				() -> true);
+	}
+
+	public boolean requireSignedArtifactResponse(boolean defaultValue) {
+		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getRequireSignedArtifactResponse,
+				() -> defaultValue);
+	}
+
+	public boolean doSignArtifactResolve(boolean defaultValue) {
+		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getDoSignArtifactResolve,
+				() -> defaultValue);
+	}
+
+	public boolean forceAuthn(boolean defaultValue) {
+		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getForceAuthn,
+				() -> defaultValue);
+	}
+
+	public int getSsoMinQoaLevel(int defaultValue) {
+		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getSsoMinQoaLevel, () -> defaultValue);
+	}
+
+	public List<Definition> getAttributesDefinitions() {
+		var attributesSelection = getAttributesSelection();
+		if (attributesSelection != null && attributesSelection.getDefinitions() != null) {
+			return Collections.unmodifiableList(attributesSelection.getDefinitions());
+		}
+		return Collections.emptyList();
 	}
 }

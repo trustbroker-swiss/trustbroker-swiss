@@ -2,22 +2,16 @@
 
 XTB is a federation service providing these capabilities:
 
-- routing authentication requests between relying parties (in short RP, also known as service provider / SP) and claims providers
-  (CP also known as identity provider / IDP) allowing a user to select the home realm or computationally doing
-  home realm discovery (HRD) via scripting
+- routing authentication requests between relying parties (in short RP, also known as service provider / SP) and claims providers (CP also known as identity provider / IDP) allowing a user to select the home realm or computationally doing home realm discovery (HRD) via scripting
 - mapping claims/attributes between CP and RP (like authentication context classes, SAML attributes and OIDC claims)
-- backing logins with a single-sign-on session store to prevent logins for participating RPs when Quality of Authentication
-(QoA) is sufficient provided by the same CP
+- backing logins with a single-sign-on session store to prevent logins for participating RPs when Quality of Authentication (QoA) is sufficient provided by the same CP
 - auditing login events as a central party
 - supporting GitOps having a tracked, versioned and reviewable configuration repository
 
 The supported protocols are:
 
-- SAML 2.0 on RP and CP side (SAML POST and redirect binding, artifact binding having higher integration effort and more
-complex operational impact can be used too)
-- OIDC 1.0 on RP side focussing on the best practice sub-set (authorization code flow with PKCE for frontend and with client
-authentication for backends)
-
+- SAML 2.0 on RP and CP side (SAML POST and redirect binding, artifact binding having higher integration effort and more complex operational impact can be used too)
+- OIDC 1.0 on RP side focussing on the best practice sub-set (authorization code flow with PKCE for frontend and with client authentication for backends)
 
 Actors and components explained:
 
@@ -39,9 +33,12 @@ in the browser using JavaScript or in a backend.
 |Handles the federation between RP and CP service.
 
 |OIDC Service
-|Handles the OIDC authorization code flow based on the
+|Handles RP-initiated OIDC authorization code flow based on the
 https://docs.spring.io/spring-authorization-server/reference/overview.html#feature-list[Spring Authorization Server]
 To separate SAML and OIDC implementation sub-systems, the OIDC service is federated via SAML.
+
+|Authorization Code Flow Service
+|Handles OIDC authorization code flow towards OIDC CPs.
 
 |HRD Controller
 |Handles the interaction with the user when selecting a CP form the HRD selection screen.
@@ -57,7 +54,6 @@ applied using this service.
 
 
 |===
-
 
 == Processing Model
 
@@ -79,13 +75,16 @@ control "SAML Assertion\nConsumer\nService" as ACS
 control "SAML Relying\nParty\nService" as RPS
 control "Script\nService" as Script
 control "OIDC\nService" as OIDC
+control "OIDC\nAuthentication\nCode Flow Service" as ACFS
 end box
 
 database "Session\nStore" as Store
 
 participant "IDM\nService" as IDM
 
-participant "Claims\nProvider\n(CP)" as CP
+participant "SAML\nClaims\nProvider\n(CP)" as SCP
+
+participant "OIDC\nClaims\nProvider\n(CP)" as OCP
 
 Client -> RP : Initiate federated login
 
@@ -105,15 +104,27 @@ XTB -> Client : Detect Device SSO Context
 Client -> XTB : Device SSO Context
 XTB -> Store : Fetch State by SSO
 XTB -> SSO : Check Device SSO
-else #DDEEEE No SSO Case
+else #DDEEEE No SSO SAML CP Case
 XTB -> HRD : Discover HomeRealm (HRD)
 HRD -> Script : Handle RPRequest\n(BeforeHrd)
 XTB -> CPS : Create CP-AuthnRequest
 XTB -> Store : Save State (Relay,SSO)
 XTB -> Client : SAML CP-AuthnRequest
-Client -> CP : POST CP-AuthnRequest
-Client -> CP : Authenticate user
+Client -> SCP : POST CP-AuthnRequest
+Client -> SCP : Authenticate user
 Client -> XTB : POST CP-Response
+else #EEEEDD No SSO OIDC CP Case
+XTB -> HRD : Discover HomeRealm (HRD)
+HRD -> Script : Handle RPRequest\n(BeforeHrd)
+XTB -> ACFS : Create Authorization Code Flow Request
+XTB -> Store : Save State (Relay,SSO)
+ACFS -> OCP : Request OIDC metadata (backchannel)
+XTB -> Client : OIDC Authorization Code Flow Request
+Client -> OCP : GET Authorization Code Flow Request
+Client -> OCP : Authenticate user
+Client -> XTB : POST Authorization Code Flow Response
+XTB -> ACFS : Handle Authorization Code Flow Response
+ACFS -> OCP : Request tokens (backchannel)
 end
 
 XTB -> ACS : Check CP-Response

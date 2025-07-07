@@ -16,7 +16,6 @@
 package swiss.trustbroker.federation.xmlconfig;
 
 import jakarta.xml.bind.annotation.XmlEnumValue;
-import lombok.extern.slf4j.Slf4j;
 
 /**
  * Configuration enabling toggle.
@@ -27,7 +26,6 @@ import lombok.extern.slf4j.Slf4j;
  *     <li>Since 1.7.0 the values are accepted just in lower case (with 1.6.0 in any case, before only lower case).</li>
  * </ul>
  */
-@Slf4j
 public enum FeatureEnum {
 	/**
 	 * Enabled

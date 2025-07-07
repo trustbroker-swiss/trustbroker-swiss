@@ -17,7 +17,6 @@ package swiss.trustbroker.oidc.tx;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.HashSet;
 import java.util.List;
 
 import jakarta.servlet.Filter;
@@ -49,6 +48,7 @@ import swiss.trustbroker.oidc.session.OidcSessionSupport;
 import swiss.trustbroker.oidc.session.TomcatSessionManager;
 import swiss.trustbroker.util.ApiSupport;
 import swiss.trustbroker.util.CorsSupport;
+import swiss.trustbroker.util.WebSupport;
 
 /**
  * Transaction boundary filter.
@@ -108,6 +108,7 @@ public class OidcTxFilter implements Filter {
 			}
 			else {
 				// stop here to check on requests, responses, sessions
+				OidcSessionSupport.checkSessionOnFederationRedirect(path);
 				chain.doFilter(wrappedRequest, wrappedResponse);
 			}
 
@@ -142,7 +143,7 @@ public class OidcTxFilter implements Filter {
 		else if (ApiSupport.isOidcSessionPath(path)) {
 			validateRequestAndAddCorsHeaders(httpRequest, path, wrappedResponse);
 			wrappedResponse.headerBuilder()
-					.oidcCspFrameOptions(getOwnOrigins());
+					.oidcCspFrameOptions(WebSupport.getOwnOrigins(properties));
 		}
 		else if (ApiSupport.isSamlPath(path)) {
 			wrappedResponse.headerBuilder()
@@ -184,15 +185,8 @@ public class OidcTxFilter implements Filter {
 					.allowedMethods(properties.getCors().getAllowedMethods())
 					.allowedHeaders(properties.getCors().getAllowedHeaders())
 					.build();
-			CorsSupport.setAccessControlHeaders(request, response, corsPolicies, getOwnOrigins());
+			CorsSupport.setAccessControlHeaders(request, response, corsPolicies, WebSupport.getOwnOrigins(properties));
 		}
-	}
-
-	private HashSet<String> getOwnOrigins() {
-		// deduplicate:
-		return new HashSet<>(List.of(
-				WebUtil.getValidOrigin(properties.getPerimeterUrl()),
-				WebUtil.getValidOrigin(properties.getOidc().getPerimeterUrl())));
 	}
 
 	// Support OIDC clients connecting to Keycloak validating the issuer ID containing /realms/X

@@ -81,21 +81,11 @@ public class RelyingPartyDefinitions {
 
 	private OidcIdpCredential oidcIdpCredential;
 
-	public ClaimsProvider getClaimsProviderById(String id) {
-		Optional<ClaimsProvider> claimsProvider =
-				claimsProviderDefinitions.getClaimsProviders().stream().filter(cp -> cp.getId().equalsIgnoreCase(id)).findFirst();
-		if (claimsProvider.isEmpty()) {
-			throw new TechnicalException(String.format(
-					"Missing mapping in ClaimsProviderDefinition for cpIssuer='%s'", id));
-		}
-		return claimsProvider.get();
-	}
-
-	private static String getSingleClaimsProviderId(RelyingParty relyingParty) {
+	private static ClaimsProvider getSingleClaimsProvider(RelyingParty relyingParty) {
 		return relyingParty.getClaimsProviderMappings() != null
 				&& relyingParty.getClaimsProviderMappings().getClaimsProviderList() != null
 				&& relyingParty.getClaimsProviderMappings().getClaimsProviderList().size() == 1 ?
-				relyingParty.getClaimsProviderMappings().getClaimsProviderList().get(0).getId()
+				relyingParty.getClaimsProviderMappings().getClaimsProviderList().get(0)
 				: null;
 	}
 	private static String getClientKey(String clientId, String cpId) {
@@ -109,19 +99,30 @@ public class RelyingPartyDefinitions {
 		}
 
 		// HRDs with only a single entry get an additional mapping
-		var singleCpId = getSingleClaimsProviderId(relyingParty);
-		if (singleCpId != null) {
-			var oidcClientCpKey = getClientKey(client.getId(), singleCpId);
-			var replaced = newConfigurations.put(oidcClientCpKey, Pair.of(relyingParty, client));
-			log.debug("Added oidcClient={} to rpIssuer={} mapping for cpIssuer={}",
-					client.getId(), relyingParty.getId(), singleCpId);
-			checkSetupRpDuplicate(relyingParty, client, replaced, singleCpId);
+		var singleCp = getSingleClaimsProvider(relyingParty);
+		if (singleCp != null) {
+			// all values used for hrdHint matching must be registered
+			addOidcClientForCp(newConfigurations, client, relyingParty, singleCp.getId(), "id");
+			addOidcClientForCp(newConfigurations, client, relyingParty, singleCp.getName(), "name");
+			addOidcClientForCp(newConfigurations, client, relyingParty, singleCp.getHrdHintAlias(), "hrdHintAlias");
 		}
 
 		// Last one of a SetupRP wins, and we only write an ERROR if a
 		// HRD section differs (usually the reason why such RelyingParty setups have been coped).
 		var oidcClientKey = client.getId();
 		var replaced = newConfigurations.put(oidcClientKey, Pair.of(relyingParty, client));
+		checkSetupRpDuplicate(relyingParty, client, replaced, singleCp != null ? singleCp.getId() : null);
+	}
+
+	private static void addOidcClientForCp(Map<String, Pair<RelyingParty, OidcClient>> newConfigurations, OidcClient client,
+			RelyingParty relyingParty, String singleCpId, String singleCpIdType) {
+		if (singleCpId == null) {
+			return;
+		}
+		var oidcClientCpKey = getClientKey(client.getId(), singleCpId);
+		var replaced = newConfigurations.put(oidcClientCpKey, Pair.of(relyingParty, client));
+		log.debug("Added oidcClient={} to rpIssuer={} mapping for {}={}",
+				client.getId(), relyingParty.getId(), singleCpIdType, singleCpId);
 		checkSetupRpDuplicate(relyingParty, client, replaced, singleCpId);
 	}
 
@@ -130,7 +131,7 @@ public class RelyingPartyDefinitions {
 			RelyingParty relyingParty, OidcClient oidcClient,
 			Pair<RelyingParty, OidcClient> replaced, String singleCpId) {
 		if (replaced != null && !replaced.getKey().sameHrd(relyingParty)) {
-			log.warn("Encountered oidcClient={} duplicate on rpIssuer={} for cpIssuer={} lostRpIssuer={}."
+			log.warn("Encountered oidcClient={} duplicate on rpIssuer={} for cpIssuer={} (or hrdHintAlias) lostRpIssuer={}."
 							+ " NOTE: This can lead to arbitrary HRD CP selection."
 							+ " HINT: It's recommended to 'optimize HRD' eliminating replication.",
 					oidcClient.getId(), relyingParty.getId(), singleCpId, replaced.getKey().getId());

@@ -14,7 +14,7 @@
  */
 
 import { Pipe, PipeTransform } from '@angular/core';
-import { IdpObject } from '../model/IdpObject';
+import { IdpObject, compareByOrder } from '../model/IdpObject';
 
 /**
  * Filters and bucketizes the given idpObjects by their order number as follows:
@@ -28,7 +28,7 @@ import { IdpObject } from '../model/IdpObject';
 	standalone: true
 })
 export class BucketizeIdpObjectsPipe implements PipeTransform {
-	transform(objects: IdpObject[] | undefined): IdpObject[][] {
+	transform(objects: IdpObject[] | undefined, maxBuckets?: number): IdpObject[][] {
 		if (objects === undefined) {
 			return undefined;
 		}
@@ -37,7 +37,7 @@ export class BucketizeIdpObjectsPipe implements PipeTransform {
 			.reduce((acc, each) => {
 				const sanitizedOrder = each.order ?? 999;
 				const bucket = Math.floor(sanitizedOrder / 100);
-				const current = acc[bucket] || [];
+				const current = acc[bucket] ?? [];
 				current.push(each);
 				return {
 					...acc,
@@ -45,8 +45,12 @@ export class BucketizeIdpObjectsPipe implements PipeTransform {
 				};
 			}, {});
 
-		return Object.keys(cardsByCategory)
-			.sort()
-			.map(category => cardsByCategory[category].sort((a: IdpObject, b: IdpObject) => a.order - b.order));
+		const bucketizedCards = Object.keys(cardsByCategory)
+			.sort((a, b) => a.localeCompare(b))
+			.map(category => cardsByCategory[category].sort(compareByOrder));
+
+		return maxBuckets && bucketizedCards.length > maxBuckets
+			? [...bucketizedCards.slice(0, maxBuckets - 1), bucketizedCards.slice(maxBuckets - 1).flat()]
+			: bucketizedCards;
 	}
 }

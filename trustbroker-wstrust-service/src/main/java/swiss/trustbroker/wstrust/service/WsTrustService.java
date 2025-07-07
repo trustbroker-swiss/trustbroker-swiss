@@ -48,7 +48,6 @@ import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.audit.service.OutboundAuditMapper;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
-import swiss.trustbroker.common.saml.dto.SignatureParameters;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlFactory;
@@ -162,7 +161,8 @@ public class WsTrustService {
 		var params = buildResponseParams(assertionId, requestHeaderAssertion, addressFromRequest);
 
 		var rp = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(params.getIssuerId(), null);
-		var constAttr = relyingPartySetupService.getConstantAttributes(addressFromRequest, null);
+		var constAttr = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, null)
+												.getConstAttributes();
 		List<String> contextClasses = getAuthnContextClasses(requestHeaderAssertion);
 
 		var userDetails = AttributeFilterUtil.filteredUserDetails(cpResponse.getUserDetails(), cpResponse.getIdmLookup(),
@@ -174,9 +174,9 @@ public class WsTrustService {
 
 		var assertion = ResponseFactory.createSamlAssertion(cpResponse, constAttr, contextClasses, params, cpAttributes);
 
-		SignatureParameters signatureParameters = rp.getSignatureParametersBuilder()
-									  .skinnyAssertionNamespaces(trustBrokerProperties.getSkinnyAssertionNamespaces())
-									  .build();
+		var signatureParameters = rp.getSignatureParametersBuilder()
+									.skinnyAssertionNamespaces(trustBrokerProperties.getSkinnyAssertionNamespaces())
+									.build();
 		SamlFactory.signSignableObject(assertion, signatureParameters);
 
 		return assertion;
@@ -185,7 +185,8 @@ public class WsTrustService {
 	private ResponseParameters buildResponseParams(String assertionId, Assertion requestHeaderAssertion,
 			String addressFromRequest) {
 		var requestNameId = getNameID(requestHeaderAssertion);
-		var tokenLifetime = relyingPartySetupService.getTokenLifetime(addressFromRequest, null);
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, null);
+		var tokenLifetime = relyingPartySetupService.getTokenLifetime(relyingParty);
 		return ResponseParameters.builder()
 								 .conversationId(assertionId)
 								 .issuerInstant(Instant.now())
@@ -201,7 +202,7 @@ public class WsTrustService {
 								 .audienceValiditySeconds(tokenLifetime)
 								 .cpAttrOriginIssuer(null)
 								 .setSessionIndex(false)
-								 .rpClientName(relyingPartySetupService.getRpClientName(addressFromRequest, null))
+								 .rpClientName(relyingPartySetupService.getRpClientName(relyingParty))
 								 .skinnyAssertionStyle(trustBrokerProperties.getSkinnyAssertionNamespaces())
 								 .build();
 	}
@@ -256,11 +257,7 @@ public class WsTrustService {
 		scriptService.processCpBeforeIdm(cpResponse, null, cpResponse.getIssuer(), "");
 
 		// Filter by CP config AttributeSelection
-		List<Definition> cpAttributeDefinitions = relyingPartySetupService.getCpAttributeDefinitions(cpResponse.getIssuer(),
-				"");
-		if (!cpAttributeDefinitions.isEmpty()) {
-			ResponseFactory.filterCpAttributes(cpResponse, cpAttributeDefinitions);
-		}
+		filterCpAttributes(cpResponse);
 
 		scriptService.processRpBeforeIdm(cpResponse, null, addressFromRequest, "");
 
@@ -268,7 +265,8 @@ public class WsTrustService {
 
 		// Filter by RP config AttributeSelection
 		List<Definition> rpConfigAttributesDefinition =
-				relyingPartySetupService.getRpAttributesDefinitions(addressFromRequest, null);
+				relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, null)
+										.getAttributesDefinitions();
 		filterCpAttributesByRpConfig(rpConfigAttributesDefinition, cpResponse);
 
 		relyingPartyService.setProperties(cpResponse);
@@ -286,10 +284,15 @@ public class WsTrustService {
 		return createResponse(cpAttributes, cpResponse, headerAssertion, addressFromRequest);
 	}
 
-	private static void filterCpAttributesByRpConfig(List<Definition> rpConfigAttributesDefinition, CpResponse cpResponse) {
-		if (!rpConfigAttributesDefinition.isEmpty()) {
-			ResponseFactory.filterCpAttributes(cpResponse, rpConfigAttributesDefinition);
-		}
+	private void filterCpAttributesByRpConfig(List<Definition> rpConfigAttributesDefinition, CpResponse cpResponse) {
+		ResponseFactory.filterCpAttributes(cpResponse, rpConfigAttributesDefinition, trustBrokerProperties.getSaml());
+	}
+
+	private void filterCpAttributes(CpResponse cpResponse) {
+		List<Definition> cpAttributeDefinitions = relyingPartySetupService
+				.getClaimsProviderSetupByIssuerId(cpResponse.getIssuer(), "")
+				.getAttributesDefinitions();
+		ResponseFactory.filterCpAttributes(cpResponse, cpAttributeDefinitions, trustBrokerProperties.getSaml());
 	}
 
 	void processSecurityToken(RequestSecurityToken requestSecurityToken, String assertionId) {
@@ -382,7 +385,8 @@ public class WsTrustService {
 	}
 
 	// Request can have attributes with different OriginalIssuer
-	private static String getOriginalIssuerFromInput(List<AttributeStatement> requestAttributeStatements, Definition definition) {
+	private static String getOriginalIssuerFromInput(List<AttributeStatement> requestAttributeStatements,
+			Definition definition) {
 		if (requestAttributeStatements != null && !requestAttributeStatements.isEmpty()
 				&& requestAttributeStatements.get(0) != null) {
 			var assertionAttributes = requestAttributeStatements.get(0).getAttributes();
@@ -415,7 +419,7 @@ public class WsTrustService {
 		for (var idmService : idmQueryServices) {
 			var queryResponse = idmService.getAttributes(relyingPartyConfig, cpResponse, cpResponse.getIdmLookup(), callback);
 			if (queryResponse.isPresent()) {
-				DefinitionUtil.mapCpAttributeList(queryResponse.get().getUserDetails(), cpResponse.getUserDetails());
+				DefinitionUtil.mapAttributeList(queryResponse.get().getUserDetails(), cpResponse.getUserDetails());
 			}
 		}
 	}
@@ -449,16 +453,18 @@ public class WsTrustService {
 			}
 		}
 
-		var homeName = relyingPartySetupService.getHomeName(idpIssuer, "", List.of(headerAssertion), cpResponse);
+		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(idpIssuer, "");
+		var homeName = relyingPartySetupService.getHomeName(claimsParty, List.of(headerAssertion), cpResponse);
 		cpResponse.setHomeName(homeName);
 
-		var idmLookUp = relyingPartySetupService.getIdmLookUp(addressFromRequest, "");
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, "");
+		var idmLookUp = relyingPartySetupService.getIdmLookUp(relyingParty);
 		if (idmLookUp.isPresent()) {
 			cpResponse.setIdmLookup(idmLookUp.get().shallowClone());
 		}
 
-		cpResponse.setClientExtId(relyingPartySetupService.getRpClientExtId(addressFromRequest, ""));
-		cpResponse.setClientName(relyingPartySetupService.getRpClientName(addressFromRequest, ""));
+		cpResponse.setClientExtId(relyingPartySetupService.getRpClientExtId(relyingParty));
+		cpResponse.setClientName(relyingPartySetupService.getRpClientName(relyingParty));
 
 		var authLevelAttribute = cpResponse.getAttribute(CoreAttributeName.AUTH_LEVEL.getNamespaceUri());
 		if (authLevelAttribute != null) {

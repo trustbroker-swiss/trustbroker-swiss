@@ -118,9 +118,10 @@ public class CustomLogoutSuccessHandler extends SimpleUrlLogoutSuccessHandler {
 							+ " referer={}  cpNameId={} ssoSessionParticipants={}",
 					clientId, realmName, ssoSessionId, oidcSessionId, redirectUrl, referer, nameId, ssoSessionParticipants);
 			redirectUrl = ssoService.computeOidcSingleLogoutUrl(redirectUrl, referer, relyingParty);
-			var params = ssoService.buildSloVelocityParameters(
+			var params = ssoService.buildSloResponseParameters(
 					relyingParty, referer, ssoSessionParticipants, nameId, oidcSessionId, redirectUrl);
-			VelocityUtil.renderTemplate(velocityEngine, response, VelocityUtil.VELOCITY_SLO_TEMPLATE_ID, params);
+			VelocityUtil.renderTemplate(
+					velocityEngine, response, VelocityUtil.VELOCITY_SLO_TEMPLATE_ID, params.velocityParameters());
 		}
 		else {
 			log.debug("Sending OIDC logout redirect for clientId={} realm={} ssoSessionId={} oidcSessionId={} redirectUrl={}",

@@ -190,9 +190,16 @@ public class Definition implements Serializable, AttributeName {
 		this.name = attributeName.getName();
 		this.namespaceUri = attributeName.getNamespaceUri();
 		this.altName = attributeName.getAltName();
-		this.oidcNames = oidcNameListToString(attributeName.getOidcNameList());
 		this.cid = attributeName.getCid();
 		this.source = attributeName.getSource();
+		if (attributeName instanceof Definition definition) {
+			this.oidcNames = definition.oidcNames;
+			this.mappers = definition.mappers;
+		}
+		else {
+			this.oidcNames = oidcNameListToString(attributeName.getOidcNameList());
+			this.mappers = null;
+		}
 	}
 
 	public Definition(String name, String namespaceUri, String singleValue) {
@@ -217,10 +224,6 @@ public class Definition implements Serializable, AttributeName {
 		return Definition.builder().name(name).namespaceUri(namespaceUri).source(source).build();
 	}
 
-	public static Definition ofNamespaceUri(AttributeName attributeName) {
-		return new Definition(attributeName.getNamespaceUri());
-	}
-
 	private static String oidcNameListToString(List<String> oidcNameList) {
 		return CollectionUtils.isEmpty(oidcNameList) ? null : oidcNameList.stream().collect(Collectors.joining(", "));
 	}
@@ -237,7 +240,7 @@ public class Definition implements Serializable, AttributeName {
 
 	@JsonIgnore
 	@SuppressWarnings("java:S5738") // contains fallback to deprecated oidcMapper
-	public List<ClaimsMapper> getMappers() {
+	public List<ClaimsMapper> getClaimsMappers() {
 		if (oidcMapper != null) {
 			log.warn("Deprecated attribute oidcMapper={} used on name={} namespaceUri={} - change to mappers={}",
 					oidcMapper, name, namespaceUri, oidcMapper);

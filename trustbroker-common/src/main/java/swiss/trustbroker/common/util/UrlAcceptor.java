@@ -48,12 +48,16 @@ public class UrlAcceptor {
 		}
 		try {
 			var uri = new URI(check);
+			if (uri.getUserInfo() != null) {
+				log.error("userinfo@ not allowed in url=\"{}\"", check);
+				return false;
+			}
 			if (isLocalhostAccess(uri.getHost())) {
 				return localhostUrlOkForAccess(check, acUrls, ignorePath);
 			}
 		}
-		catch (URISyntaxException | NullPointerException e) {
-			log.error("Invalid url={} ({})", check, e.getMessage());
+		catch (URISyntaxException | NullPointerException ex) {
+			log.error("Invalid url=\"{}\" : {}", check, ex.toString());
 		}
 		return acUrls.stream().anyMatch(acuri -> isUrlOkForAccess(check, acuri, ignorePath));
 	}

@@ -22,24 +22,34 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
+import swiss.trustbroker.federation.xmlconfig.ClientAuthenticationMethods;
 
 /**
  * Configuration read from OIDC metadata.
  */
+@ToString // required to ToString.Exclude
 @Data
-@Builder
+@Builder(toBuilder = true)
 @AllArgsConstructor
 @NoArgsConstructor
 public class OpenIdProviderConfiguration {
+
+	private String issuerId;
 
 	private URI authorizationEndpoint;
 
 	private URI tokenEndpoint;
 
+	private URI userinfoEndpoint;
+
 	private URI jwkEndpoint;
 
 	private JWKSet jwkSet;
 
-	private boolean clientSecretPost;
+	private ClientAuthenticationMethods authenticationMethods;
+
+	@ToString.Exclude
+	private String clientSecret;
 
 }

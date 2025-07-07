@@ -19,6 +19,7 @@ import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.Objects;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 @Data
@@ -48,16 +49,26 @@ public class Announcement implements Serializable {
 
 	private OffsetDateTime validTo;
 
+	@JsonIgnore
+	private OffsetDateTime cacheValidTo;
+
 	private String applicationUrl;
 
 	private String applicationName;
 
-	// derviced check
+	// derived check
+	@SuppressWarnings("java:S1126") // separate returns due to comments
 	public boolean isValidAt(OffsetDateTime refTime) {
 		if (validFrom != null && validFrom.isAfter(refTime)) {
 			return false; // future
 		}
-		return !(validTo != null && validTo.isBefore(refTime)); // past
+		if (validTo != null && validTo.isBefore(refTime)) {
+			return false; // past
+		}
+		if (cacheValidTo != null && cacheValidTo.isBefore(refTime)) {
+			return false; // expired
+		}
+		return true; // valid
 	}
 
 	@Override

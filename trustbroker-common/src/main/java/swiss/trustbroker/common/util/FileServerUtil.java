@@ -18,34 +18,36 @@ package swiss.trustbroker.common.util;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.springframework.http.MediaType;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
 
 @Slf4j
 public class FileServerUtil {
 
+	@SuppressWarnings("java:S6218") // not used as collection key, bad equals and hashCode due to array do not matter
+	public record FileContent(String name, String contentType, byte[] data) {
+
+	}
+
 	private static final String VERSION_INFO_PLACEHOLDER = "VERSION@STAGE";
 
 	private FileServerUtil() {
 	}
 
-	public static void returnFileContent(HttpServletResponse response, String directoryPath, String filePath,
-			String contentType) {
+	public static FileContent readFileContent(String directoryPath, String filePath, String contentType) {
 		var file = getSanitizedFile(directoryPath, filePath, false);
 		try {
 			contentType = extractContentType(file, contentType);
-			try (InputStream in = new FileInputStream(file)) {
-				response.setContentType(contentType);
-				IOUtils.copy(in, response.getOutputStream());
-			}
+			var bytes = Files.readAllBytes(file.toPath());
+			return new FileContent(file.getPath(), contentType, bytes);
 		}
 		catch (IOException ex) {
 			throw new TechnicalException(String.format("Could not read file=%s denied. Check path=%s with error %s",
@@ -61,13 +63,16 @@ public class FileServerUtil {
 		return contentType;
 	}
 
-	public static String readTranslationFile(String translationsPath, String defaultLanguage, String language,
+	public static FileContent readTranslationFile(String translationsPath, String language, String defaultLanguage,
 			String versionInfo) {
 		var translationFile = getTranslationFile(translationsPath, defaultLanguage, language);
 		try (var translationStream = new FileInputStream(translationFile)) {
 			// apply our own version info from the installation
 			var jsonStr = IOUtils.toString(translationStream, Charset.defaultCharset());
-			return applyVersionInfo(jsonStr, versionInfo);
+			var jsonResult = applyVersionInfo(jsonStr, versionInfo);
+			return new FileServerUtil.FileContent(translationFile.getPath(),
+					MediaType.APPLICATION_JSON_VALUE,
+					jsonResult.getBytes(StandardCharsets.UTF_8));
 		}
 		catch (IOException ex) {
 			throw new TechnicalException(String.format("Could not read translation for language=%s denied. Check path=%s "

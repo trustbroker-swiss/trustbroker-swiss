@@ -28,7 +28,6 @@ import org.apache.commons.lang3.SerializationUtils;
 import org.apache.xml.security.utils.EncryptionConstants;
 import org.opensaml.saml.common.SAMLObject;
 import org.opensaml.saml.saml2.core.Assertion;
-import org.opensaml.saml.saml2.core.EncryptedAssertion;
 import org.opensaml.saml.saml2.core.LogoutRequest;
 import org.opensaml.saml.saml2.core.LogoutResponse;
 import org.opensaml.saml.saml2.core.NameID;
@@ -74,6 +73,8 @@ import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.Encryption;
+import swiss.trustbroker.federation.xmlconfig.EncryptionKeyInfo;
+import swiss.trustbroker.federation.xmlconfig.EncryptionKeyPlacement;
 import swiss.trustbroker.federation.xmlconfig.ProvisioningMode;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SloProtocol;
@@ -162,9 +163,9 @@ public class RelyingPartyService {
 					idmService.getAttributesAudited(relyingPartyConfig, cpResponse, cpResponse.getIdmLookup(), callback) :
 					idmService.getAttributes(relyingPartyConfig, cpResponse, cpResponse.getIdmLookup(), callback);
 			if (queryResponse.isPresent()) {
-				DefinitionUtil.mapCpAttributeList(queryResponse.get().getUserDetails(), cpResponse.getUserDetails());
+				DefinitionUtil.mapAttributeList(queryResponse.get().getUserDetails(), cpResponse.getUserDetails());
 				cpResponse.setOriginalUserDetailsCount(queryResponse.get().getOriginalUserDetailsCount());
-				DefinitionUtil.mapAttributeList(queryResponse.get().getProperties(), cpResponse.getProperties());
+				DefinitionUtil.mapAttributeListIgnoringSource(queryResponse.get().getProperties(), cpResponse.getProperties());
 				cpResponse.setOriginalPropertiesCount(queryResponse.get().getOriginalPropertiesCount());
 				cpResponse.getAdditionalIdmData().putAll(queryResponse.get().getAdditionalData());
 			}
@@ -191,7 +192,8 @@ public class RelyingPartyService {
 					CoreAttributeName.ISSUED_CLIENT_EXT_ID.getNamespaceUri(), clientExtId);
 		}
 
-		var cpAuthLevel = relyingPartySetupService.getCpAuthLevel(cpResponse.getIssuer(), "");
+		var cpAuthLevel = relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpResponse.getIssuer(), "")
+												  .getAuthLevel();
 		if (cpResponse.getAuthLevel() == null) {
 			if (cpAuthLevel == null) {
 				cpAuthLevel = qoaService.getUnspecifiedAuthLevel().getName();
@@ -227,10 +229,17 @@ public class RelyingPartyService {
 	// Handling direct response from CP with data from IDM
 	public String sendResponseWithSamlResponseFromCp(OutputService outputService, ResponseData<Response> responseData,
 			CpResponse cpResponse, HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) {
-		// state
-		var cpRequestId = cpResponse.getInResponseTo();
 		SamlValidationUtil.validateRelayState(responseData);
 		var cpStateData = stateCacheService.find(responseData.getRelayState(), this.getClass().getSimpleName());
+		return sendResponseWithSamlResponseFromCp(outputService, responseData, cpStateData, cpResponse,
+				httpServletRequest, httpServletResponse);
+	}
+
+	public String sendResponseWithSamlResponseFromCp(OutputService outputService, ResponseData<Response> responseData,
+			StateData cpStateData, CpResponse cpResponse,
+			HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) {
+		// state
+		var cpRequestId = cpResponse.getInResponseTo();
 		log.debug("RP response SUCCESS forwarding from cpIssuer={} with cpRequestId={}",
 				cpResponse.getIssuer(), cpRequestId);
 
@@ -263,7 +272,7 @@ public class RelyingPartyService {
 
 	// return true if any modifications (create/update) were performed
 	private boolean provisionIdm(CpResponse cpResponse) {
-		var claimsProvider = relyingPartySetupService.getClaimsProviderSetupById(cpResponse.getIssuerId()).orElseThrow(() ->
+		var claimsProvider = relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpResponse.getIssuerId()).orElseThrow(() ->
 							 new TechnicalException(String.format("Could not find cpIssuerId=%s", cpResponse.getIssuer())));
 		if (!claimsProvider.isProvisioningEnabled()) {
 			return false;
@@ -408,12 +417,12 @@ public class RelyingPartyService {
 
 		var resultResponseData = ResponseData.of(samlResponse, null, null);
 		sendResponseToRp(resultResponseData, cpResponse, Optional.of(stateDataForResponse), httpServletRequest,
-				httpServletResponse, encodingParameters, outputService);
+				httpServletResponse, null, encodingParameters, outputService);
 		return null;
 	}
 
 	// reset profile selection if selected profile is not in IDM result
-	private void resetStaleProfileSelection(boolean newParticipant, StateData stateData,
+	private void resetStaleProfileSelection(boolean newParticipant, String originalParticipantId, StateData stateData,
 											CpResponse cpResponse, RelyingParty relyingParty) {
 		if (stateData.getSelectedProfileExtId() == null) {
 			log.debug("Reset selectedProfileId not required for rpIssuer={} on stateData={}",
@@ -423,7 +432,7 @@ public class RelyingPartyService {
 		// new participant means new profile selection
 		if (newParticipant) {
 			log.info("Reset selectedProfileId={} due to change from previousRpIssuer={} to rpIssuer={}",
-					stateData.getSelectedProfileExtId(), cpResponse.getRpIssuer(), relyingParty.getId());
+					stateData.getSelectedProfileExtId(), originalParticipantId, relyingParty.getId());
 			stateData.setSelectedProfileExtId(null);
 			return;
 		}
@@ -450,7 +459,7 @@ public class RelyingPartyService {
 
 	private String performAccessRequestIfRequired(HttpServletRequest httpServletRequest,
 			RelyingParty relyingParty, ClaimsParty claimsParty, StateData idpStateData, StateData stateDataByAuthnReq) {
-		if (HrdSupport.requestFromTestApplication(httpServletRequest, trustBrokerProperties.getNetwork())) {
+		if (HrdSupport.requestFromTestApplication(httpServletRequest, trustBrokerProperties)) {
 			// no access request for automated tests (OIDC and SAML)
 			log.info("Skipping access request check for call from test application");
 			return null;
@@ -541,24 +550,25 @@ public class RelyingPartyService {
 		scriptService.processCpBeforeIdm(cpResponse, null, cpResponse.getIssuer(), requestReferer);
 
 		// filter CP attributes
-		var cpAttributeDefinitions = relyingPartySetupService.getCpAttributeDefinitions(cpResponse.getIssuer(), "");
-		if (!cpAttributeDefinitions.isEmpty()) {
-			ResponseFactory.filterCpAttributes(cpResponse, cpAttributeDefinitions);
-		}
+		var cpAttributeDefinitions = relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpResponse.getIssuer(), "")
+				.getAttributesDefinitions();
+		ResponseFactory.filterCpAttributes(cpResponse, cpAttributeDefinitions, trustBrokerProperties.getSaml());
 
-		var idmLookUp = relyingPartySetupService.getIdmLookUp(requestIssuer, requestReferer);
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(requestIssuer, requestReferer);
+		var idmLookUp = relyingPartySetupService.getIdmLookUp(relyingParty);
 		idmLookUp.ifPresent(idmLookup -> cpResponse.setIdmLookup(idmLookup.shallowClone()));
 
 		// set clientExtId
-		cpResponse.setClientExtId(relyingPartySetupService.getRpClientExtId(requestIssuer, requestReferer));
+		cpResponse.setClientExtId(relyingPartySetupService.getRpClientExtId(relyingParty));
 
 		// scripts BeforeIdm RP side (see test DeriveClaimProviderNameFromNameIdFormat.groovy for an example to derive HomeName)
 		scriptService.processRpBeforeIdm(cpResponse, null, requestIssuer, requestReferer);
 	}
 
 	public void filterPropertiesSelection(CpResponse cpResponse, String requestIssuer, String requestReferer) {
-		var propertiesAttrSelection = relyingPartySetupService.getPropertiesAttrSelection(requestIssuer, requestReferer);
-		var claimsSelection = relyingPartySetupService.getClaimsSelection(requestIssuer, requestReferer);
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(requestIssuer, requestReferer);
+		var propertiesAttrSelection = relyingParty.getPropertiesSelection();
+		var claimsSelection = relyingParty.getClaimsSelection();
 		filterPropertiesSelection(cpResponse, propertiesAttrSelection, claimsSelection);
 	}
 
@@ -624,12 +634,19 @@ public class RelyingPartyService {
 		var encodingParameters = buildEncodingParameters(relyingParty, idpStateData, responseData.getBinding());
 		var resultResponseData = ResponseData.of(authnResponse, null, null);
 		sendResponseToRp(resultResponseData, cpResponse, Optional.of(idpStateData),
-				httpServletRequest, httpServletResponse, encodingParameters, outputService);
+				httpServletRequest, httpServletResponse, null, encodingParameters, outputService);
+
+		// federation done, drop state
+		stateCacheService.invalidate(idpStateData, this.getClass().getSimpleName());
 
 		return null; // no redirects
 	}
 
 	private String preserveStateAndGetRedirectUriForAbortedResponse(CpResponse cpResponse, StateData idpStateData) {
+		if (idpStateData.isExpired()) {
+			log.debug("Preserving expired sessionId={} for support info fetching", idpStateData.getId());
+			idpStateData.reInit();
+		}
 		stateCacheService.save(idpStateData, this.getClass().getSimpleName());
 		String redirectUri;
 		if (cpResponse.doAppRedirect()) {
@@ -675,7 +692,7 @@ public class RelyingPartyService {
 		var encodingParameters = buildEncodingParameters(relyingParty, stateData, samlBinding);
 		var resultResponseData = ResponseData.of(authnResponse, null, null);
 		sendResponseToRp(resultResponseData, null, Optional.of(stateData),
-				httpServletRequest, httpServletResponse, encodingParameters, outputService);
+				httpServletRequest, httpServletResponse, null, encodingParameters, outputService);
 
 		return null; // no redirects
 	}
@@ -711,12 +728,14 @@ public class RelyingPartyService {
 		}
 	}
 
+	@SuppressWarnings("java:S107") // internal method - depends on methods that require a lot of parameters
 	private void sendResponseToRp(ResponseData<?> responseData, CpResponse cpResponse,
 			Optional<StateData> idpStateData, HttpServletRequest httpServletRequest,
-			HttpServletResponse httpServletResponse, EncodingParameters encodingParameters, OutputService outputService) {
+			HttpServletResponse httpServletResponse, Credential credential, EncodingParameters encodingParameters,
+			OutputService outputService) {
 		addSsoCookies(idpStateData, httpServletResponse);
 		sendResponse(responseData, cpResponse, idpStateData, httpServletRequest, httpServletResponse,
-				encodingParameters, outputService);
+				credential, encodingParameters, outputService);
 	}
 
 	private void addSsoCookies(Optional<StateData> idpStateData, HttpServletResponse httpServletResponse) {
@@ -730,16 +749,18 @@ public class RelyingPartyService {
 		}
 	}
 
+	@SuppressWarnings("java:S107") // internal method - depends on methods that require a lot of parameters
 	private void sendResponse(ResponseData<?> responseData, CpResponse cpResponse,
 			Optional<StateData> idpStateData, HttpServletRequest httpServletRequest,
-			HttpServletResponse httpServletResponse, EncodingParameters encodingParameters, OutputService outputService) {
+			HttpServletResponse httpServletResponse, Credential credential, EncodingParameters encodingParameters,
+			OutputService outputService) {
 		// wrap response and handle relay state
 		var response = responseData.getResponse();
 		var destinationUrl = getDestination(response, idpStateData, cpResponse);
 		var relayState = getRelayState(idpStateData, responseData.getRelayState());
 
 		// emit
-		outputService.sendResponse(response, null, relayState, destinationUrl, httpServletResponse,
+		outputService.sendResponse(response, credential, relayState, destinationUrl, httpServletResponse,
 				encodingParameters, DestinationType.RP);
 
 		// audit
@@ -808,30 +829,32 @@ public class RelyingPartyService {
 		return relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpIssuerId, null);
 	}
 
-	// if stateDataByAuthnReq is null, relyingParty.id is used for the check, stateDataByAuthnReq is assumed to match
-	// relyingParty
+	// Check if the rpIssuer matches the one for the ssoStateData CP response.
+	// If stateDataByAuthnReq is null, relyingParty.id is used for the check.
+	// Otherwise, stateDataByAuthnReq is expected to match relyingParty.
 	private void refreshUserDataIfNeeded(StateData ssoStateData, StateData stateDataByAuthnReq, RelyingParty relyingParty) {
 		var cpResponse = ssoStateData.getCpResponse();
 		var authnIssuerId = stateDataByAuthnReq != null ? stateDataByAuthnReq.getRpIssuer() : relyingParty.getId();
 		var stateToUpdate = getStateToUpdateFromIdm(ssoStateData, stateDataByAuthnReq);
 		// if tenant matches we can continue with the state data
 		// NOTE: We could do a freshness check here in case the state data is older than X because of changes in IDM => LATER
-		var newParticipant = !authnIssuerId.equals(cpResponse.getRpIssuer());
+		var originalParticipantId = cpResponse.getRpIssuer();
+		var newParticipant = !authnIssuerId.equals(originalParticipantId);
 		var ssoForceIdmRefresh = relyingParty.isSsoEnabled() && Boolean.TRUE.equals(relyingParty.getSso().getForceIdmRefresh());
 		if (!newParticipant && !ssoForceIdmRefresh) {
 			log.info("Skip refreshing user data because IDP response already initiated by rpIssuer={} for configRpId={} "
-					+ "(without SSO or forceIdmRefresh=true)", cpResponse.getRpIssuer(), relyingParty.getId());
-			resetStaleProfileSelection(newParticipant, ssoStateData, cpResponse, relyingParty);
+					+ "(without SSO or forceIdmRefresh=true)", originalParticipantId, relyingParty.getId());
+			resetStaleProfileSelection(newParticipant, originalParticipantId, ssoStateData, cpResponse, relyingParty);
 			return;
 		}
 		// update with tenant data of the joining SSO member
 		log.debug("Refreshing user data because rpIssuer={} previousRpIssuer={} ssoForceIdmRefresh={} configRpId={}",
-				authnIssuerId, cpResponse.getRpIssuer(), ssoForceIdmRefresh, relyingParty.getId());
+				authnIssuerId, originalParticipantId, ssoForceIdmRefresh, relyingParty.getId());
 		fetchIdmData(cpResponse, stateToUpdate, relyingParty.getClientName(), false);
 		if (stateDataByAuthnReq != null) {
 			stateDataByAuthnReq.setCpResponse(cpResponse);
 		}
-		resetStaleProfileSelection(newParticipant, ssoStateData, cpResponse, relyingParty);
+		resetStaleProfileSelection(newParticipant, originalParticipantId, ssoStateData, cpResponse, relyingParty);
 	}
 
 	private static StateData getStateToUpdateFromIdm(StateData ssoStateData, StateData stateDataByAuthnReq) {
@@ -890,7 +913,7 @@ public class RelyingPartyService {
 		var encodingParameters = buildEncodingParameters(relyingParty, ssoStateData, null);
 		var responseData = ResponseData.of(authnResponse, null, null);
 		sendResponse(responseData, cpResponse, Optional.of(ssoStateData), httpServletRequest, httpServletResponse,
-				encodingParameters, outputService);
+				null, encodingParameters, outputService);
 
 		return null;
 	}
@@ -917,6 +940,7 @@ public class RelyingPartyService {
 		setProperties(cpResponse);
 
 		// scripts (just before signing)
+		scriptService.processCpAfterIdm(cpResponse, null, cpResponse.getIssuer(), null);
 		scriptService.processRpAfterIdm(cpResponse, null, requestIssuer, requestReferer);
 
 		// filter properties
@@ -958,6 +982,9 @@ public class RelyingPartyService {
 		// Final response changes, but only access to processed data (filtered and mapped)
 		processOnResponseScript(cpResponseClone, requestIssuer, requestReferer);
 
+		// Retain context information set by script
+		cpResponse.setRpContext(cpResponseClone.getRpContext());
+
 		// script triggered abort, retain abort information
 		if (cpResponseClone.showErrorPage()) {
 			cpResponse.copyAbortConditions(cpResponseClone);
@@ -991,13 +1018,15 @@ public class RelyingPartyService {
 
 	private void processBeforeResponseScript(CpResponse cpResponse, String requestIssuer, String requestReferer) {
 		if (cpResponse != null) {
-			scriptService.processBeforeResponse(cpResponse, null, requestIssuer, requestReferer);
+			scriptService.processCpBeforeResponse(cpResponse, null, cpResponse.getIssuer(), null);
+			scriptService.processRpBeforeResponse(cpResponse, null, requestIssuer, requestReferer);
 		}
 	}
 
 	private void processOnResponseScript(CpResponse cpResponse, String requestIssuer, String requestReferer) {
 		if (cpResponse != null) {
-			scriptService.processOnResponse(cpResponse, null, requestIssuer, requestReferer);
+			scriptService.processCpOnResponse(cpResponse, null, cpResponse.getIssuer(), null);
+			scriptService.processRpOnResponse(cpResponse, null, requestIssuer, requestReferer);
 		}
 	}
 
@@ -1016,7 +1045,7 @@ public class RelyingPartyService {
 		var kea = getKeyEncryptionAlgorithm(encryption);
 		var dea = getDataEncryptionAlgorithm(encryption);
 
-		Credential encryptionCred = relyingParty.getEncryptionCred();
+		Credential encryptionCred = relyingParty.getRpEncryptionCredential();
 
 		// If destination is XTB -> encryption for OIDC
 		boolean isXtbDestination = HrdSupport.isXtbDestination(trustBrokerProperties, authnResponse.getDestination());
@@ -1025,9 +1054,10 @@ public class RelyingPartyService {
 		}
 
 		if (assertionEncryptionReq(encryptionCred, isXtbDestination, rpId)) {
-			Encrypter.KeyPlacement keyPlacement = getKeyPlacement(encryption, rpId);
-			EncryptedAssertion encryptedAssertion = EncryptionUtil.encryptAssertion(assertion,
-					encryptionCred, dea, kea, keyPlacement, rpId);
+			var keyPlacement = getKeyPlacement(encryption, rpId);
+			var emitSki = emitSki(encryption, rpId);
+			var encryptedAssertion = EncryptionUtil.encryptAssertion(assertion,
+					encryptionCred, dea, kea, keyPlacement, rpId, emitSki);
 			authnResponse.getEncryptedAssertions().add(encryptedAssertion);
 			log.debug("Assertion for rp={} encrypted with cred={}, DataEncryptionAlg={} KeyEncryptionAlg={}", rpId,
 					encryptionCred.getEntityId(), dea, kea);
@@ -1069,19 +1099,24 @@ public class RelyingPartyService {
 	}
 
 	private static Encrypter.KeyPlacement getKeyPlacement(Encryption encryption, String requestIssuer) {
-		if (encryptionHasValidKeyPlacement(encryption)) {
-			return Encrypter.KeyPlacement.valueOf(encryption.getKeyPlacement());
+		if (encryption != null && encryption.getKeyPlacement() != null) {
+			return switch (encryption.getKeyPlacement()) {
+				case PEER -> Encrypter.KeyPlacement.PEER;
+				case INLINE -> Encrypter.KeyPlacement.INLINE;
+			};
 		}
-		log.debug("Missing KeyPlacement config for={}, falling back to PEER", requestIssuer);
+		log.debug("Missing KeyPlacement config for rpIssuerId={}, falling back to {}",
+				requestIssuer, EncryptionKeyPlacement.PEER);
 		return Encrypter.KeyPlacement.PEER;
 	}
 
-	private static boolean encryptionHasValidKeyPlacement(Encryption encryption) {
-		if (encryption == null || encryption.getKeyPlacement() == null) {
-			return false;
+	private static boolean emitSki(Encryption encryption, String requestIssuer) {
+		if (encryption != null && encryption.getKeyInfo() != null) {
+			return encryption.getKeyInfo() == EncryptionKeyInfo.SKI;
 		}
-		return encryption.getKeyPlacement().equals(Encrypter.KeyPlacement.PEER.name()) ||
-				encryption.getKeyPlacement().equals(Encrypter.KeyPlacement.INLINE.name());
+		log.debug("Missing KeyInfo config for rpIssuerId={}, falling back to {}",
+				requestIssuer, EncryptionKeyInfo.CERTIFICATE);
+		return false;
 	}
 
 	public void handleLogoutRequest(OutputService outputService, LogoutRequest logoutRequest, String requestRelayState,
@@ -1139,7 +1174,7 @@ public class RelyingPartyService {
 				var signingRp = relyingParties.get(0);
 				log.debug("Relying party for LogoutRequest signature verification is id={}", signingRp.getId());
 				validateBinding(signingRp, signatureContext.getBinding());
-				signatureContext.setRequireSignature(signingRp.requireSignedAuthnRequest());
+				signatureContext.setRequireSignature(signingRp.requireSignedLogoutRequest());
 				AssertionValidator.validateRequestSignature(logoutRequest, signingRp.getRpTrustCredentials(),
 						trustBrokerProperties,
 						signatureContext);
@@ -1159,22 +1194,30 @@ public class RelyingPartyService {
 
 	private void sendLogoutResponse(LogoutParams logoutParams, SsoService.SloState sloState, Optional<StateData> stateData,
 			RelyingParty relyingParty, String referer, EncodingParameters encodingParameters) {
+		var nameId = getNameIdFromSessionOrLogoutRequest(stateData, logoutParams.logoutRequest);
+		var params = ssoService.buildSloResponseParameters(relyingParty, referer, sloState.getSloNotifications(), nameId,
+				null, null);
+		encodingParameters.setUseRedirectBinding(params.useHttpGet());
+		encodingParameters.setTemplateParameters(params.velocityParameters());
 		var sloUrl = ssoService.computeSamlSingleLogoutUrl(logoutParams.requestReferrer, relyingParty);
 		var issuer = relyingParty.getSloIssuer(SloProtocol.SAML2).orElse(null);
 		var logoutResponse = createLogoutResponse(logoutParams.logoutRequest, sloUrl, issuer);
 		logoutResponse.setStatus(SamlFactory.createResponseStatus(StatusCode.SUCCESS));
-		// sign message as well
+		// sign message as well - for redirect binding the signature is part of the query, not on the object
+		var sign = signSuccessResponse(relyingParty);
 		prepareResponseToRp(logoutResponse, relyingParty,
 				trustBrokerProperties.getSkinnyAssertionNamespaces(),
-				signSuccessResponse(relyingParty));
+				sign && !params.useHttpGet());
+		Credential credential = null;
+		if (sign && params.useHttpGet()) {
+			var signatureParameters = relyingParty.getSignatureParametersBuilder().build();
+			credential = signatureParameters.getCredential();
+			encodingParameters.setSignatureAlgorithm(signatureParameters.getSignatureAlgorithm());
+		}
 		// NameID for SAML notifications
-		NameID nameId = getNameIdFromSessionOrLogoutRequest(stateData, logoutParams.logoutRequest);
-		var params = ssoService.buildSloVelocityParameters(relyingParty, referer, sloState.getSloNotifications(), nameId,
-				null, null);
-		encodingParameters.setTemplateParameters(params);
 		var responseData = ResponseData.of(logoutResponse, logoutParams.requestRelayState, null);
 		sendResponseToRp(responseData, null, stateData, logoutParams.request, logoutParams.response,
-				encodingParameters, logoutParams.outputService);
+				credential, encodingParameters, logoutParams.outputService);
 	}
 
 	private static NameID getNameIdFromSessionOrLogoutRequest(Optional<StateData> stateData, LogoutRequest logoutRequest) {
@@ -1182,8 +1225,7 @@ public class RelyingPartyService {
 		if (stateData.isPresent()) {
 			nameId = ResponseFactory.createNameId(stateData.get().getCpResponse());
 			if (nameId != null) {
-				log.debug("SLO notification NameId={} from session with id={}", nameId, stateData.get()
-																								 .getId());
+				log.debug("SLO notification NameId={} from session with id={}", nameId, stateData.get().getId());
 			}
 		}
 		if (nameId == null) {
@@ -1228,8 +1270,7 @@ public class RelyingPartyService {
 		else {
 			if (idpStateData.isEmpty()) {
 				throw new TechnicalException(String.format("Missing IDP state for response type %s",
-						response.getClass()
-								.getName()));
+						response.getClass().getName()));
 			}
 			var stateData = idpStateData.get();
 			consumerUrl = ResponseFactory.getRpDestination(stateData, cpResponse);
@@ -1267,7 +1308,7 @@ public class RelyingPartyService {
 				.mapFrom(relyingParty)
 				.build();
 		auditDto.setSide(DestinationType.CP.getLabel());
-		auditService.logInboundSamlFlow(auditDto);
+		auditService.logInboundFlow(auditDto);
 	}
 
 	// Handling interactive profile selection from UI with data from the session
@@ -1321,7 +1362,7 @@ public class RelyingPartyService {
 				cpResponse.getIssuer(), relyingParty.getId(), cpResponse.getNameId(), cpResponse.isAborted());
 		var responseData = ResponseData.of(samlResponse, null, null);
 		sendResponseToRp(responseData, cpResponse, Optional.of(idpStateData), httpServletRequest, httpServletResponse,
-				encodingParameters, outputService);
+				null, encodingParameters, outputService);
 		return null;
 	}
 
@@ -1343,9 +1384,8 @@ public class RelyingPartyService {
 			stateData = stateCacheService.findValidState(sessionId, this.getClass().getSimpleName());
 		}
 		if (stateData.isPresent()) {
-			String rpIssuerId = stateData.get().getRpIssuer();
-			log.debug("Found rpIssuerId={} from sessionId={}", rpIssuerId, stateData.get()
-																					.getId());
+			var rpIssuerId = stateData.get().getRpIssuer();
+			log.debug("Found rpIssuerId={} from sessionId={}", rpIssuerId, stateData.get().getId());
 			return rpIssuerId;
 		}
 		return null;

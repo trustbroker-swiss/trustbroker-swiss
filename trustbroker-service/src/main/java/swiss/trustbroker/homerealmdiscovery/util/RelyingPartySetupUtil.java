@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -39,8 +40,11 @@ import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
 import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.AuthorizedApplication;
 import swiss.trustbroker.federation.xmlconfig.Certificates;
+import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderDefinitions;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderMappings;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
 import swiss.trustbroker.federation.xmlconfig.ConstAttributes;
 import swiss.trustbroker.federation.xmlconfig.CounterParty;
 import swiss.trustbroker.federation.xmlconfig.Definition;
@@ -53,7 +57,6 @@ import swiss.trustbroker.federation.xmlconfig.Oidc;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.ProfileSelection;
 import swiss.trustbroker.federation.xmlconfig.ProtocolEndpoints;
-import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.Saml;
 import swiss.trustbroker.federation.xmlconfig.Script;
@@ -62,9 +65,6 @@ import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.federation.xmlconfig.Signature;
 import swiss.trustbroker.federation.xmlconfig.Sso;
 import swiss.trustbroker.federation.xmlconfig.SubjectNameMappings;
-import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
-import swiss.trustbroker.saml.dto.CpResponse;
-import swiss.trustbroker.saml.dto.ResponseParameters;
 import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.util.CertificateUtil;
 import swiss.trustbroker.util.PropertyUtil;
@@ -78,35 +78,83 @@ public class RelyingPartySetupUtil {
 	}
 
 	public static void loadRelyingParty(Collection<RelyingParty> relyingParties, String definitionPath, String pullConfigPath,
-			TrustBrokerProperties trustBrokerProperties, List<IdmQueryService> idmQueryServices, ScriptService scriptService) {
+										TrustBrokerProperties trustBrokerProperties, List<IdmQueryService> idmQueryServices,
+										ScriptService scriptService, ClaimsProviderSetup claimsProviderSetup,
+										ClaimsProviderDefinitions claimsProviderDefinitions) {
 		if (relyingParties == null) {
 			throw new TechnicalException("RelyingParties are missing or could not be loaded");
 		}
 		for (RelyingParty relyingParty : relyingParties) {
 			try {
-				loadRelyingParty(definitionPath, pullConfigPath, relyingParty, trustBrokerProperties, idmQueryServices, scriptService);
+				loadRelyingParty(definitionPath, pullConfigPath, relyingParty, trustBrokerProperties, idmQueryServices,
+						scriptService, claimsProviderSetup, claimsProviderDefinitions);
 			}
 			catch (TechnicalException ex) {
-				log.error("Could not load base claim: {}", ex.getInternalMessage());
+				log.error("Could not load file: {}", ex.getInternalMessage());
 				relyingParty.invalidate(ex);
 			}
 		}
 	}
 
-	private static void loadRelyingParty(String definitionPath, String pullConfigPath, RelyingParty relyingParty,
-			TrustBrokerProperties trustBrokerProperties, List<IdmQueryService> idmQueryServices, ScriptService scriptService) {
-		var baseRule = relyingParty.getBase();
+	private static void loadRelyingParty(String definitionPath,
+										 String pullConfigPath,
+										 RelyingParty relyingParty,
+										 TrustBrokerProperties trustBrokerProperties,
+										 List<IdmQueryService> idmQueryServices,
+										 ScriptService scriptService,
+										 ClaimsProviderSetup claimsProviderSetup,
+										 ClaimsProviderDefinitions defaultClaimsProviderDefinitions) {
+		// load referenced definition
+		var claimsMappingDef = getRpClaimsMappingDef(relyingParty.getClaimsProviderMappings());
+		if (claimsMappingDef != null) {
+			var rulePath = resolvePath(definitionPath, pullConfigPath, claimsMappingDef, relyingParty.getSubPath(), trustBrokerProperties);
+			var claimsMappingPath = Path.of(rulePath, claimsMappingDef).toString();
+			var claimsProviderDefinitions = ClaimsProviderUtil.loadClaimsProviderDefinitions(claimsMappingPath);
+			if (isValidClaimsProviderMappings(claimsProviderDefinitions.getClaimsProviders(), claimsMappingDef)) {
+				mergeClaimsProviderMappings(relyingParty, claimsProviderDefinitions, claimsProviderSetup, false);
+			}
+		}
 
+		// merge everything from  ProfileRP.xml including ClaimsProvider definitions (on top of referenced definitio or default)
+		var baseRule = relyingParty.getBase();
 		if (!StringUtils.isBlank(baseRule)) {
 			var rulePath = resolvePath(definitionPath, pullConfigPath, baseRule, relyingParty.getSubPath(), trustBrokerProperties);
 			var basePath = Path.of(rulePath, baseRule).toString();
-			var baseClaim = ClaimsProviderUtil.loadRelyingParty(basePath);
-			mergeRelyingParty(relyingParty, baseClaim, idmQueryServices);
+			var baseParty = ClaimsProviderUtil.loadRelyingParty(basePath);
+			mergeRelyingParty(relyingParty, baseParty, idmQueryServices, claimsProviderSetup);
 			applyGlobalCertificates(relyingParty, trustBrokerProperties);
 			validateScripts(relyingParty, scriptService);
 		}
 
+		// apply global defaults from ClaimsProviderDefinition.xml )backward compat)
+		var globalDefFile = trustBrokerProperties != null ? trustBrokerProperties.getClaimsDefinitionMapping() : "global CPD.xml";
+		if (defaultClaimsProviderDefinitions != null &&	isValidClaimsProviderMappings(
+				defaultClaimsProviderDefinitions.getClaimsProviders(), globalDefFile)) {
+			mergeClaimsProviderMappings(relyingParty, defaultClaimsProviderDefinitions, claimsProviderSetup, true);
+		}
+
 		postInit(relyingParty);
+	}
+
+	// ClaimsProvider base must have unique CP ids
+	static boolean isValidClaimsProviderMappings(List<ClaimsProvider> cpMappings, String claimsProviderDef) {
+		if (CollectionUtils.isEmpty(cpMappings)) {
+			return false;
+		}
+		int initialSize = cpMappings.size();
+		int filteredSize = cpMappings.stream()
+				.map(ClaimsProvider::getId)
+				.distinct()
+				.toList()
+				.size();
+		if (filteredSize != initialSize) {
+			log.error("Invalid ClaimsProviderMappings={} file. Remove duplicated ids", claimsProviderDef);
+		}
+		return filteredSize == initialSize;
+	}
+
+	private static String getRpClaimsMappingDef(ClaimsProviderMappings mappings) {
+		return mappings != null && !StringUtils.isBlank(mappings.getDefinition()) ?	mappings.getDefinition() : null;
 	}
 
 	public static void validateScripts(CounterParty counterParty, ScriptService scriptService) {
@@ -214,7 +262,8 @@ public class RelyingPartySetupUtil {
 		}
 	}
 
-	static void mergeRelyingParty(RelyingParty relyingParty, RelyingParty baseRelyingParty, List<IdmQueryService> idmQueryServices) {
+	static void mergeRelyingParty(RelyingParty relyingParty, RelyingParty baseRelyingParty, List<IdmQueryService> idmQueryServices,
+								  ClaimsProviderSetup claimsProviderSetup) {
 		if (relyingParty == null) {
 			throw new TechnicalException("RelyingParty is missing");
 		}
@@ -242,7 +291,7 @@ public class RelyingPartySetupUtil {
 
 		// ClaimsProviderMappings
 		var baseClaimsProviderMappings = baseRelyingParty.getClaimsProviderMappings();
-		mergeClaimsProviderMappings(relyingParty, baseClaimsProviderMappings);
+		mergeClaimsProviderMappings(relyingParty, baseClaimsProviderMappings, claimsProviderSetup, false);
 
 		// SubjectNameMappings
 		var baseSubjectNameMappings = baseRelyingParty.getSubjectNameMappings();
@@ -314,8 +363,8 @@ public class RelyingPartySetupUtil {
 			relyingParty.setCertificates(Certificates.builder().build());
 		}
 		var certSetup = relyingParty.getCertificates();
-		String signerCertPath = extractCertName(trustBrokerProperties.getSigner().getSignerCert());
-		String signerKeyPath = extractCertName(trustBrokerProperties.getSigner().getSignerKey());
+		var signerCertPath = extractCertName(trustBrokerProperties.getSigner().getSignerCert());
+		var signerKeyPath = extractCertName(trustBrokerProperties.getSigner().getSignerKey());
 		if (certSetup.getSignerKeystore() == null && trustBrokerProperties.getSigner() != null) {
 			var globalSigner = CertificateUtil.toSignerKeystore(trustBrokerProperties.getSigner());
 			globalSigner.setCertPath(signerCertPath);
@@ -409,9 +458,16 @@ public class RelyingPartySetupUtil {
 	}
 
 	static void mergeQoaLevels(RelyingParty relyingParty, RelyingParty baseRelyingParty) {
-		Qoa rpQoa = relyingParty.getQoa();
+		var baseQoa = baseRelyingParty.getQoa();
+		if (baseQoa == null) {
+			return;
+		}
+		var rpQoa = relyingParty.getQoa();
 		if (rpQoa == null) {
-			relyingParty.setQoa(baseRelyingParty.getQoa());
+			relyingParty.setQoa(baseQoa);
+		}
+		else if (CollectionUtils.isEmpty(rpQoa.getClasses())) {
+			relyingParty.getQoa().setClasses(baseQoa.getClasses());
 		}
 	}
 
@@ -507,7 +563,12 @@ public class RelyingPartySetupUtil {
 
 	private static void mergeSecurityPoliciesConfig(RelyingParty relyingParty,
 			SecurityPolicies baseRelyingPartySecurityPolicies) {
-		PropertyUtil.copyMissingAttributes(relyingParty.getSecurityPolicies(), baseRelyingPartySecurityPolicies);
+		var rpSecurityPolicy = relyingParty.getSecurityPolicies();
+		if (rpSecurityPolicy == null) {
+			relyingParty.setSecurityPolicies(baseRelyingPartySecurityPolicies);
+			return;
+		}
+		PropertyUtil.copyMissingAttributes(rpSecurityPolicy, baseRelyingPartySecurityPolicies);
 	}
 
 	static void mergeAcWhiteList(RelyingParty relyingParty, AcWhitelist baseAcWhitelist) {
@@ -526,61 +587,126 @@ public class RelyingPartySetupUtil {
 				relyingParty.getAcWhitelist() != null ? relyingParty.getAcWhitelist().getAcUrls() : null);
 	}
 
-	static void mergeClaimsProviderMappings(RelyingParty relyingParty, ClaimsProviderMappings baseClaimsProviderMappings) {
+	static void mergeClaimsProviderMappings(RelyingParty relyingParty,
+											ClaimsProviderDefinitions claimsProviderDefinitions,
+											ClaimsProviderSetup claimsProviderSetup,
+											boolean defaultMerge) {
+		var claimsProviderMappings = ClaimsProviderMappings
+				.builder()
+				.enabled(true)
+				.claimsProviderList(claimsProviderDefinitions.getClaimsProviders())
+				.build();
+		mergeClaimsProviderMappings(relyingParty, claimsProviderMappings, claimsProviderSetup, defaultMerge);
+	}
+
+	static void mergeClaimsProviderMappings(RelyingParty relyingParty,
+											ClaimsProviderMappings baseClaimsProviderMappings,
+											ClaimsProviderSetup claimsProviderSetup,
+											boolean defaultMerge) {
 		var claimsProviderMappings = relyingParty.getClaimsProviderMappings();
 		// Use the pre-defined profile HRD to streamline the HRD selection for all related RPs.
 		// ClaimsProviderMappings.enabled behaves as follows:
-		// - null: Ignore ProfileRP settings when SetupRp does not contain ena enabled flags on entry leve (v1.8.0 compat)
-		// - false: Ignore SetupRP settings and onlx use profile
+		// - null: Ignore ProfileRP settings when SetupRp does not contain enabled flags on entry level (v1.8 compat)
+		// - false: Ignore SetupRP settings and only use profile
 		// - true: Merge ProfileRP and SetupRP entries
 		if (claimsProviderMappings == null || CollectionUtils.isEmpty(claimsProviderMappings.getClaimsProviderList())
 				|| Boolean.FALSE.equals(claimsProviderMappings.getEnabled())) {
 			relyingParty.setClaimsProviderMappings(baseClaimsProviderMappings);
 		}
 		// customize the HRD merging by id (ambiguous entries with the same ID in the profile are ignored)
-		else if (hasEnabledClaimsProvidersForMerge(claimsProviderMappings, baseClaimsProviderMappings)) {
-			mergeEnabledClaimsProviders(relyingParty, baseClaimsProviderMappings.getClaimsProviderList());
+		else if (defaultMerge || hasEnabledClaimsProvidersForMerge(claimsProviderMappings, baseClaimsProviderMappings)) {
+			mergeEnabledClaimsProviders(relyingParty, baseClaimsProviderMappings.getClaimsProviderList(), claimsProviderSetup, defaultMerge);
 		}
-		// else: use RP configurations as is dropping the disabled ones
+		// else: use RP configurations as is, dropping the disabled ones
 		discardDisabledClaimsProviders(relyingParty);
 		log.debug("RP rpId={} has merged claimsProviderMappings={} ", relyingParty.getId(),
 				relyingParty.getClaimsProviderMappings() != null ? relyingParty.getClaimsProviderMappings().getClaimsProviderList() : null);
 	}
 
-	// v18 behavior: Profile claims providers were ignored, v19 consider them , when setup uses enabled flags for compatibility
+	// v1.8 behavior: Profile claims providers were ignored, v1.9: consider them when setup uses enabled flags for compatibility
 	private static boolean hasEnabledClaimsProvidersForMerge(ClaimsProviderMappings claimsProviderMappings,
 			ClaimsProviderMappings baseClaimsProviderMappings) {
 		return baseClaimsProviderMappings != null
 				&& !CollectionUtils.isEmpty(baseClaimsProviderMappings.getClaimsProviderList())
 				&& (Boolean.TRUE.equals(claimsProviderMappings.getEnabled())
-				|| claimsProviderMappings.getClaimsProviderList()
-				.stream()
-				.anyMatch(c -> c.getEnabled() != null));
+				|| claimsProviderMappings.getDefinition() != null
+				|| claimsProviderMappings.getClaimsProviderList().stream().anyMatch(c -> c.getEnabled() != null));
 	}
 
-	private static void mergeEnabledClaimsProviders(RelyingParty relyingParty,
-			List<ClaimsProviderRelyingParty> baseClaimsProviders) {
-		var claimsProviders = new ArrayList<>(
-				relyingParty.getClaimsProviderMappings()
-							.getClaimsProviderList());
+	static void mergeEnabledClaimsProviders(
+			RelyingParty relyingParty, List<ClaimsProvider> baseClaimsProviders,
+			ClaimsProviderSetup claimsProviderSetup, boolean defaultMerge) {
+		var claimsProviders = new ArrayList<>(relyingParty.getClaimsProviderMappings().getClaimsProviderList());
 		baseClaimsProviders.forEach(bc -> {
-			var claimsProvider = claimsProviders.stream()
-					.filter(c -> c.getId().equals(bc.getId()) && c.getRelyingPartyAlias() == null)
-					.findFirst(); // not expecting ambiguous ids apart from the ones with relyingPartyAlias (that are not merged)
-			if (claimsProvider.isPresent()) {
-				log.debug("Merging cp={} from profile to setup for rp={}", bc.getId(), relyingParty.getId());
-				PropertyUtil.copyMissingAttributes(claimsProvider.get(), bc);
+			if (bc.getRelyingPartyAlias() != null) {
+				// Base should never have relyingPartyAlias
+				var msg = String.format("Rp=%s base ClaimsProviderMappings contains relyingPartyAlias", bc.getId());
+				relyingParty.initializedValidationStatus().addError(msg);
+				log.warn(msg);
 			}
-			else {
-				log.debug("Adding cp={} from profile to setup for rp={} at pos={}",
+			var claimsProviderMatches = getRpClaimsMapping(bc, claimsProviders, defaultMerge);
+			if (!claimsProviderMatches.isEmpty()) {
+				claimsProviderMatches.forEach(c -> {
+					log.debug("Merging cp={} from profile to setup rp={}", bc.getId(), relyingParty.getId());
+					PropertyUtil.copyMissingAttributes(c, bc);
+				});
+			}
+			else if (!defaultMerge) {
+				log.debug("Adding cp={} from profile to setup rp={} at pos={}",
 						bc.getId(), relyingParty.getId(), claimsProviders.size());
 				claimsProviders.add(bc);
 			}
+			else{
+				log.debug("Ignore cp={} from default definitions to setup rp={}", bc.getId(), relyingParty.getId());
+			}
 		});
+
 		log.debug("Merged rp={} profile={} baseClaimsProviders='{}' into claimsProviders='{}'",
 				relyingParty.getId(), relyingParty.getBase(), baseClaimsProviders, claimsProviders);
-		relyingParty.getClaimsProviderMappings()
-					.setClaimsProviderList(claimsProviders);
+
+		// Check if all the Cps have SetupCp configuration
+		checkCpConfigIntegrity(claimsProviders, claimsProviderSetup, relyingParty);
+
+		relyingParty.getClaimsProviderMappings().setClaimsProviderList(claimsProviders);
+	}
+
+	static void checkCpConfigIntegrity(List<ClaimsProvider> claimsProviders,
+									   ClaimsProviderSetup claimsProviderSetup,
+									   RelyingParty relyingParty) {
+		var claimIdsInSetup = claimsProviderSetup.getClaimsParties().stream()
+				.filter(ClaimsParty::isValid)
+				.map(ClaimsParty::getId)
+				.collect(Collectors.toSet());
+		var rpId = relyingParty.getId();
+		for (ClaimsProvider claimsProvider : claimsProviders) {
+			if (claimsProvider.getId() == null) {
+				log.error("Missing ID for ClaimsProvider={} in Rp={}", claimsProvider.getName(), rpId);
+				relyingParty.initializedValidationStatus()
+						.addError(String.format("Missing ID for ClaimsProvider=%s in Rp=%s", claimsProvider.getName(), rpId));
+			}
+			else if (!claimIdsInSetup.contains(claimsProvider.getId())) {
+				log.error("Missing SetupCp for ClaimsProvider={} in Rp={}", claimsProvider.getId(), rpId);
+				relyingParty.initializedValidationStatus()
+						.addError(String.format("Missing SetupCp for ClaimsProvider=%s in Rp=%s", claimsProvider.getId(), rpId));
+			}
+		}
+	}
+
+	static Optional<ClaimsProvider> getCpDefinitionById(String cpId, List<ClaimsProvider> claimsProviders) {
+		return claimsProviders.stream()
+				.filter(provider -> cpId != null && cpId.equals(provider.getId()))
+				.findFirst();
+	}
+
+	static List<ClaimsProvider> getRpClaimsMapping(ClaimsProvider baseClaimsProvider,
+													   List<ClaimsProvider> claimsProviders,
+													   boolean defaultMerge) {
+		// not expecting ambiguous ids apart from the ones with not matching relyingPartyAlias (that are not merged)
+		// if the aliases are equal the RP considered to be the same
+		return claimsProviders.stream()
+				.filter(c -> c.getId().equals(baseClaimsProvider.getId()))
+				.filter(c -> defaultMerge || Objects.equals(c.getRelyingPartyAlias(), baseClaimsProvider.getRelyingPartyAlias()))
+				.toList();
 	}
 
 	private static void discardDisabledClaimsProviders(RelyingParty relyingParty) {
@@ -592,7 +718,7 @@ public class RelyingPartySetupUtil {
 		}
 		var enabledCLaimsProviders = claimsProviderMappings.getClaimsProviderList()
 				.stream()
-				.filter(c -> c.getEnabled() == null || c.getEnabled())
+				.filter(ClaimsProvider::isEnabledAndValid)
 				.toList();
 		claimsProviderMappings.setClaimsProviderList(enabledCLaimsProviders);
 	}
@@ -705,11 +831,9 @@ public class RelyingPartySetupUtil {
 				log.error("Rp={} has no ClientExtId configured. IDMLookup will not work! "
 						+ "Check the SetupRP and the corresponding RpProfile", relyingParty.getId());
 			}
-			if (idmQuery.getUserDetailsSelection() == null || idmQuery.getUserDetailsSelection()
-																	  .getDefinitions()
-																	  .isEmpty()) {
-				log.warn("Rp={} IDMQuery.name={} has no UserDetailsSelection list. No attribute will be picked "
-								+ "from the IDM response. Check the SetupRP and the corresponding RpProfile",
+			if (idmQuery.getAttributeSelection().isEmpty()) {
+				log.warn("Rp={} IDMQuery.name={} has no UserDetailsSelection list. Attribute will be picked from the IDM " +
+								"response only if defined in ClaimsSelection. Check the SetupRP and the corresponding RpProfile",
 						relyingParty.getId(), baseIdmQuery.getName());
 			}
 
@@ -797,6 +921,7 @@ public class RelyingPartySetupUtil {
 				return true;
 			}
 			if (baseAttr.get().getOidcNames() != null) {
+				PropertyUtil.copyAttributeIfBlank(Definition::setMappers, Definition::getMappers, baseAttr.get(), attribute);
 				return false;
 			}
 		}
@@ -823,16 +948,6 @@ public class RelyingPartySetupUtil {
 			}
 		}
 		return null;
-	}
-
-	public static List<Definition> getCpAttrDefinitions(CpResponse cpResponse, RelyingPartySetupService relyingPartySetupService,
-			ResponseParameters params) {
-		var cpAttributesDefinition = relyingPartySetupService.getRpAttributesDefinitions(params.getRpIssuerId(), params.getRpReferer());
-		if (cpAttributesDefinition.isEmpty()) {
-			cpAttributesDefinition = relyingPartySetupService.getCpAttributeDefinitions(
-					cpResponse.getIssuer(), params.getRpIssuerId());
-		}
-		return cpAttributesDefinition;
 	}
 
 }

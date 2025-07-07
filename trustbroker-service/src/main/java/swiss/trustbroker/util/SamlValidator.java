@@ -56,7 +56,8 @@ public class SamlValidator {
 
 
 	// ThreadLocal uses a stale entry collection algorithm on set and the tomcat worker pool is fixed, we expect 200 entries max
-	private final ThreadLocal<Validator> samlValidatorCache = new ThreadLocal<>(); // NOSONAR
+	@SuppressWarnings({ "java:S5164", "java:S3749" })
+	private final ThreadLocal<Validator> samlValidatorCache = new ThreadLocal<>();
 
 	// https://wiki.shibboleth.net/confluence/display/OpenSAML/OSTwoUserManJavaValidation
 	// loadtest shows all kinds of exception from arry violations, schema violations and NPEs

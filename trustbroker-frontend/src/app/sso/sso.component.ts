@@ -77,11 +77,7 @@ export class SsoComponent implements OnInit {
 		});
 
 		this.breakpointObserver.observe(['(min-width: 768px)']).subscribe((state: BreakpointState) => {
-			if (state.matches) {
-				this.isButtonSize = false;
-			} else {
-				this.isButtonSize = true;
-			}
+			this.isButtonSize = !state.matches;
 		});
 	}
 
@@ -115,11 +111,11 @@ export class SsoComponent implements OnInit {
 	}
 
 	private setParams(params: Params) {
-		this.setReturnUrlIfValid(params.redirect);
-		this.ssoGroupName = params.ssoGroupName;
-		this.ssoSubject = params.ssoSubject;
-		this.logoutIssuer = params.issuer;
-		this.silentLogout = params.silent === 'silent' && this.returnUrl != null && this.logoutIssuer != null;
+		this.setReturnUrlIfValid(params['redirect']);
+		this.ssoGroupName = params['ssoGroupName'];
+		this.ssoSubject = params['ssoSubject'];
+		this.logoutIssuer = params['ssuer'];
+		this.silentLogout = params['silent'] === 'silent' && this.returnUrl != null && this.logoutIssuer != null;
 		// NOSONAR
 		// console.debug('[SSOComponent] Extracted parameters:');
 		// console.debug('[SSOComponent] ssoGroupName (= param)', this.ssoGroupName);

@@ -51,13 +51,13 @@ When switching to server TLS you can discard the
 
 You can find the scripts mentioned in this section in the ``trustbroker-install`` module on GitHub.
 
-
 == Install docker-compose (optional)
 
 If you do not have a docker infrastructure that supports the 'docker compose' command you can install it as follows:
 https://docs.docker.com/compose/install/standalone/[Install docker-compose] on your system:
 
 In short:
+
 [source,bash]
 ----
 sudo bash
@@ -75,6 +75,7 @@ The demo setup should run out of the box as follows:
 - Download https://github.com/trustbroker-swiss/trustbroker-swiss/blob/main/trustbroker-install/run.sh[run.sh]
 
 Run the setup:
+
 ```
 bash run.sh
 ```
@@ -96,32 +97,31 @@ You might want to tweak the development setup:
 - Remove Gitea because you have a remote repository already or use gitea actually so you can play with the configuration.
 
 Example vault (retained in CI or K8S vault for production setups) injected into ``docker-compose.yml`` via ENV:
+
 [source,bash]
 ----
 include::../../../../trustbroker-install/docker/env-vault.conf[]
 ----
 
-Example docker compose depending on the vault (see ${VAR} references) that you might want to tweak towards using external
-sessiondb and/or git repository server:
+Example docker compose depending on the vault (see ${VAR} references) that you might want to tweak towards using external sessiondb and/or git repository server:
+
 [source,yaml]
 ----
 include::../../../../trustbroker-install/docker/docker-compose.yml[]
 ----
 
-
 == Re-Generate GitOps SSH Key
 
 To generate an own SSH setup, execute setup-ssh.sh:
+
 [source,bash]
 ----
 include::../../../../trustbroker-install/docker/setup-ssh.sh[]
 ----
 
-
 == Setup Gitea Server
 
-For trials, you can use the Gitea server as shown in the docker-compose setup, you need to switch from the github to the gitea
-URL for the xtb-gitops-demo repository..
+For trials, you can use the Gitea server as shown in the docker-compose setup, you need to switch from the github to the gitea URL for the xtb-gitops-demo repository..
 
 [source,bash]
 ----
@@ -132,9 +132,9 @@ Setup manually:
 
 - Connect to http://localhost:3000/ and confirm the default server setup.
 - Register user ``trustbroker-swiss`` and login.
-- Add content of ``ssh/id_rsa.pub`` (and/or your own) to: User >> Settings >> SSH/PGP Keys >>  Manage SSH Keys >> Add Key
+- Add content of ``ssh/id_rsa.pub`` (and/or your own) to: User >> Settings >> SSH/PGP Keys >> Manage SSH Keys >> Add Key
 - Create a repository ``xtb-gitops-demo``.
-- Optional: For http access: User >> Settings >> Applications >>  Manage Access Tokens >> Generate Token
+- Optional: For http access: User >> Settings >> Applications >> Manage Access Tokens >> Generate Token
 
 The resulting access token can be set along the ``GIT_URL`` as ``GIT_TOKEN`` or mapped to ``/etc/trustbroker/keys/git_token``.
 
@@ -143,6 +143,7 @@ You can make it public in the repository settings, in which case you do not need
 You then can add/edit/delete files in the web UI and read the repository without a login.
 
 Clone the public demo repository:
+
 [source,bash]
 ----
 git clone -b main git@github.com/trustbroker-swiss/xtb-gitops-demo
@@ -150,6 +151,7 @@ cd xtb-gitops-demo
 ----
 
 Before doing so you might want to have your own new signer (see SetupRP/ProfileRP Certificates for use):
+
 [source,bash]
 ----
 cd trustbroker-inventories/DEMO/keystore/token-signer
@@ -158,6 +160,7 @@ git commit -m "Created XTB signer" ./
 ----
 
 Import your initial trial repository:
+
 [source,bash]
 ----
 git remote set-url origin ssh://git@localhost:222/trustbroker-swiss/xtb-gitops-demo.git
@@ -165,6 +168,7 @@ git push -u origin main
 ----
 
 Alternatively, use HTTP:
+
 [source,bash]
 ----
 git remote set-url origin http://git@localhost:3000/trustbroker-swiss/xtb-gitops-demo.git
@@ -173,6 +177,7 @@ git push
 
 Run the services in the directory where you stored the tweaked ``docker-compose.yml`` and ``env-vault.conf`` using the following
 https://github.com/trustbroker-swiss/trustbroker-swiss/trustbroker-install/docker/run.sh[run.sh]:
+
 [source,bash]
 ----
 include::../../../../trustbroker-install/docker/run.sh[]

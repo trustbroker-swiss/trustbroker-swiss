@@ -187,9 +187,9 @@ class RelyingPartyTest {
 		var alias = "rpAlias1";
 		var cpId = "cp3";
 		var cpList = List.of(
-				ClaimsProviderRelyingParty.builder().id("cp1").build(),
-				ClaimsProviderRelyingParty.builder().id("cp2").relyingPartyAlias("rp2").build(),
-				ClaimsProviderRelyingParty.builder().id(cpId).relyingPartyAlias(alias).build()
+				ClaimsProvider.builder().id("cp1").build(),
+				ClaimsProvider.builder().id("cp2").relyingPartyAlias("rp2").build(),
+				ClaimsProvider.builder().id(cpId).relyingPartyAlias(alias).build()
 		);
 		var rp =
 				RelyingParty.builder().claimsProviderMappings(

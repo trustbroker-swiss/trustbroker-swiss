@@ -1,4 +1,3 @@
-
 pluginManagement {
 	repositories {
 		mavenCentral()
@@ -37,5 +36,6 @@ include 'trustbroker-application'
 include 'trustbroker-samlmock'
 include 'trustbroker-oidcmock'
 include 'trustbroker-docs'
+include 'trustbroker-store-ldap'
 // plus 'trustbroker-install'
 

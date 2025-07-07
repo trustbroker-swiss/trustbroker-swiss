@@ -1,4 +1,3 @@
-
 plugins {
 	id 'java-library'
 	id 'jacoco'
@@ -11,8 +10,7 @@ configurations {
 dependencies {
 	api project("${rootProject.top}:trustbroker-service")
 	api 'jakarta.xml.bind:jakarta.xml.bind-api'
-
-	jaxb (
+	jaxb(
 			'org.glassfish.jaxb:jaxb-xjc',
 			'org.glassfish.jaxb:jaxb-runtime'
 	)
@@ -30,18 +28,17 @@ def xjbSourceDir = file("src/main/resources")
 def xjbPatchedDir = file("build/generated/xjb")
 
 def schemaClasses = [
-		'ClaimsProviderDefinitions',
-		'ClaimsProviderSetup',
 		'RelyingParty',
 		'RelyingPartySetup',
+		'ClaimsProviderSetup',
+		'ClaimsProviderDefinitions',
 		'SsoGroupSetup'
 ]
-
 
 sourceSets {
 	main {
 		java {
-			srcDirs =  [patchedJaxbSources]
+			srcDirs = [patchedJaxbSources]
 		}
 	}
 }
@@ -72,8 +69,6 @@ task patchXjb(type: Copy) {
 	}
 }
 
-compileJava.dependsOn patchXjb
-
 task copyGeneratedXsdClasses(type: Copy) {
 	from(serviceSchemaDir) {
 		include "**/*.xsd"
@@ -84,6 +79,8 @@ task copyGeneratedXsdClasses(type: Copy) {
 	}
 }
 
+copyGeneratedXsdClasses.dependsOn ":trustbroker-service:processResources"
+compileJava.dependsOn patchXjb
 compileJava.dependsOn copyGeneratedXsdClasses
 
 // xjc warns that namespace http://java.sun.com/xml/ns/jaxb should be https://jakarta.ee/xml/ns/jaxb
@@ -94,7 +91,7 @@ schemaClasses.each { name ->
 	def xjbPatchedFile = "${xjbPatchedDir}/${name}.xjb"
 	def destFile = "${jaxbTargetDir}/${packageDirectory}/${name}.java"
 
-	task "jaxb${name}" (dependsOn: [copyGeneratedXsdClasses, patchXjb])  {
+	task "jaxb${name}"(dependsOn: [copyGeneratedXsdClasses, patchXjb]) {
 		System.setProperty('javax.xml.accessExternalSchema', 'all')
 		inputs.files(schemaFile, xjbPatchedFile, xjbSourceFile)
 		outputs.file(destFile)

@@ -15,10 +15,9 @@
 
 import { HttpClient, HttpHeaders, HttpResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, shareReplay } from 'rxjs';
 
 import { environment } from '../../environments/environment';
-import { IdpObjects } from '../model/IdpObject';
 import { Configuration } from '../model/Configuration';
 import { SsoParticipants } from '../model/SsoParticipants';
 import { SupportInfo } from '../model/SupportInfo';
@@ -30,11 +29,16 @@ import { EncodeUtil } from '../shared/encode-util';
 })
 export class ApiService {
 	private readonly baseUrl = environment.apiUrl;
+	private readonly configuration$ = this.fetchConfiguration().pipe(shareReplay({ refCount: true }));
 
 	constructor(private readonly http: HttpClient) {}
 
-	getIdpObjects(issuer: string, authnRequestId: string): Observable<IdpObjects> {
-		return this.http.get<IdpObjects>(`${this.baseUrl}hrd/relyingparties/${issuer}/tiles?session=${authnRequestId}`);
+	getIdpObjects(issuer: string, authnRequestId: string): Observable<HttpResponse<string>> {
+		return this.http.get(`${this.baseUrl}hrd/relyingparties/${issuer}/tiles?session=${authnRequestId}`, {
+			headers: new HttpHeaders().set('Accept', 'text/html,application/json'),
+			observe: 'response',
+			responseType: 'text'
+		});
 	}
 
 	// btoa support just from IE10
@@ -62,10 +66,9 @@ export class ApiService {
 	}
 
 	getSsoParticipants(ssoGroupName: string): Observable<SsoParticipants[]> {
-		if (ssoGroupName == null) {
-			return this.http.get<SsoParticipants[]>(`${this.baseUrl}sso/participants`);
-		}
-		return this.http.get<SsoParticipants[]>(`${this.baseUrl}sso/participants/${name}`);
+		return ssoGroupName
+			? this.http.get<SsoParticipants[]>(`${this.baseUrl}sso/participants/${ssoGroupName}`)
+			: this.http.get<SsoParticipants[]>(`${this.baseUrl}sso/participants`);
 	}
 
 	logoutSingleActiveGroup(logoutIssuer: string): Observable<SsoParticipants[]> {
@@ -83,11 +86,15 @@ export class ApiService {
 		});
 	}
 
-	fetchConfiguration() {
-		return this.http.get<Configuration>(`${this.baseUrl}hrd/config`);
-	}
-
 	getImageUrl(theme: Theme, image: string) {
 		return `${this.baseUrl}hrd/assets/images/${theme.name}/${image}`;
+	}
+
+	getConfiguration(): Observable<Configuration> {
+		return this.configuration$;
+	}
+
+	private fetchConfiguration(): Observable<Configuration> {
+		return this.http.get<Configuration>(`${this.baseUrl}config/frontend`);
 	}
 }

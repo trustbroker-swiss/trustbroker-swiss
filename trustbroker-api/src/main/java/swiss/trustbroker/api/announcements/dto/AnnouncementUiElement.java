@@ -16,6 +16,7 @@
 package swiss.trustbroker.api.announcements.dto;
 
 import java.io.Serializable;
+import java.time.OffsetDateTime;
 
 import lombok.Builder;
 import lombok.Data;
@@ -37,4 +38,6 @@ public class AnnouncementUiElement implements Serializable {
 	private String phoneNumber;
 
 	private String emailAddress;
+
+	private OffsetDateTime validTo;
 }

@@ -109,9 +109,10 @@ public class ServiceSamlTestUtil implements SamlHttpTestBase {
 	public static RelyingPartySetup loadBaseClaimMergeTest() {
 		List<RelyingParty> relyingParties = loadRelyingParties();
 		RelyingPartySetup rulesDefinitions = RelyingPartySetup.builder().relyingParties(relyingParties).build();
+		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 		String definitionPath = getBaseRuleFilePath();
 		RelyingPartySetupUtil.loadRelyingParty(relyingParties, definitionPath,
-				CACHE_DEFINITION_PATH, null, Collections.emptyList(), null);
+				CACHE_DEFINITION_PATH, null, Collections.emptyList(), null, claimsProviderSetup, null);
 		Credential credential = SamlTestBase.dummyCredential(
 				SamlTestBase.TEST_TB_KEYSTORE_JKS,
 				SamlTestBase.TEST_KEYSTORE_PW,

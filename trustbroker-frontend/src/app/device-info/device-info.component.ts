@@ -33,9 +33,9 @@ export class DeviceInfoComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.route.params.subscribe((params: Params) => {
-			const cpUrn = params.cpUrn;
-			const rpUrn = params.rpUrn;
-			const id = params.id;
+			const cpUrn = params['cpUrn'];
+			const rpUrn = params['rpUrn'];
+			const id = params['id'];
 			this.deviceInfoService.sendDeviceInfo(cpUrn, rpUrn, id).subscribe({
 				next: resp => {
 					this.handleDeviceInfoResponse(resp);

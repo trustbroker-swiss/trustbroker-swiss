@@ -40,16 +40,17 @@ import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.saml.dto.SamlBinding;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlFactory;
+import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.SsoSessionIdPolicy;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
-import swiss.trustbroker.federation.xmlconfig.ClaimsProviderRelyingParty;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.mapping.dto.QoaSpec;
 import swiss.trustbroker.mapping.service.QoaMappingService;
+import swiss.trustbroker.oidc.client.dto.AuthorizationCodeFlowRequest;
 import swiss.trustbroker.oidc.client.service.AuthorizationCodeFlowService;
-import swiss.trustbroker.oidc.client.util.OidcClientUtil;
 import swiss.trustbroker.saml.dto.RpRequest;
 import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.sessioncache.dto.StateData;
@@ -112,14 +113,13 @@ public class ClaimsProviderService {
 		}
 
 		// forcing login
-		setForceAuthnAndACUrl(stateData, authnRequest, consumerUrl, cpIssuer);
+		setForceAuthnAndAcUrl(stateData, authnRequest, consumerUrl, claimsProvider);
 
 		// OnRequest hook
 		scriptService.processCpOnRequest(cpIssuer, authnRequest);
 
-		var cp = relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpIssuer, null);
-		var credential = relyingPartySetupService.getRelyingPartySigner(rpIssuer, rpReferrer);
-		var signatureParameters = cp.getSignatureParametersBuilder()
+		var credential = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuer, rpReferrer).getRpSigner();
+		var signatureParameters = claimsProvider.getSignatureParametersBuilder()
 				.credential(credential)
 				.skinnyAssertionNamespaces(trustBrokerProperties.getSkinnyAssertionNamespaces())
 				.build();
@@ -128,12 +128,12 @@ public class ClaimsProviderService {
 		return authnRequest;
 	}
 
-	private void setForceAuthnAndACUrl(StateData stateData, AuthnRequest authnRequest,  String consumerURL, String cpIssuer) {
-		var disableACUrl = relyingPartySetupService.disableAcUrl(cpIssuer, null);
-		if (stateData.getForceAuthn() != null) {
-			authnRequest.setForceAuthn(stateData.getForceAuthn());
+	private static void setForceAuthnAndAcUrl(StateData stateData, AuthnRequest authnRequest,  String consumerURL,
+			ClaimsParty claimsProvider) {
+		if (stateData.forceAuthn() || claimsProvider.forceAuthn(true)) {
+			authnRequest.setForceAuthn(true);
 		}
-		if (!disableACUrl) {
+		if (!Boolean.TRUE.equals(claimsProvider.getDisableACUrl())) {
 			authnRequest.setAssertionConsumerServiceURL(consumerURL);
 		}
 	}
@@ -210,7 +210,7 @@ public class ClaimsProviderService {
 		// validate
 		log.debug("Redirect user to CP cpIssuer={} based on rpAuthnRequestId={}",
 				cpIssuerId, stateData.getSpStateData().getId());
-		var claimsParty = relyingPartySetupService.getClaimsProviderSetupById(cpIssuerId);
+		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpIssuerId);
 		if (StringUtils.isBlank(cpIssuerId) || claimsParty.isEmpty()) {
 			var msg = String.format("Client call with missing cpIssuer='%s'", cpIssuerId);
 			throw new RequestDeniedException(msg);
@@ -240,24 +240,26 @@ public class ClaimsProviderService {
 
 		// compute CP AuthnRequest for SAML and auditing
 		var rpIssuer = spStateData.getIssuer();
+		var context = spStateData.getRpContext();
 		var rpReferrer = spStateData.getReferer();
 
 		// script hook (may modify RpRequest context classes and comparison type)
-		var claimsProviderMapping = ClaimsProviderRelyingParty.builder().id(cpIssuer).build(); // cannot be manipulated anyway
+		var claimsProviderMapping = ClaimsProvider.builder().id(cpIssuer).build(); // cannot be manipulated anyway
 		var rpRequest = RpRequest.builder()
-								 .claimsProviders(List.of(claimsProviderMapping))
-								 .rpIssuer(rpIssuer)
-								 .requestId(spStateData.getId())
-								 .referer(rpReferrer)
-								 .contextClasses(spStateData.getContextClasses())
-								 .comparisonType(spStateData.getComparisonType())
-								 .applicationName(spStateData.getApplicationName())
-								 .build();
+				.claimsProviders(List.of(claimsProviderMapping))
+				.rpIssuer(rpIssuer)
+				.requestId(spStateData.getId())
+				.referer(rpReferrer)
+				.contextClasses(spStateData.getContextClasses())
+				.comparisonType(spStateData.getComparisonType())
+				.applicationName(spStateData.getApplicationName())
+				.context(context) // RP initiated internal state
+				.build();
 		scriptService.processCpBeforeRequest(cpIssuer, rpRequest);
 
 		var requestedResponseBinding = spStateData.getRequestedResponseBinding();
 
-		var claimsProviderOpt = relyingPartySetupService.getClaimsProviderSetupById(cpIssuer);
+		var claimsProviderOpt = relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpIssuer);
 		if (claimsProviderOpt.isEmpty()) {
 			throw new RequestDeniedException(String.format(
 					"Missing CP with cpIssuer='%s' (check SetupCP.xml)", StringUtil.clean(cpIssuer)));
@@ -266,50 +268,52 @@ public class ClaimsProviderService {
 
 		// map RP Qoa model to CP Qoa model
 		var cpQoaConfig = claimsProvider.getQoaConfig();
-		var rpQoaConfig = relyingPartySetupService.getQoaConfiguration(spStateData, rpIssuer, rpReferrer, trustBrokerProperties);
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuer, rpReferrer);
+		var rpQoaConfig = relyingPartySetupService.getQoaConfiguration(spStateData, relyingParty, trustBrokerProperties);
 		var qoaSpec = qoaMappingService.mapRequestQoasToOutbound(rpRequest.getComparisonType(), rpRequest.getContextClasses(),
 				rpQoaConfig, cpQoaConfig);
 
-		var authnRequest = createAndSignCpAuthnRequest(stateData, rpIssuer, rpReferrer, requestedResponseBinding,
-				qoaSpec, claimsProvider, delegateOrigin(cpIssuer));
-
 		// save CP state before redirect via user-agent (saves updated CP-side qoa too)
 		var deviceId = WebSupport.getDeviceId(request);
-		if (claimsParty.useOidc()) {
-			// set before saving
-			stateData.setOidcNonce(OidcClientUtil.generateNonce());
-		}
-		saveCorrelatedStateDataWithState(cpIssuer, deviceId, stateData);
-
 		// forward using SAML protocol depending on binding
-		String redirectUrl = null;
 		if (claimsParty.useSaml()) {
-			var credential = relyingPartySetupService.getRelyingPartySigner(rpIssuer, rpReferrer);
+			var authnRequest = createAndSignCpAuthnRequest(stateData, rpIssuer, rpReferrer, requestedResponseBinding,
+				qoaSpec, claimsProvider, delegateOrigin(cpIssuer));
+			saveCorrelatedStateDataWithState(cpIssuer, deviceId, stateData);
+			var credential = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuer, rpReferrer).getRpSigner();
 			redirectUserWithRequest(authnRequest, credential, response, claimsParty, stateData, samlOutputService);
-		}
 
+			// audit
+			auditAuthnRequestToCp(authnRequest, null, request, stateData);
+			return null;
+		}
 		// forward using OIDC authorization code flow
 		else {
-			redirectUrl = authorizationCodeFlowService.redirectUserWithRequest(claimsParty, stateData);
-		}
+			stateData.getSpStateData().setOidcNonce(OidcUtil.generateNonce());
+			var authnCodeFlowRequest = authorizationCodeFlowService.createAuthnRequest(claimsParty, stateData, qoaSpec);
+			saveCorrelatedStateDataWithState(cpIssuer, deviceId, stateData);
 
-		// audit
-		auditAuthnRequestToCp(authnRequest, request, stateData);
-		return redirectUrl;
+			// audit
+			auditAuthnRequestToCp(null, authnCodeFlowRequest, request, stateData);
+			return authnCodeFlowRequest.requestUri();
+		}
 	}
 
 	// Pass on rpIssuer to CP in Scoping element
 	private boolean delegateOrigin(String cpIssuer) {
-		var claimsParty = relyingPartySetupService.getClaimsProviderSetupById(cpIssuer);
+		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpIssuer);
 		return claimsParty.isPresent() && claimsParty.get().isDelegateOrigin();
 	}
 
-	private void auditAuthnRequestToCp(AuthnRequest authnRequest, HttpServletRequest request, StateData stateData) {
+	private void auditAuthnRequestToCp(AuthnRequest authnRequest,
+			AuthorizationCodeFlowRequest authnCodeFlowRequest, HttpServletRequest request,
+			StateData stateData) {
 		var relyingParty = stateData != null ?
 				relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(stateData.getRpIssuer(),	null,	true)
 				: null;
 		var auditDto = new OutboundAuditMapper(trustBrokerProperties)
 				.mapFrom(authnRequest)
+				.mapFrom(authnCodeFlowRequest)
 				.mapFrom(stateData) // overrides authnRequest conversationId if CP side
 				.mapFrom(request)
 				.mapFrom(relyingParty)

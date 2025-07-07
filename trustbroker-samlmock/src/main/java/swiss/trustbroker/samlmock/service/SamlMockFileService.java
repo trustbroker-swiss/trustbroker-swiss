@@ -111,7 +111,7 @@ public class SamlMockFileService {
 			return result;
 		}
 		catch (IOException e) {
-			log.error("Reading config file={} failed: ex={}", mockFile, e.getMessage());
+			log.error("Reading config file={} failed: ex={}", mockFile, e.getMessage(), e);
 			throw new TechnicalException(String.format("Reading config file=%s failed", mockFile), e);
 		}
 	}
@@ -151,8 +151,11 @@ public class SamlMockFileService {
 	private static List<String> listDirectoryContent(String directory) {
 		var dir = new File(directory);
 		var files = dir.list();
-		if (files != null) {
+		if (files != null && files.length > 0) {
 			Arrays.sort(files);
+		}
+		else {
+			log.info("No files loaded from {}", dir.getAbsolutePath());
 		}
 		if (log.isDebugEnabled()) {
 			log.debug("directory={} contains files={}", dir.getAbsolutePath(),

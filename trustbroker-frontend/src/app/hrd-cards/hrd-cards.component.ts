@@ -86,7 +86,7 @@ export class HrdCardsComponent {
 		this.clicked = true;
 		this.route.params
 			.pipe(
-				switchMap(params => this.apiService.selectIdp(params.authnRequestId, idpObject.urn)),
+				switchMap(params => this.apiService.selectIdp(params['authnRequestId'], idpObject.urn)),
 				takeUntilDestroyed(this.destroyRef)
 			)
 			.subscribe({

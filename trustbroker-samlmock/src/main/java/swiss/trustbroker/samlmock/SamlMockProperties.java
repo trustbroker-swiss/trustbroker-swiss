@@ -77,6 +77,8 @@ public class SamlMockProperties {
 
 	private String keyPlacement;
 
+	private boolean emitSki = false;
+
 	private String encryptionKeystore;
 
 	private String encryptionPassword;

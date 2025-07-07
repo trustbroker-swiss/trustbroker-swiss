@@ -61,6 +61,13 @@ public class IdmQuery implements Serializable, IdmRequest {
 	private String name;
 
 	/**
+	 * Used to select an IdmService implementation
+	 * @since 1.10.0
+	 */
+	@XmlAttribute(name = "store")
+	private String store;
+
+	/**
 	 * SAML federation filter to be applied to the user query.
 	 */
 	@XmlAttribute(name = "issuerNameId")
@@ -116,7 +123,7 @@ public class IdmQuery implements Serializable, IdmRequest {
 	@JsonIgnore
 	@Override
 	public List<AttributeName> getAttributeSelection() {
-		return userDetailsSelection != null ?
+		return userDetailsSelection != null && userDetailsSelection.getDefinitions() != null ?
 				Collections.unmodifiableList(userDetailsSelection.getDefinitions()) :
 				Collections.emptyList();
 	}

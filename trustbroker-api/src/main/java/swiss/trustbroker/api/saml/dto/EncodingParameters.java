@@ -25,8 +25,30 @@ import lombok.Data;
 @Builder
 public class EncodingParameters {
 
+	/**
+	 * Use artifact binding for SAML encoding.
+	 * <br/>
+	 * Default: false
+	 */
 	@Builder.Default
 	private boolean useArtifactBinding = false;
+
+	/**
+	 * Use redirect binding for SAML encoding.
+	 * <br/>
+	 * Default: false
+	 *
+	 * @since 1.10.0
+	 */
+	@Builder.Default
+	private boolean useRedirectBinding = false;
+
+	/**
+	 * Optional signature algorithm for redirect encoding.
+	 *
+	 * @since 1.10.0
+	 */
+	private String signatureAlgorithm;
 
 	@Builder.Default
 	private Map<String, Object> templateParameters = Collections.emptyMap();

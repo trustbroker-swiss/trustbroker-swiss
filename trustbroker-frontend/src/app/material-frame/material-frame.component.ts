@@ -13,11 +13,11 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Component, EventEmitter, Input, ViewChild, ViewEncapsulation } from '@angular/core';
-import { Observable } from 'rxjs';
-
+import { Component, Input, ViewChild, ViewEncapsulation } from '@angular/core';
 import { Theme } from '../model/Theme';
 import { ThemeService } from '../services/theme-service';
+import { MatSidenav } from '@angular/material/sidenav';
+import { FocusOrigin } from '@angular/cdk/a11y';
 
 @Component({
 	selector: 'app-mat-frame',
@@ -34,24 +34,22 @@ export class MaterialFrameComponent {
 	@Input() detailedFooter = true;
 	@Input() theme: Theme = ThemeService.defaultTheme;
 
-	@ViewChild('sidenav') sidenav;
+	@ViewChild('sidenav') sidenav: MatSidenav;
 
-	readonly helpPanel = new EventEmitter<boolean>();
-
-	version: Observable<string>;
-	currentYear: Observable<number>;
 	// legalFrameworkAddresses$: Observable<InternationalText>;
 	envPrefix = '';
 
-	toggleHelpPanel(): void {
+	async toggleHelpPanel(focusOrigin: FocusOrigin): Promise<void> {
 		if (this.theme.hasHelpPanel) {
-			this.sidenav.toggle().then(result => this.helpPanel.emit(result));
+			// on keyboard navigation, automatically focus the first interactive element within the side panel
+			this.sidenav.autoFocus = focusOrigin === 'keyboard';
+			await this.sidenav.toggle(!this.sidenav.opened, focusOrigin).then();
 		}
 	}
 
-	closeHelpPanel(): void {
+	async closeHelpPanel(): Promise<void> {
 		if (this.theme.hasHelpPanel) {
-			this.sidenav.close().then(result => this.helpPanel.emit(result));
+			await this.sidenav.close().then();
 		}
 	}
 }

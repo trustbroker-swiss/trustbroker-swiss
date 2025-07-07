@@ -63,7 +63,7 @@
 								[inputShortcut]="idpObject.shortcut"
 								[cardText]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title } | safeMarkup"
 								(cardClick)="onClickCard(idpObject)"
-								[disabled]="idpObject.disabled"
+								[disabled]="idpObject.disabled === 'true'"
 								[theme]="theme"
 							/>
 						}
