@@ -1,6 +1,25 @@
 # Unreleased Versions
 
 
+## 1.11.0
+
+### Dependency upgrades
+
+- Spring Boot 3.5.3
+- Spring Cloud 2025.0.0
+- JGit 7.3.0.202506031305-r
+
+### Features
+- OIDC:
+  - Support for JWE (JSON Web Encryption)
+- WSTrust
+  - Support for RENEW request
+- Improvements for LDAP IDM interface
+
+### Bugfixes
+ - State not sent back to OIDC client on SAML responder error
+
+
 # Released Versions
 
 
