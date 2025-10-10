@@ -146,17 +146,17 @@ public class AuthenticationService {
 		try {
 			// security
 			signatureContext.setRequireSignature(relyingParty.requireSignedAuthnRequest());
-			assertionConsumerService.validateAuthnRequest(authnRequest, httpRequest, signatureContext,
+			var validationResult = assertionConsumerService.validateAuthnRequest(authnRequest, httpRequest, signatureContext,
 					relyingParty.getSecurityPolicies());
 
 			// state for SSO save pending AuthnRequest as new state until we know the SSO group from the CP chosen CP in HRD
-			stateDataByAuthnReq = assertionConsumerService.saveState(authnRequest, httpRequest, relyingParty, Optional.empty(),
-					signatureContext.getBinding());
+			stateDataByAuthnReq = assertionConsumerService.saveState(authnRequest, validationResult.isSignatureValidated(),
+					httpRequest, relyingParty, Optional.empty(), signatureContext.getBinding());
 		}
 		catch (RequestDeniedException ex) {
 			// discontinued stealth mode only (we log the error but analyze requests anyway)
 			if (trustBrokerProperties.getSecurity().isSaveStateOnValidationFailure()) {
-				assertionConsumerService.saveState(authnRequest, httpRequest, relyingParty, Optional.empty(),
+				assertionConsumerService.saveState(authnRequest, false, httpRequest, relyingParty, Optional.empty(),
 						signatureContext.getBinding());
 			}
 			throw ex;
@@ -183,7 +183,7 @@ public class AuthenticationService {
 		var useSkinnyUi = OperationalUtil.useSkinnyUiForLegacyClients(rpRequest, httpRequest, trustBrokerProperties);
 		var skipForMonitoring = OperationalUtil.skipUiFeaturesForAdminAndMonitoringClients(httpRequest, trustBrokerProperties);
 		var providerName = authnRequest.getProviderName();
-		if (showAnnouncements(relyingParty, providerName, useSkinnyUi, skipForMonitoring, rpRequest.getFeatureConditions())) {
+		if (showAnnouncements(relyingParty, providerName, useSkinnyUi, skipForMonitoring, rpRequest.featureConditionSet())) {
 			return apiSupport.getAnnouncementsUrl(rpIssuer, authnRequest.getID(), providerName);
 		}
 

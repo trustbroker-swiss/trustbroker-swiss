@@ -204,7 +204,7 @@ public class TrustBrokerProperties {
 	/**
 	 * WS-Trust protocol configuration.
 	 */
-	private WsTrustConfig wstrust;
+	private WsTrustConfig wstrust = new WsTrustConfig();
 
 	/**
 	 * SAML protocol configuration.

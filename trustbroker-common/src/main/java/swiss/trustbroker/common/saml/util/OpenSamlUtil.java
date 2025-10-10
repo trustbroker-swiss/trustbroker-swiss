@@ -523,6 +523,16 @@ public class OpenSamlUtil {
 		return null;
 	}
 
+	@SuppressWarnings("unchecked")
+	public static <T extends XMLObject> T findChildObjectByQname(List<XMLObject> childObjects, QName qName) {
+		for (XMLObject xmlObject : childObjects) {
+			if (xmlObject.getElementQName().equals(qName)) {
+				return (T) xmlObject;
+			}
+		}
+		return null;
+	}
+
 	public static void encodeSamlPostMessage(HttpServletResponse httpServletResponse, MessageContext context,
 			VelocityEngine velocityEngine, HTTPPostEncoder encoder) {
 		encoder = configureSamlPostEncoder(httpServletResponse, context, velocityEngine, encoder);

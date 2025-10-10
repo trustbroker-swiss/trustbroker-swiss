@@ -13,7 +13,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.wstrust.util;
+package swiss.trustbroker.wstrust.validator;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -48,11 +48,11 @@ import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.STRICT_STUBS)
-class WsHeaderValidatorTest {
+class WsTrustHeaderValidatorTest {
 
 	private static final String TEST_AUDIENCE = "http://localhost:8080";
 
-	private static final String TEST_TO = WsHeaderValidatorTest.class.getName();
+	private static final String TEST_TO = WsTrustHeaderValidatorTest.class.getName();
 
 	private MemoryAppender memoryAppender;
 
@@ -65,12 +65,12 @@ class WsHeaderValidatorTest {
 	}
 
 	@BeforeEach
-	public void setup() {
+	void setup() {
 		// catch log output of interest
 		memoryAppender = new MemoryAppender();
 		memoryAppender.setContext((LoggerContext) LoggerFactory.getILoggerFactory());
 		enableDebug(AssertionValidator.class, memoryAppender);
-		enableDebug(WsHeaderValidator.class, memoryAppender);
+		enableDebug(WsTrustHeaderValidator.class, memoryAppender);
 		memoryAppender.start();
 
 		SamlInitializer.initSamlSubSystem();
@@ -81,7 +81,7 @@ class WsHeaderValidatorTest {
 	}
 
 	@AfterEach
-	public void cleanUp() {
+	void cleanUp() {
 		memoryAppender.reset();
 		memoryAppender.stop();
 	}
@@ -89,7 +89,7 @@ class WsHeaderValidatorTest {
 	@Test
 	void validateHeaderElementsMissingHeaderTest() {
 		var ex = assertThrows(RequestDeniedException.class, () -> {
-			WsHeaderValidator.validateHeaderElements(null, "validateHeaderElementsMissingHeaderTest-Issuer");
+			WsTrustHeaderValidator.validateHeaderElements(null, "validateHeaderElementsMissingHeaderTest-Issuer");
 		});
 		assertException("SOAP request header missing", ex);
 	}
@@ -99,7 +99,7 @@ class WsHeaderValidatorTest {
 		SoapMessageHeader requestHeader = givenRequestHeader();
 		requestHeader.setAction(null);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
-			WsHeaderValidator.validateHeaderElements(requestHeader, "");
+			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "");
 		});
 		assertException("Action missing or invalid in SOAP header", ex);
 	}
@@ -109,7 +109,7 @@ class WsHeaderValidatorTest {
 		SoapMessageHeader requestHeader = givenRequestHeader();
 		requestHeader.getAction().setURI("http://invalidaction");
 		var ex = assertThrows(RequestDeniedException.class, () -> {
-			WsHeaderValidator.validateHeaderElements(requestHeader, "");
+			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "");
 		});
 		assertException("Action missing or invalid in SOAP header", ex);
 	}
@@ -119,7 +119,7 @@ class WsHeaderValidatorTest {
 		SoapMessageHeader requestHeader = givenRequestHeader();
 		requestHeader.setMessageId(null);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
-			WsHeaderValidator.validateHeaderElements(requestHeader, "validateHeaderElementsNullMessageIdTest-Issuer");
+			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "validateHeaderElementsNullMessageIdTest-Issuer");
 		});
 		assertException("MessageId missing in SOAP header", ex);
 	}
@@ -129,7 +129,7 @@ class WsHeaderValidatorTest {
 		SoapMessageHeader requestHeader = givenRequestHeader();
 		requestHeader.setMessageId(null);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
-			WsHeaderValidator.validateHeaderElements(requestHeader, "validateHeaderElementsNoMessageIdTest-Issuer");
+			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "validateHeaderElementsNoMessageIdTest-Issuer");
 		});
 		assertException("MessageId missing in SOAP header", ex);
 	}
@@ -139,7 +139,7 @@ class WsHeaderValidatorTest {
 		SoapMessageHeader requestHeader = givenRequestHeader();
 		requestHeader.setReplyTo(null);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
-			WsHeaderValidator.validateHeaderElements(requestHeader, "validateHeaderElementsNullReplayToTest-Issuer");
+			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "validateHeaderElementsNullReplayToTest-Issuer");
 		});
 		assertException("ReplyTo missing in SOAP header", ex);
 	}
@@ -149,7 +149,7 @@ class WsHeaderValidatorTest {
 		SoapMessageHeader requestHeader = givenRequestHeader();
 		requestHeader.getReplyTo().setAddress(null);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
-			WsHeaderValidator.validateHeaderElements(requestHeader, "");
+			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "");
 		});
 		assertException("Address missing or invalid in ReplyTo SOAP header", ex);
 	}
@@ -159,7 +159,7 @@ class WsHeaderValidatorTest {
 		SoapMessageHeader requestHeader = givenRequestHeader();
 		requestHeader.getReplyTo().getAddress().setURI(Address.NONE);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
-			WsHeaderValidator.validateHeaderElements(requestHeader, "");
+			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "");
 		});
 		assertException("Address missing or invalid in ReplyTo SOAP header", ex);
 	}
@@ -169,7 +169,7 @@ class WsHeaderValidatorTest {
 		SoapMessageHeader requestHeader = givenRequestHeader();
 		requestHeader.getReplyTo().getAddress().setURI("http://randomaddress");
 		var ex = assertThrows(RequestDeniedException.class, () -> {
-			WsHeaderValidator.validateHeaderElements(requestHeader, "");
+			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "");
 		});
 		assertException("Address missing or invalid in ReplyTo SOAP header", ex);
 	}
@@ -178,7 +178,7 @@ class WsHeaderValidatorTest {
 	void validateHeaderElementsValidTest() {
 		SoapMessageHeader requestHeader = givenRequestHeader();
 		assertDoesNotThrow(() -> {
-			WsHeaderValidator.validateHeaderElements(requestHeader, TEST_TO);
+			WsTrustHeaderValidator.validateHeaderElements(requestHeader, TEST_TO);
 		});
 	}
 

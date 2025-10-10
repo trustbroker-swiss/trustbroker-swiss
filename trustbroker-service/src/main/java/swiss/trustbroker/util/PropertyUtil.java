@@ -40,6 +40,10 @@ public class PropertyUtil {
 
 	/**
 	 * Copy all attributes from base to target if set in base, but not in target.
+	 * Note: Careful if you have a <code>Boolean</code> with getter <code>Boolean getProperty</code> and
+	 * <code>setProperty(Boolean)</code> and a convenience override <code>boolean isProperty</code> a property descriptor
+	 * is produced for the <code>boolean isProperty</code> without a setter and the propagation fails!
+	 * I.e. don't name the convenience accessors 'is', but leave the 'is' out.
 	 */
 	public static <X> void copyMissingAttributes(X target, X base) {
 		copyMissingAttributes(Collections.emptySet(), target, base);

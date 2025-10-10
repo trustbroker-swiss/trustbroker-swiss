@@ -20,6 +20,8 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static swiss.trustbroker.config.TestConstants.LATEST_INVALID_DEFINITION_PATH;
 
 import java.util.Collections;
@@ -31,6 +33,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.setup.service.GitService;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.service.XmlConfigStatusService;
@@ -46,6 +49,7 @@ import swiss.trustbroker.homerealmdiscovery.util.ClaimsProviderUtil;
 import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
 import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.oidc.ClientConfigInMemoryRepository;
+import swiss.trustbroker.oidc.OidcEncryptionKeystoreService;
 import swiss.trustbroker.oidc.client.service.OidcMetadataCacheService;
 import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
@@ -83,6 +87,12 @@ class AppConfigServiceTest {
 
 	@MockitoBean
 	private WebResourceProvider resourceProvider;
+
+	@MockitoBean
+	private CredentialService credentialService;
+
+	@MockitoBean
+	private OidcEncryptionKeystoreService oidcEncryptionKeystoreService;
 
 	@Autowired
 	private AppConfigService appConfigService;
@@ -131,6 +141,7 @@ class AppConfigServiceTest {
 	void loadConfigFromFileInvalidFile() {
 		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 		var relyingPartySetup = loadRelyingParty("SetupRPInvalidCert.xml");
+		doThrow(TechnicalException.class).when(credentialService).checkAndLoadCert(any(), any(), any());
 		assertDoesNotThrow(() ->
 				RelyingPartySetupUtil.loadRelyingParty(
 						relyingPartySetup.getRelyingParties(), LATEST_INVALID_DEFINITION_PATH, LATEST_INVALID_DEFINITION_PATH,

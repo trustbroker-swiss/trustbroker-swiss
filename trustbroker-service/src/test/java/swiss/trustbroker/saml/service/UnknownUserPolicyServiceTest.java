@@ -41,9 +41,9 @@ import swiss.trustbroker.saml.dto.CpResponse;
 @ContextConfiguration(classes = UnknownUserPolicyService.class)
 class UnknownUserPolicyServiceTest {
 
-	private final static String IDENTITY_QUERY = "IDENTITY";
+	private static final String IDENTITY_QUERY = "IDENTITY";
 
-	private final static String TENANT_QUERY = "TENANT";
+	private static final String TENANT_QUERY = "TENANT";
 
 	@Autowired
 	UnknownUserPolicyService unknownUserPolicyService;

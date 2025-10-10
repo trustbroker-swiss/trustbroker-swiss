@@ -58,6 +58,8 @@ class OidcMockTestData {
 
 	static final String REDIRECT_URI_ENCODED = "http%3A%2F%2Flocalhost%3A8080%2Fresponse";
 
+	static final String CUSTOM_PARAM_ENCODED = "%7B%22id_token%22%3A%7B%22acr%22%3A+%7B%22essential%22%3A+true%2C%22values%22%3A+%5B%22acrvalue%22%5D%7D%7D%7D";
+
 	static final String CLAIM_EMAIL = "email";
 
 	static final String EMAIL = "User1@trustbroker.swiss";

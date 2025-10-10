@@ -79,6 +79,7 @@ public class StateData implements Serializable, SessionState {
 
 	private Boolean forceAuthn;
 
+	// AuthnRequest was signed with a validated signature
 	private Boolean signedAuthnRequest;
 
 	private List<String> completedAuthnRequests;
@@ -240,6 +241,21 @@ public class StateData implements Serializable, SessionState {
 	@JsonIgnore
 	public boolean forceAuthn() {
 		return Boolean.TRUE.equals(forceAuthn);
+	}
+
+
+	/**
+	 * @return null if SSO is not established
+	 */
+	public Instant getLatestSsoSessionEndTime(int defaultSsoSessionLifetimeSec) {
+		if (!isSsoEstablished()) {
+			return null;
+		}
+		var maxSessionTimeSec = ssoState.getMaxSessionTimeSecs();
+		if (maxSessionTimeSec == 0) {
+			maxSessionTimeSec = defaultSsoSessionLifetimeSec;
+		}
+		return getLifecycle().getSsoEstablishedTime().toInstant().plusSeconds(maxSessionTimeSec);
 	}
 
 }

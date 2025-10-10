@@ -75,7 +75,7 @@ class OidcExceptionHelperTest {
 			String issuer, String expectedResult) {
 		mockSession(authException, redirectUri);
 		var result = OidcExceptionHelper.buildLocationForAuthenticationException(request, returnUrl, issuer, "unit-test",
-				uri -> redirectUri.equals(uri));
+				uri -> redirectUri != null && redirectUri.equals(uri));
 		assertThat(result, is(expectedResult));
 	}
 
@@ -227,7 +227,7 @@ class OidcExceptionHelperTest {
 		OidcExceptionHelper.saveAuthenticationException(request, authException);
 		assertThat(OidcExceptionHelper.hasAuthenticationException(request), is(true));
 		var result = OidcExceptionHelper.buildLocationForAuthenticationException(
-				request, "/return", "http://localhost", "unit-test", uri -> redirectUri.equals(uri));
+				request, "/return", "http://localhost", "unit-test", redirectUri::equals);
 		assertThat(result, is("http://localhost/test?error=test&error_uri=http%3A%2F%2Flocalhost%2Freturn"));
 	}
 

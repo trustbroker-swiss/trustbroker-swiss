@@ -22,6 +22,7 @@ import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -63,20 +64,18 @@ class QoaMappingUtilTest {
 		List<String> requestCtxClasses = Arrays.asList("class1", "class2");
 		var cpQoa = Qoa.builder().enforce(cpEnforce).build();
 		var cpQoaConfig = new QoaConfig(cpQoa, "12345");
-		var rpQoa = Qoa.builder().enforce(rpEnforce).build();
-		var rpQoaConf = new QoaConfig(rpQoa, "rpId");
 		List<String> expectedCtxClasses = List.of("class1", "class2", "class3");
 
 		if (throwEx) {
 			assertThrows(RequestDeniedException.class, () ->
-					QoaMappingUtil.invalidQoaException(QoaComparison.MINIMUM, requestCtxClasses, expectedCtxClasses,
-							cpQoaConfig, rpQoaConf)
+							QoaMappingUtil.invalidQoaException(QoaComparison.MINIMUM, requestCtxClasses, expectedCtxClasses,
+									cpQoaConfig, "rpId")
 			);
 		}
 		else {
 			assertDoesNotThrow(() ->
-					QoaMappingUtil.invalidQoaException(QoaComparison.MINIMUM, requestCtxClasses, expectedCtxClasses,
-							cpQoaConfig, rpQoaConf)
+							QoaMappingUtil.invalidQoaException(QoaComparison.MINIMUM, requestCtxClasses, expectedCtxClasses,
+									cpQoaConfig, "rpId")
 			);
 		}
 	}
@@ -85,7 +84,7 @@ class QoaMappingUtilTest {
 	void invalidQoaExceptionNoConfigTest() {
 		assertDoesNotThrow(() ->
 				QoaMappingUtil.invalidQoaException(QoaComparison.MINIMUM, null, null,
-						new QoaConfig(null, "12345"), new QoaConfig(null, "rpId"))
+						new QoaConfig(null, "12345"), "rpId")
 		);
 	}
 
@@ -244,95 +243,113 @@ class QoaMappingUtilTest {
 		assertThat(QoaMappingUtil.validateQoaComparison(cpQoaConfig, QoaComparison.MINIMUM, Set.of(),  Set.of(2)), is(true));
 	}
 
-	@Test
-	void validateCpContextClassesTest() {
-		List<String> contextClasses = List.of("ClassA", "ClassB");
-		var requestClassRef = "ClassA";
-		var comparison = QoaComparison.EXACT;
-		var cpQoa  = Qoa.builder().enforce(true).build();
+	@ParameterizedTest
+	@MethodSource
+	void validateContextClassesTest(boolean cpSide, QoaComparison comparisonType, List<String> expectedContextClasses, String actualCtx,
+									Map<String, Integer> globalMapping, Qoa cpQoa, Qoa rpQoa,
+									boolean checkOnly, boolean result) {
 		var cpQoaConf = new QoaConfig(cpQoa, "REQ123");
-		var rpQoa  = Qoa.builder().enforce(true).build();
 		var rpQoaConf = new QoaConfig(rpQoa, "rpId");
+
+		if (cpSide) {
+			assertThat(QoaMappingUtil.validateContextClass(
+							comparisonType, expectedContextClasses, cpQoaConf,
+							actualCtx, cpQoaConf,
+							rpQoaConf.issuerId(), globalMapping, checkOnly),
+					is(result)
+			);
+		}
+		else {
+			assertThat(QoaMappingUtil.validateContextClass(
+							comparisonType, expectedContextClasses, rpQoaConf,
+							actualCtx, cpQoaConf,
+							rpQoaConf.issuerId(), globalMapping, checkOnly),
+					is(result)
+			);
+		}
+	}
+
+	static Object[][] validateContextClassesTest() {
 		Map<String, Integer> globalMapping = Map.of(
 				"ClassA", 1,
 				"ClassB", 2,
 				"ClassC", 3
 		);
+		// cpSide, comparison, expectedContextClasses, actualContextClass, globalMapping, cpQoaConf, rpQoaConf, checkOnly, result
+		var enforcedQoa = Qoa.builder().enforce(true).build();
+		return new Object[][]{
+				{true, null, List.of("ClassA", "ClassB"), "ClassA", Map.of(), enforcedQoa, enforcedQoa, false, true},
+				// valid
+				{true, QoaComparison.EXACT, List.of("ClassA", "ClassB"), "ClassA", globalMapping, enforcedQoa, enforcedQoa, false, true},
+				{true, QoaComparison.EXACT, null, "ClassA", Map.of(), enforcedQoa, enforcedQoa, false, true},
+				{true, QoaComparison.EXACT, Collections.emptyList(), "ClassA", Map.of(), enforcedQoa, enforcedQoa, false, true},
+				// not valid
+				{true, QoaComparison.EXACT, List.of("ClassA", "ClassB"), "ClassC", globalMapping, Qoa.builder().enforce(false).build(), enforcedQoa, false, false},
+				// enforcement disabled
+				{true, QoaComparison.EXACT, List.of("ClassA", "ClassB"), null, Collections.emptyMap(), Qoa.builder().enforce(false).build(), Qoa.builder().enforce(false).build(), false, false},
+				// check only
+				{true, QoaComparison.EXACT, List.of("ClassA", "ClassB"), "ClassC", globalMapping, enforcedQoa, enforcedQoa, true, false},
+				{true, QoaComparison.EXACT, List.of("ClassA", "ClassB"), null, Collections.emptyMap(), enforcedQoa, enforcedQoa, true, false},
 
-		assertThat(QoaMappingUtil.validateCpContextClasses(
-				comparison, contextClasses, cpQoaConf,
-				requestClassRef, cpQoaConf,
-				rpQoaConf, globalMapping, false),
-				is(true)
-		);
+				{true, QoaComparison.MINIMUM, List.of("ClassA", "ClassB"), "ClassA", globalMapping, enforcedQoa, enforcedQoa, false, true},
+				{true, QoaComparison.MINIMUM, null, "ClassA", Map.of(), enforcedQoa, enforcedQoa, false, true},
+				{true, QoaComparison.MINIMUM, Collections.emptyList(), "ClassA", Map.of(), enforcedQoa, enforcedQoa, false, true},
+				// valid
+				{true, QoaComparison.MINIMUM, List.of("ClassA", "ClassB"), "ClassC", globalMapping, enforcedQoa, enforcedQoa, false, true},
+				{true, QoaComparison.MINIMUM, List.of("ClassA", "ClassB"), "ClassC", globalMapping, enforcedQoa, Qoa.builder().enforce(false).build(), false, true},
+				// enforcement disabled
+				{false, QoaComparison.MINIMUM, List.of("ClassA", "ClassB"), null, Collections.emptyMap(), Qoa.builder().enforce(false).build(), Qoa.builder().enforce(false).build(), false, false},
+				// check only
+				{true, QoaComparison.MAXIMUM, List.of("ClassA", "ClassB"), "ClassC", globalMapping, enforcedQoa, enforcedQoa, true, false},
+				{true, QoaComparison.MAXIMUM, List.of("ClassA", "ClassB"), null, Collections.emptyMap(), enforcedQoa, enforcedQoa, true, false},
 
-		assertThat(QoaMappingUtil.validateCpContextClasses(
-				comparison, null, cpQoaConf,
-				requestClassRef, cpQoaConf,
-				rpQoaConf, Map.of(), false),
-				is(true)
-		);
+				{true, QoaComparison.MAXIMUM, List.of("ClassA", "ClassB"), "ClassA", globalMapping, enforcedQoa, enforcedQoa, false, true},
+				{true, QoaComparison.MAXIMUM, null, "ClassA", Map.of(), enforcedQoa, enforcedQoa, false, true},
+				{true, QoaComparison.MAXIMUM, Collections.emptyList(), "ClassA", Map.of(), enforcedQoa, enforcedQoa, false, true},
 
-		assertThat(QoaMappingUtil.validateCpContextClasses(
-				comparison, Collections.emptyList(), cpQoaConf,
-				requestClassRef, cpQoaConf,
-				rpQoaConf, Map.of(), false),
-				is(true)
-		);
+				// enforcement disabled
+				{false, QoaComparison.MAXIMUM, List.of("ClassA", "ClassB"), null, Collections.emptyMap(), Qoa.builder().enforce(false).build(), Qoa.builder().enforce(false).build(), false, false},
+		};
+	}
 
-		assertThat(QoaMappingUtil.validateCpContextClasses(
-				null, contextClasses, cpQoaConf,
-				requestClassRef, cpQoaConf,
-				rpQoaConf, Map.of(), false),
-				is(true)
-		);
+	@ParameterizedTest
+	@MethodSource
+	void validateContextClassesExceptionTest(QoaComparison comparisonType, List<String> expectedContextClasses, String actualCtx,
+											 Map<String, Integer> globalMapping, Qoa cpQoa) {
+		var cpQoaConf = new QoaConfig(cpQoa, "REQ123");
 
-		Map<String, Integer> emptyMapping = Collections.emptyMap();
-		assertThrows(RequestDeniedException.class, () -> QoaMappingUtil.validateCpContextClasses(
-				comparison, contextClasses, cpQoaConf,
-				null, cpQoaConf,
-				rpQoaConf, emptyMapping, false)
+		assertThrows(RequestDeniedException.class, () -> QoaMappingUtil.validateContextClass(
+				comparisonType, expectedContextClasses, cpQoaConf,
+				actualCtx, cpQoaConf,
+				"rpId", globalMapping, false)
 		);
-		assertThat(QoaMappingUtil.validateCpContextClasses(
-						comparison, contextClasses, rpQoaConf,
-				null, cpQoaConf,
-				rpQoaConf, emptyMapping, true),
-				is(false)
-		);
+	}
 
-		assertThrows(RequestDeniedException.class, () -> QoaMappingUtil.validateCpContextClasses(
-				comparison, contextClasses, cpQoaConf,
-				"ClassC", cpQoaConf,
-				rpQoaConf, globalMapping, false)
+	static Object[][] validateContextClassesExceptionTest() {
+		Map<String, Integer> globalMapping = Map.of(
+				"ClassA", 1,
+				"ClassB", 2,
+				"ClassC", 3
 		);
-		assertThat(QoaMappingUtil.validateCpContextClasses(
-				comparison, contextClasses, cpQoaConf,
-				"ClassC", cpQoaConf,
-				rpQoaConf, globalMapping, true),
-				is(false)
-		);
+		//  comparison, expectedContextClasses, actualContextClass, globalMapping, cpQoa, result
+		var enforcedQoa = Qoa.builder().enforce(true).build();
+		return new Object[][]{
+				// no actual context class
+				{QoaComparison.EXACT, List.of("ClassA", "ClassB"), null, Collections.emptyMap(), enforcedQoa},
+				{QoaComparison.EXACT, List.of("ClassA", "ClassB"), null, Collections.emptyMap(), enforcedQoa},
+				{QoaComparison.EXACT, List.of("ClassA", "ClassB"), null, Collections.emptyMap(), enforcedQoa},
+				// not valid
+				{QoaComparison.EXACT, List.of("ClassA", "ClassB"), "ClassC", globalMapping, enforcedQoa},
+				{QoaComparison.EXACT, List.of("ClassA", "ClassB"), "ClassC", globalMapping, enforcedQoa},
 
-		cpQoaConf.config().setEnforce(false);
-		assertThrows(RequestDeniedException.class, () -> QoaMappingUtil.validateCpContextClasses(
-				comparison, contextClasses, cpQoaConf,
-				null, cpQoaConf,
-				rpQoaConf, emptyMapping, false)
-		);
-		assertThat(QoaMappingUtil.validateCpContextClasses(
-				comparison, contextClasses, cpQoaConf,
-				null, cpQoaConf,
-				rpQoaConf, emptyMapping, true),
-				is(false)
-		);
+				{QoaComparison.MINIMUM, List.of("ClassB", "ClassC"), "ClassA", globalMapping, enforcedQoa},
+				// no actual context class
+				{QoaComparison.MINIMUM, List.of("ClassA", "ClassB"), null, Collections.emptyMap(), enforcedQoa},
+				{QoaComparison.MINIMUM, List.of("ClassA", "ClassB"), null, Collections.emptyMap(), enforcedQoa},
+				{QoaComparison.MINIMUM, List.of("ClassA", "ClassB"), null, Collections.emptyMap(), enforcedQoa},
 
-		cpQoaConf.config().setEnforce(false);
-		rpQoaConf.config().setEnforce(false);
-		assertThat(QoaMappingUtil.validateCpContextClasses(
-				comparison, contextClasses, rpQoaConf,
-				null, cpQoaConf,
-				rpQoaConf, emptyMapping, false),
-				is(false)
-		);
+				{QoaComparison.MAXIMUM, List.of("ClassA", "ClassB"), "ClassC", globalMapping, enforcedQoa},
+		};
 	}
 
 	private QualityOfAuthenticationConfig givenGlobalQoa() {
@@ -509,5 +526,173 @@ class QoaMappingUtilTest {
 							 .order(acClassOrder)
 							 .build();
 		assertEquals(result, QoaMappingUtil.getAcClassOrder(acClass, ISSUER, globalMapping, undefinedOrder));
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void rejectRequestIfQoaConfMissingTest(Qoa config, boolean enforceQoaIfMissing, boolean isException) {
+		if (isException) {
+			var ex = assertThrows(RequestDeniedException.class, () -> {
+				QoaMappingUtil.rejectRequestIfQoaConfMissing(config, enforceQoaIfMissing, "Issuer");
+			});
+			assertException("Missing request context class from request or SetupRp configuration with ID=Issuer", ex);
+		} else {
+			assertDoesNotThrow(() -> {
+				QoaMappingUtil.rejectRequestIfQoaConfMissing(config, enforceQoaIfMissing, "Issuer");
+			});
+		}
+	}
+
+	static Object[][] rejectRequestIfQoaConfMissingTest() {
+		return new Object[][]{
+				{null, false, false},
+				{null, true, true},
+				{Qoa.builder().build(), false, false},
+				{Qoa.builder().build(), true, true},
+				{Qoa.builder().enforce(true).build(), true, true},
+				{Qoa.builder().enforce(false).classes(List.of(AcClass.builder().build())).build(), true, false},
+				{Qoa.builder().enforce(false).build(), true, false},
+		};
+	}
+
+	private void assertException(String expectedString, Exception ex) {
+		assertTrue(((RequestDeniedException)ex).getInternalMessage().contains(expectedString),
+				"'" + expectedString + "' not found in: " + ex.getMessage());
+	}
+
+	@Test
+	void getDowngradedClassesNoDowngradedNeededTest() {
+		var globalMapping = givenGlobalNumericQoa();
+		var requestedQoa = List.of(SamlTestBase.Qoa.QOA_20.getName(), SamlTestBase.Qoa.QOA_30.getName(), SamlTestBase.Qoa.QOA_40.getName());
+		var outBoundQoaConf = new QoaConfig(Qoa.builder().build(), "any");
+
+		var ctxClass = SamlTestBase.Qoa.QOA_20.getName();
+		var	qoaOrders = Set.of(SamlTestBase.Qoa.QOA_20.getLevel());
+		var inboundQoaAccClasses = List.of(AcClass.builder().contextClass(ctxClass).build());
+
+		assertTrue(QoaMappingUtil.getDowngradedClasses(
+				outBoundQoaConf, Collections.emptyList(), inboundQoaAccClasses, ctxClass, qoaOrders, globalMapping).isEmpty());
+		assertTrue(QoaMappingUtil.getDowngradedClasses(
+				outBoundQoaConf, requestedQoa, Collections.emptyList(), ctxClass, qoaOrders, globalMapping).isEmpty());
+		assertTrue(QoaMappingUtil.getDowngradedClasses(
+				outBoundQoaConf, requestedQoa, inboundQoaAccClasses, ctxClass, qoaOrders, globalMapping).isEmpty());
+
+		// the context class was in the request
+		ctxClass = SamlTestBase.Qoa.QOA_40.getName();
+		assertTrue(QoaMappingUtil.getDowngradedClasses(
+				outBoundQoaConf, requestedQoa, inboundQoaAccClasses, ctxClass, qoaOrders, globalMapping).isEmpty());
+	}
+
+	@Test
+	void getDowngradedClassesInBoundLowerAndMaxRequestedTest() {
+		var globalMapping = givenGlobalNumericQoa();
+		var requestedQoa = List.of(SamlTestBase.Qoa.QOA_20.getName(), SamlTestBase.Qoa.QOA_30.getName(), SamlTestBase.Qoa.QOA_40.getName());
+		var outBoundQoaConf = new QoaConfig(Qoa.builder().build(), "any");
+		var ctxClass = SamlTestBase.Qoa.QOA_20.getName();
+		var	qoaOrders = Set.of(SamlTestBase.Qoa.QOA_20.getLevel());
+
+		// Upgrade is not allowed
+		var inboundQoaAccClasses = List.of(AcClass.builder().downgradeToMaximumRequested(true).contextClass(ctxClass).build());
+		assertTrue(QoaMappingUtil.getDowngradedClasses(
+				outBoundQoaConf, requestedQoa, inboundQoaAccClasses, ctxClass, qoaOrders, globalMapping).isEmpty());
+	}
+
+	@Test
+	void getDowngradedClassesMissingOutboundConfigTest() {
+		var globalMapping = givenGlobalNumericQoa();
+		var requestedQoa = List.of(SamlTestBase.Qoa.QOA_20.getName(), SamlTestBase.Qoa.QOA_30.getName(), SamlTestBase.Qoa.QOA_40.getName());
+
+		var ctxClass = SamlTestBase.Qoa.QOA_50.getName();
+		var	qoaOrders = Set.of(SamlTestBase.Qoa.QOA_50.getLevel());
+		var inboundQoaAccClasses = List.of(AcClass.builder().downgradeToMaximumRequested(true).contextClass(ctxClass).build());
+
+		// no outbound config but levels are defined in the global mapping
+		var outBoundQoaConf = new QoaConfig(null, "any");
+		assertEquals(SamlTestBase.Qoa.QOA_40.getName(),
+				QoaMappingUtil.getDowngradedClasses(outBoundQoaConf, requestedQoa, inboundQoaAccClasses, ctxClass, qoaOrders, globalMapping).get(0));
+	}
+
+	@Test
+	void getDowngradedClassesTest() {
+		var globalMapping = givenGlobalNumericQoa();
+		var requestedQoa = List.of(SamlTestBase.Qoa.QOA_20.getName(), SamlTestBase.Qoa.QOA_30.getName(), SamlTestBase.Qoa.QOA_40.getName());
+		var outBoundQoaConf = new QoaConfig(Qoa.builder().build(), "any");
+
+		var ctxClass = SamlTestBase.Qoa.QOA_50.getName();
+		var	qoaOrders = Set.of(SamlTestBase.Qoa.QOA_50.getLevel());
+		var inboundQoaAccClasses = List.of(AcClass.builder().downgradeToMaximumRequested(true).contextClass(ctxClass).build());
+
+		// downgrade from 50 to 40
+		assertEquals(SamlTestBase.Qoa.QOA_40.getName(), QoaMappingUtil.getDowngradedClasses(
+				outBoundQoaConf, requestedQoa, inboundQoaAccClasses, ctxClass, qoaOrders, globalMapping).get(0));
+	}
+
+	@Test
+	void getDowngradedClassesToNearestMaxTest() {
+		var globalMapping = givenGlobalNumericQoa();
+		var requestedQoa = List.of(SamlTestBase.Qoa.QOA_20.getName(), SamlTestBase.Qoa.QOA_30.getName(), SamlTestBase.Qoa.QOA_60.getName());
+		var outBoundQoaConf = new QoaConfig(Qoa.builder().build(), "any");
+
+		var ctxClass = SamlTestBase.Qoa.QOA_50.getName();
+		var	qoaOrders = Set.of(SamlTestBase.Qoa.QOA_50.getLevel());
+		var inboundQoaAccClasses = List.of(AcClass.builder().downgradeToMaximumRequested(true).contextClass(ctxClass).build());
+
+		// downgrade from 50 to 30 (60 must be ignored)
+		assertEquals(SamlTestBase.Qoa.QOA_30.getName(), QoaMappingUtil.getDowngradedClasses(
+				outBoundQoaConf, requestedQoa, inboundQoaAccClasses, ctxClass, qoaOrders, globalMapping).get(0));
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void downgradeQoaTest(List<String> requestedQoas, List<String> mappedQoas, AcClass inboundQoa, boolean downgradeToMaximumRequested, List<String> result) {
+		var globalMapping = givenGlobalNumericQoa();
+		var outBoundQoaConf = new QoaConfig(Qoa.builder().build(), "any");
+
+		inboundQoa.setDowngradeToMaximumRequested(downgradeToMaximumRequested);
+		var inboundQoaAccClasses = List.of(inboundQoa);
+		var inboundQoaConfig = new QoaConfig(Qoa.builder().classes(inboundQoaAccClasses).build(), "any");
+
+		assertEquals(result, QoaMappingUtil.getDowngradedQoas(requestedQoas, mappedQoas, inboundQoaConfig, outBoundQoaConf, globalMapping));
+	}
+
+	static Object[][] downgradeQoaTest() {
+		// requestedQoas, mappedQoas, inboundQoaAccClass, downgradeToMaximumRequested, result
+		var cpSideQoa = "urn:qoa:custom";
+		var qoa20 = SamlTestBase.Qoa.QOA_20.getName();
+		var qoa40 = SamlTestBase.Qoa.QOA_40.getName();
+		var qoa50 = SamlTestBase.Qoa.QOA_50.getName();
+		var list20 = List.of(qoa20);
+		var list40 = List.of(qoa40);
+		var list50 = List.of(qoa50);
+		var cpSideQoaList = List.of(cpSideQoa);
+		var list20to40 = List.of(qoa20, SamlTestBase.Qoa.QOA_30.getName(), qoa40);
+		var list31to40 = List.of(qoa20, SamlTestBase.Qoa.QOA_30.getName(), qoa40, cpSideQoa);
+
+		return new Object[][]{
+				{list20to40, list20, AcClass.builder().contextClass(qoa20).build(), false, list20},
+				{list20to40, list20, AcClass.builder().contextClass(qoa20).build(), true, list20},
+				{list20to40, list50, AcClass.builder().contextClass(qoa50).build(), false, list50},
+				{list20to40, list50, AcClass.builder().contextClass(qoa50).build(), false, list50},
+				{list20to40, list50, AcClass.builder().contextClass(qoa20).build(), true, list50},
+				{Collections.emptyList(), list50, AcClass.builder().contextClass(qoa20).build(), true, list50},
+				{list20to40, cpSideQoaList, AcClass.builder().contextClass(cpSideQoa).order(51).build(), true, list40},
+				{list20to40, cpSideQoaList, AcClass.builder().contextClass(cpSideQoa).order(51).build(), false, cpSideQoaList},
+				{list20to40, cpSideQoaList, AcClass.builder().contextClass(cpSideQoa).order(21).build(), true, list20},
+				{list31to40, cpSideQoaList, AcClass.builder().contextClass(cpSideQoa).order(31).build(), true, cpSideQoaList},
+				{list20to40, list20, AcClass.builder().contextClass(qoa20).order(40).build(), true, list20},
+		};
+	}
+
+	private Map<String, Integer>  givenGlobalNumericQoa() {
+		Map<String, Integer> globalMapping = new HashMap<>();
+		globalMapping.put(SamlTestBase.Qoa.QOA_20.getName(),
+				SamlTestBase.Qoa.QOA_20.getLevel());
+		globalMapping.put(SamlTestBase.Qoa.QOA_30.getName(),
+				SamlTestBase.Qoa.QOA_30.getLevel());
+		globalMapping.put(SamlTestBase.Qoa.QOA_40.getName(),
+				SamlTestBase.Qoa.QOA_40.getLevel());
+		globalMapping.put(SamlTestBase.Qoa.QOA_50.getName(),
+				SamlTestBase.Qoa.QOA_50.getLevel());
+		return globalMapping;
 	}
 }

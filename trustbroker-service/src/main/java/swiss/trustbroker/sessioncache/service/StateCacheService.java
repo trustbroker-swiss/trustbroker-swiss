@@ -145,12 +145,8 @@ public class StateCacheService {
 				log.debug("SsoMaxIdleTimeSecs not set in sessionId={}, using remainingLifetimeSec={}",
 						stateData.getId(), stateValiditySec);
 			}
-			var maxSessionTimeSec = ssoState.getMaxSessionTimeSecs();
-			if (maxSessionTimeSec == 0) {
-				maxSessionTimeSec = trustBrokerProperties.getSsoSessionLifetimeSec();
-			}
-			var latestSessionEndTime =
-					stateData.getLifecycle().getSsoEstablishedTime().toInstant().plusSeconds(maxSessionTimeSec);
+			var latestSessionEndTime = stateData.getLatestSsoSessionEndTime(trustBrokerProperties.getSsoSessionLifetimeSec());
+
 			expiration = now.plusSeconds(stateValiditySec);
 			if (expiration.isAfter(latestSessionEndTime)) {
 				log.debug("State EXPIRED before idle timout sessionId={} spSessionId={} oidcSessionId={} "

@@ -133,6 +133,9 @@ public class WebUtil {
 
 	// Track problems based on IP addresses the user agents have (attacks, debugging login problems)
 	public static String getGatewayIp(HttpServletRequest request, boolean tagged) {
+		if (request == null) {
+			return null; // testing only
+		}
 		var ips = getClientIps(request, tagged);
 		if (ips.length > 0) {
 			return ips[ips.length - 1]; // last entry is direct gateway calling us

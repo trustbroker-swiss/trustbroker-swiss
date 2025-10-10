@@ -25,7 +25,16 @@ public enum ErrorCode {
 	ACCESS_REQUEST_FAILED("accessrequestfailed"),
 	UNKNOWN_PRINCIPAL("unknownprincipal"),
 	UNKNOWN_USER("unknownuser"),
-	STATE_NOT_FOUND("sessionexpired");
+	/**
+	 * Authentication or SSO session expired.
+	 * @since 1.9.0
+	 */
+	STATE_NOT_FOUND("sessionexpired"),
+	/**
+	 * RP/CP QoA requirement not met by CP response.
+	 * @since 1.11.0
+	 */
+	NO_AUTHN_CONTEXT("noauthncontext");
 
 	private final String label;
 

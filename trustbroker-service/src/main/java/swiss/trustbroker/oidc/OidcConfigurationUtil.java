@@ -191,6 +191,7 @@ public class OidcConfigurationUtil {
 		var codeTtlSecs = defaultCodeTimeSecs;
 		var reuseRefreshToken = true; // resilience over security?
 		var idTokenSignature = SignatureAlgorithm.RS256;
+		var requireOpaqueAccessToken = false;
 		if (oidcSecurityPolicies != null) {
 			if (oidcSecurityPolicies.getAccessTokenTimeToLiveMin() != null) {
 				tokenTtlSecs = oidcSecurityPolicies.getAccessTokenTimeToLiveMin() * 60L;
@@ -207,6 +208,7 @@ public class OidcConfigurationUtil {
 			if (oidcSecurityPolicies.getIdTokenSignature() != null) {
 				idTokenSignature = SignatureAlgorithm.from(oidcSecurityPolicies.getIdTokenSignature());
 			}
+			requireOpaqueAccessToken = Boolean.TRUE.equals(oidcSecurityPolicies.getRequireOpaqueAccessToken());
 		}
 
 		// code
@@ -214,7 +216,7 @@ public class OidcConfigurationUtil {
 
 		// token/access_token (JWT token, with OPAQUE tokens we could prevent OIDC miss-use forcing applications to use id_token)
 		builder.accessTokenTimeToLive(Duration.ofSeconds(tokenTtlSecs));
-		builder.accessTokenFormat(OAuth2TokenFormat.SELF_CONTAINED);
+		builder.accessTokenFormat(requireOpaqueAccessToken ? OAuth2TokenFormat.REFERENCE : OAuth2TokenFormat.SELF_CONTAINED);
 
 		// id_token (lifecycle and content aligned with access_token)
 		builder.idTokenSignatureAlgorithm(idTokenSignature); // many adapters only support RS256
@@ -491,6 +493,12 @@ public class OidcConfigurationUtil {
 		}
 		if (!oidcProperties.isDeviceAuthorizationEnabled()) {
 			claimMap.remove(OAuth2AuthorizationServerMetadataClaimNames.DEVICE_AUTHORIZATION_ENDPOINT);
+		}
+		if (!oidcProperties.isPushedAuthorizationRequestsEndpointEnabled()) {
+			claimMap.remove(OAuth2AuthorizationServerMetadataClaimNames.PUSHED_AUTHORIZATION_REQUEST_ENDPOINT);
+		}
+		if (CollectionUtils.isEmpty(oidcProperties.getDPoPSigningAlgValuesSupported())) {
+			claimMap.remove(OAuth2AuthorizationServerMetadataClaimNames.DPOP_SIGNING_ALG_VALUES_SUPPORTED);
 		}
 		// authorization, token, and JWKS endpoints are always required
 	}

@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.lang3.SerializationUtils;
@@ -63,20 +64,19 @@ class CpResponseTest {
 		// remove
 		cpResponse.removeAttributes("attr1");
 		assertThat(cpResponse.getAttribute("attr1"), is(nullValue()));
-		//assertThat(cpResponse.getAttribute("attr2"), is("value2"));
 	}
 
 	@Test
 	void testIdmAttributes() {
 		// set/get
 		var cpResponse = new CpResponse();
-		cpResponse.setUserDetail(null, null, null);
+		cpResponse.setUserDetail(null, null);
 		cpResponse.setUserDetail(null, null, "NULL");
 		cpResponse.setUserDetail(null, "NULL", null);
 		cpResponse.setUserDetail(null, "NULL", "NULL"); // add
 		cpResponse.setUserDetail("NULL", null, null);
 		cpResponse.setUserDetail("NULL", null, "NULL"); // overwrite
-		cpResponse.setUserDetails("NULL", null, List.of());
+		cpResponse.setUserDetails("NULL", List.of());
 		assertThat(cpResponse.getUserDetails()
 							 .size(), is(1));
 		cpResponse.setUserDetail("attr1", "attr1-long", "value1");
@@ -88,12 +88,15 @@ class CpResponseTest {
 		assertThat(cpResponse.getUserDetail("attr2"), is(nullValue()));
 
 		// add
+		cpResponse.addUserDetail("attr0", "value0");
 		cpResponse.addUserDetail("attr1", "attr1-long", "value4");
 		assertThat(cpResponse.getUserDetails("attr1"), contains("value2", "value3", "value4"));
 		cpResponse.addUserDetail("attr2", "attr2-long", "value2");
 		cpResponse.addUserDetail("attr2", "attr2-long", "added");
 		cpResponse.addUserDetailIfMissing("attr2", "attr2-long", "dropped");
 		cpResponse.addUserDetailIfMissing("attr2", "attr2-long", "ignored");
+		assertThat(cpResponse.getUserDetails("attr0"), contains("value0"));
+		assertThat(cpResponse.getUserDetails("attr1-long"), contains("value2", "value3", "value4"));
 		assertThat(cpResponse.getUserDetails("attr2"), contains("value2", "added"));
 
 		// remove
@@ -106,7 +109,7 @@ class CpResponseTest {
 	void testDerivedAttributes() {
 		// set/get
 		var cpResponse = new CpResponse();
-		cpResponse.setProperty(null, null, null);
+		cpResponse.setProperty(null, null);
 		cpResponse.setProperty(null, null, "NULL");
 		cpResponse.setProperty(null, "NULL", null);
 		cpResponse.setProperty(null, "NULL", "NULL"); // added
@@ -124,12 +127,15 @@ class CpResponseTest {
 		assertThat(cpResponse.getProperty("attr2"), is(nullValue()));
 
 		// add
+		cpResponse.addProperty("attr0", "value0");
 		cpResponse.addProperty("attr1", "attr1-long", "value4");
 		assertThat(cpResponse.getProperties("attr1"), contains("value2", "value3", "value4"));
 		cpResponse.addProperty("attr2", "attr2-long", "value2");
 		cpResponse.addProperty("attr2", "attr2-long", "added");
 		cpResponse.addPropertyIfMissing("attr2", "attr2-long", "dropped");
 		cpResponse.addPropertyIfMissing("attr2", "attr2-long", "ignored");
+		assertThat(cpResponse.getProperties("attr0"), contains("value0"));
+		assertThat(cpResponse.getProperties("attr1-long"), contains("value2", "value3", "value4"));
 		assertThat(cpResponse.getProperties("attr2"), contains("value2", "added"));
 
 		// remove
@@ -197,26 +203,59 @@ class CpResponseTest {
 		var condition2 = "test2";
 		var condition3 = "test3";
 
-		cpResponse.featureConditions(null);
-		assertThat(cpResponse.getFeatureConditions(), is(Collections.emptySet()));
+		assertThat(cpResponse.featureConditionSet(), is(Collections.emptySet()));
+
+		assertFalse(cpResponse.hasFeatureCondition(condition3));
+		assertFalse(cpResponse.removeFeatureCondition(condition3));
+		assertTrue(cpResponse.addFeatureCondition(condition3));
+
+		cpResponse.featureConditions((Set<String>) null);
+		assertThat(cpResponse.featureConditionSet(), is(Collections.emptySet()));
 
 		cpResponse.featureConditions(Set.of(condition1, condition2));
-		assertThat(cpResponse.getFeatureConditions(), is(Set.of(condition1, condition2)));
+		assertThat(cpResponse.featureConditionSet(), is(Set.of(condition1, condition2)));
 
 		assertTrue(cpResponse.addFeatureCondition(condition3));
 		assertTrue(cpResponse.hasFeatureCondition(condition3));
-		assertThat(cpResponse.getFeatureConditions(), is(Set.of(condition1, condition2, condition3)));
+		assertThat(cpResponse.featureConditionSet(), is(Set.of(condition1, condition2, condition3)));
 
 		assertFalse(cpResponse.addFeatureCondition(condition3));
-		assertThat(cpResponse.getFeatureConditions(), is(Set.of(condition1, condition2, condition3)));
+		assertThat(cpResponse.featureConditionSet(), is(Set.of(condition1, condition2, condition3)));
 
 		assertTrue(cpResponse.removeFeatureCondition(condition3));
 		assertFalse(cpResponse.hasFeatureCondition(condition3));
-		assertThat(cpResponse.getFeatureConditions(), is(Set.of(condition1, condition2)));
+		assertThat(cpResponse.featureConditionSet(), is(Set.of(condition1, condition2)));
 
 		assertFalse(cpResponse.removeFeatureCondition(condition3));
-		assertThat(cpResponse.getFeatureConditions(), is(Set.of(condition1, condition2)));
+		assertThat(cpResponse.featureConditionSet(), is(Set.of(condition1, condition2)));
+	}
 
+	@Test
+	void testFeatureConditionsParameters() {
+		var cpResponse = CpResponse.builder().build();
+		var condition1 = "test1";
+		var condition2 = "test2";
+		var condition3 = "test3";
+
+		assertThat(cpResponse.featureConditions(), is(Collections.emptyMap()));
+		cpResponse.featureConditions((Map<String, String>) null);
+		assertThat(cpResponse.featureConditions(), is(Collections.emptyMap()));
+
+		// with params
+		var param1 = "param1";
+		var param2 = "param2";
+		cpResponse.featureConditions(Map.of(condition1, param1, condition2, param2));
+		assertThat(cpResponse.featureConditions(), is(Map.of(condition1, param1, condition2, param2)));
+		cpResponse.featureConditions(Collections.emptyMap());
+		assertTrue(cpResponse.addFeatureCondition(condition3, param1));
+		assertThat(cpResponse.featureCondition(condition3), is(param1));
+		assertTrue(cpResponse.hasFeatureCondition(condition3));
+		assertThat(cpResponse.featureConditionSet(), is(Set.of(condition3)));
+		assertThat(cpResponse.featureConditions(), is(Map.of(condition3, param1)));
+		assertTrue(cpResponse.addFeatureCondition(condition3, param2));
+		assertThat(cpResponse.featureCondition(condition3), is(param2));
+		assertTrue(cpResponse.addFeatureCondition(condition3));
+		assertThat(cpResponse.featureCondition(condition3), is(nullValue()));
 	}
 
 }

@@ -41,6 +41,12 @@ export class ErrorBoxComponent implements OnInit {
 	infoKey: string;
 
 	@Input()
+	additionalInfoTitleKey: string;
+
+	@Input()
+	additionalInfoTextKey: string;
+
+	@Input()
 	referenceKey: string;
 
 	@Input()
@@ -77,10 +83,6 @@ export class ErrorBoxComponent implements OnInit {
 
 	languageAppUrl: string;
 
-	showSupportInfoText: boolean;
-
-	showSupportContactText: boolean;
-
 	constructor(
 		private readonly apiService: ApiService,
 		private readonly languageService: LanguageService,
@@ -102,9 +104,7 @@ export class ErrorBoxComponent implements OnInit {
 	}
 
 	ngOnInit(): void {
-		this.showSupportInfoText = false;
-		this.showSupportContactText = false;
-		this.setSupportInfoFlags(this.supportInfoText, this.supportContactText);
+		this.setSupportInfoFlags(this.supportInfoText);
 
 		if (this.supportInfo || this.linkButton) {
 			this.apiService
@@ -124,15 +124,11 @@ export class ErrorBoxComponent implements OnInit {
 		}
 	}
 
-	setSupportInfoFlags(supportInfoText: string, supportContactText: string) {
+	setSupportInfoFlags(supportInfoText: string) {
 		if (supportInfoText == null) {
 			return;
 		}
 		this.languageService.langChange$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-			let translated = this.languageService.translate(supportInfoText);
-			this.showSupportInfoText = translated !== supportInfoText;
-			translated = this.languageService.translate(supportContactText);
-			this.showSupportContactText = translated !== supportContactText;
 			this.setLanguageSpecificAppUrl();
 		});
 	}

@@ -76,6 +76,15 @@ public class AcClass implements Serializable {
 	private Boolean replaceInbound = Boolean.TRUE;
 
 	/**
+	 * If this Qoa is returned by the CP, but was not requested by the RP, downgrade it to the maximum Qoa requested by the RP.
+	 * <br/>
+	 * Default: false
+	 */
+	@XmlAttribute(name = "downgradeToMaximumRequested")
+	@Builder.Default
+	private Boolean downgradeToMaximumRequested = Boolean.FALSE;
+
+	/**
 	 * ACClass name
 	 */
 	@XmlValue

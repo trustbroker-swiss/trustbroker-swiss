@@ -193,6 +193,11 @@ public class QoaMappingService {
 					outboundComparisonType, outboundQoaConfig, matchContextClasses);
 		}
 
+		var globalMapping = trustBrokerProperties.getQoaMap();
+		if (!mappedQoas.isEmpty()) {
+			mappedQoas = QoaMappingUtil.getDowngradedQoas(requestContextClasses, mappedQoas, inboundQoaConfig, outboundQoaConfig, globalMapping);
+		}
+
 		log.debug("Mapped responseContextClasses={} inboundIssuer={} "
 						+ " to contextClasses={} outboundComparisonType={} for "
 						+ "outboundIssuer={} requestComparisonType={} requestContextClasses={} matchContextClasses={}",
@@ -221,7 +226,7 @@ public class QoaMappingService {
 			log.debug("Missing outbound Qoa config outboundIssuer={}, skipping Qoa mapping", outboundQoaConfig.issuerId());
 			return inboundContextClasses;
 		}
-		if (!outboundQoaConfig.config().isMapOutbound()) {
+		if (!outboundQoaConfig.config().mapOutbound()) {
 			log.debug("Qoa config not outbound for outboundIssuer={}, skipping Qoa mapping", outboundQoaConfig.issuerId());
 			return inboundContextClasses;
 		}
@@ -305,23 +310,24 @@ public class QoaMappingService {
 			return true;
 		}
 		var comparisonType = determineComparisonTypeWithDefault(requestComparisonType, rpQoaConfig.config());
+		var rpContextClasses = QoaMappingUtil.getRpContextClasses(requestContextClasses, rpQoaConfig.config());
 		var result = cpQoaConfig.config().getClasses()
 				.stream()
 				.map(AcClass::getContextClass)
 				.anyMatch(contextClass ->
-						QoaMappingUtil.validateCpContextClasses(
-								comparisonType, requestContextClasses, rpQoaConfig,
+						QoaMappingUtil.validateContextClass(
+								comparisonType, rpContextClasses, rpQoaConfig,
 								contextClass, cpQoaConfig,
-								rpQoaConfig, trustBrokerProperties.getQoaMap(), true)
+								rpQoaConfig.issuerId(), trustBrokerProperties.getQoaMap(), true)
 				);
 		if (result) {
 			log.debug("cpIssuerId={} can fulfill request comparisonType={} contextClasses={}",
-					cpQoaConfig.issuerId(), requestComparisonType, requestContextClasses);
+					cpQoaConfig.issuerId(), requestComparisonType, rpContextClasses);
 			return true;
 		}
 		var enforce = QoaMappingUtil.enforceQoa(rpQoaConfig, cpQoaConfig);
 		log.info("cpIssuerId={} cannot fulfill enforced={} request comparisonType={} contextClasses={}",
-				cpQoaConfig.issuerId(), enforce, requestComparisonType, requestContextClasses);
+				cpQoaConfig.issuerId(), enforce, requestComparisonType, rpContextClasses);
 		return !enforce; // allow CP if not enforced
 	}
 

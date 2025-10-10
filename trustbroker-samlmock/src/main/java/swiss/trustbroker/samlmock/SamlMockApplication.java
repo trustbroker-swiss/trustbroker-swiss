@@ -16,6 +16,7 @@
 package swiss.trustbroker.samlmock;
 
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
@@ -23,7 +24,8 @@ import swiss.trustbroker.common.server.ApplicationMain;
 
 @SpringBootApplication(exclude = {
 		DataSourceAutoConfiguration.class, // samlmock inherits the service dependencies but does not use the JPA sub-system,
-		SecurityAutoConfiguration.class
+		SecurityAutoConfiguration.class,
+		ManagementWebSecurityAutoConfiguration.class
 })
 public class SamlMockApplication {
 

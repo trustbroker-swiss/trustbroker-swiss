@@ -38,6 +38,7 @@ import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.mapping.dto.QoaConfig;
 import swiss.trustbroker.mapping.service.QoaMappingService;
+import swiss.trustbroker.mapping.util.QoaMappingUtil;
 import swiss.trustbroker.oidc.opensaml5.OpenSaml5AuthenticationRequestResolver;
 import swiss.trustbroker.oidc.session.OidcSessionSupport;
 import swiss.trustbroker.util.HrdSupport;
@@ -56,7 +57,7 @@ class OidcAuthnRequestContextCustomizer implements Consumer<OpenSaml5Authenticat
 	public void accept(OpenSaml5AuthenticationRequestResolver.AuthnRequestContext authnRequestContext) {
 		var authnRequest = authnRequestContext.getAuthnRequest();
 		// Pass on client_id as applicationName too via SAML ProviderName
-		authnRequest.setProviderName(OidcSessionSupport.getOidcClientId(authnRequestContext.getRequest()));
+		authnRequest.setProviderName(OidcSessionSupport.getOidcClientId(authnRequestContext.getRequest(), relyingPartyDefinitions));
 		// Pass OIDC sessionId as conversationId for E2E tracking
 		authnRequest.setID(TraceSupport.getOwnTraceParentForSaml());
 		// Handle prompt=login as forceAuthn=true
@@ -76,12 +77,12 @@ class OidcAuthnRequestContextCustomizer implements Consumer<OpenSaml5Authenticat
 		var clientId = OidcConfigurationUtil.getClientIdFromRequest(httpServletRequest);
 		Set<String> qoas = new HashSet<>();
 		if (acrValues != null) {
-			qoas.addAll(Arrays.stream(acrValues.split(","))
+			qoas.addAll(Arrays.stream(acrValues.split(" "))
 					.toList());
 			log.debug("Got qoas={} from HTTP request {}={}", qoas, OidcUtil.OIDC_ACR_VALUES, StringUtil.clean(acrValues));
 		}
 		if (qoas.isEmpty()) {
-			qoas = getQoaFromConfiguration(clientId);
+			qoas = getQoaFromConfiguration(clientId, properties.getSecurity().isEnforceQoaIfMissing());
 			log.debug("Got qoas={} from clientId={} configuration", qoas, clientId);
 		}
 		return SamlFactory.createRequestedAuthnContext(qoas, null);
@@ -109,7 +110,7 @@ class OidcAuthnRequestContextCustomizer implements Consumer<OpenSaml5Authenticat
 		return null;
 	}
 
-	private Set<String> getQoaFromConfiguration(String clientId) {
+	private Set<String> getQoaFromConfiguration(String clientId, boolean enforceQoaIfMissing) {
 		List<String> qoas = null;
 
 		var qoaConfig = getQoaConfig(clientId);
@@ -117,6 +118,8 @@ class OidcAuthnRequestContextCustomizer implements Consumer<OpenSaml5Authenticat
 			qoas = qoaMappingService.computeDefaultQoaFromConf(new QoaConfig(qoaConfig, clientId));
 			log.debug("Set Context classes={} from Oidc.Client.Qoa for clientId={}", qoas, StringUtil.clean(clientId));
 		}
+
+		QoaMappingUtil.rejectRequestIfQoaConfMissing(qoaConfig, enforceQoaIfMissing, clientId);
 
 		// global fallback
 		if (qoas == null) {

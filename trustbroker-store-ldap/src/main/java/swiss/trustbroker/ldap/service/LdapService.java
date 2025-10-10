@@ -16,7 +16,6 @@
 package swiss.trustbroker.ldap.service;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +29,6 @@ import org.apache.commons.text.StringSubstitutor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.api.idm.dto.IdmRequest;
 import swiss.trustbroker.api.idm.dto.IdmRequests;
 import swiss.trustbroker.api.idm.dto.IdmResult;
@@ -39,6 +37,7 @@ import swiss.trustbroker.api.idm.service.IdmStatusPolicyCallback;
 import swiss.trustbroker.api.relyingparty.dto.RelyingPartyConfig;
 import swiss.trustbroker.api.sessioncache.dto.AttributeName;
 import swiss.trustbroker.api.sessioncache.dto.CpResponseData;
+import swiss.trustbroker.common.util.CollectionUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.LdapStoreConfig;
 import swiss.trustbroker.ldap.config.ExternalStores;
@@ -62,7 +61,8 @@ public class LdapService implements IdmQueryService {
 
 	@Override
 	public Optional<IdmResult> getAttributes(RelyingPartyConfig relyingPartyConfig, CpResponseData cpResponse, IdmRequests idmRequests, IdmStatusPolicyCallback statusPolicyCallback) {
-		if (skip(idmRequests)) {
+		final var requestedStore = ExternalStores.LDAP.name();
+		if (!ldapStoreConfig.isEnabled() || !hasQueryOfStore(requestedStore, idmRequests, null)) {
 			log.debug("Skipping idmService={} for idmRequests={}", ExternalStores.LDAP, idmRequests);
 			return Optional.empty();
 		}
@@ -72,28 +72,19 @@ public class LdapService implements IdmQueryService {
 		return Optional.of(result);
 	}
 
-	private boolean skip(IdmRequests queries) {
-		return !ldapStoreConfig.isEnabled()
-				|| queries == null || CollectionUtils.isEmpty(queries.getQueryList())
-				|| isNotLdapStore(queries, null);
-	}
-
-	private static boolean isNotLdapStore(IdmRequests idmRequests, IdmRequest idmQuery) {
-		var type = idmQuery != null && idmQuery.getStore() != null ? idmQuery.getStore() : idmRequests.getStore();
-		return !ExternalStores.LDAP.name().equals(type);
-	}
-
 	private IdmResult getLdapAttributes(RelyingPartyConfig relyingPartyConfig, CpResponseData cpResponse, IdmRequests idmRequests) {
 		var result = new IdmResult();
-		var attributesCount = 0;
+		var attributeCount = 0;
+		var querySuccessCount = 0;
 
 		// iterate over all queries skipping all not addressed to store LDAP
+		final var requestedStore = ExternalStores.LDAP.name();
 		for (var idmQuery : idmRequests.getQueryList()) {
-			if (isNotLdapStore(idmRequests, idmQuery)) {
+			if (!isQueryOfStore(requestedStore, idmQuery, idmRequests.getStore())) {
 				log.debug("Skipping idmService={} for idmQuery={}", ExternalStores.LDAP, idmQuery);
 				continue;
 			}
-			log.info("LDAP call: issuer={} nameID={} relyingPartyIssuerId={}",
+			log.debug("LDAP call: issuer={} nameID={} relyingPartyIssuerId={}",
 					cpResponse.getIssuerId(), cpResponse.getNameId(), relyingPartyConfig.getId());
 			final var appFilter = idmQuery.getAppFilter();
 			final var formattedQuery = queryFilterFormatter(appFilter, cpResponse);
@@ -108,14 +99,21 @@ public class LdapService implements IdmQueryService {
 			log.debug("LDAP search results={}", attrs);
 
 			if (!attrs.isEmpty()) {
+				querySuccessCount += 1;
 				final var attribute = aggregateAndFindAttributes(attrs, relyingPartyConfig, idmQuery);
 				result.getUserDetails().putAll(attribute);
-				attributesCount += attribute.size();
+				attributeCount += attribute.size();
 			}
 		}
 
-		result.setOriginalUserDetailsCount(attributesCount);
+		if (log.isInfoEnabled()) {
+			log.info("IDM result ({}): Called directory with issuer={} nameID={} "
+							+ "queryCount={} successCount={} getting loginIds='{}', attributeCount={} and roleCount={}",
+					ExternalStores.LDAP.name(), cpResponse.getIssuerId(), cpResponse.getNameId(),
+					idmRequests.getQueryList().size(), querySuccessCount, List.of(), attributeCount, 0);
+		}
 
+		result.setOriginalUserDetailsCount(attributeCount);
 		return result;
 	}
 
@@ -150,7 +148,7 @@ public class LdapService implements IdmQueryService {
 
 	private String[] getAttributesToFetch(IdmRequest idmQuery) {
 		final var attrs = idmQuery.getAttributeSelection().stream().map(AttributeName::getName).toArray(String[]::new);
-		log.debug("LDAP Attributes to fetch={}", Arrays.toString(attrs));
+		log.debug("LDAP Attributes to fetch={}", CollectionUtil.toLogString(attrs));
 		return attrs;
 	}
 

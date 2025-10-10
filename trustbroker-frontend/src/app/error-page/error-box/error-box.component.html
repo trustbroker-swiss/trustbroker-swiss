@@ -14,12 +14,28 @@
 -->
 <div class="{{ theme.name }} errorBoxContainer">
 	<div class="errorBoxTitleContainer">
-		<h1 class="high-emphasis mb-3">{{ titleKey | translate }}</h1>
+		<h1 class="high-emphasis mb-3">
+			@if (titleKey | hasTranslation | async) {
+				{{ titleKey | translate }}
+			} @else {
+				{{ "trustbroker.error.main.title.default" | translate }}
+			}
+		</h1>
 	</div>
 	<div>
-		<h2 class="medium-emphasis mb-2" [innerHTML]="textKey | translate | safeMarkup"></h2>
-		@if (!supportInfo) {
+		@if (textKey | hasTranslation | async) {
+			<h2 class="medium-emphasis mb-2" [innerHTML]="textKey | translate | safeMarkup"></h2>
+		} @else {
+			<h2 class="medium-emphasis mb-2" [innerHTML]="'trustbroker.error.main.text.default' | translate | safeMarkup"></h2>
+		}
+		@if (!supportInfo && infoKey | hasTranslation | async) {
 			<p class="medium-emphasis" [innerHTML]="infoKey | translate | safeMarkup"></p>
+		}
+		@if (additionalInfoTitleKey | hasTranslation | async) {
+			<h2 class="medium-emphasis mb-2" [innerHTML]="additionalInfoTitleKey | translate | safeMarkup"></h2>
+		}
+		@if (additionalInfoTextKey | hasTranslation | async) {
+			<p class="medium-emphasis" [innerHTML]="additionalInfoTextKey | translate | safeMarkup"></p>
 		}
 		@if (supportInfo && supportInfoData) {
 			<div class="app-support">
@@ -53,10 +69,10 @@
 					</div>
 				}
 				<div class="app-support-contact">
-					@if (showSupportInfoText) {
+					@if (supportInfoText | hasTranslation | async) {
 						<p class="medium-emphasis" [innerHTML]="supportInfoText | translate | safeMarkup"></p>
 					}
-					@if (showSupportContactText) {
+					@if (supportContactText | hasTranslation | async) {
 						<p class="medium-emphasis">
 							<span [innerHTML]="supportContactText | translate | safeMarkup"></span>
 							<a href="{{ supportContactUrl | translate }}" target="_blank">{{ "trustbroker.error.main.support.documentation" | translate }}</a>

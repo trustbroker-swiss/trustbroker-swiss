@@ -70,6 +70,7 @@ import { HrdCardsV2Component } from './hrd-cards-v2/hrd-cards-v2.component';
 import { AnyCardHasCategoryPipe } from './pipes/any-card-has-category.pipe';
 import { BucketizeIdpObjectsPipe } from './pipes/bucketize-idp-objects.pipe';
 import { HrdBannerComponent } from './hrd-banner/hrd-banner.component';
+import { HasTranslationPipe } from './pipes/has-translation.pipe';
 
 export class TranslationService implements TranslateLoader {
 	private readonly baseUrl = environment.apiUrl;
@@ -154,7 +155,8 @@ export class MissingTranslationHelper implements MissingTranslationHandler {
 		FormsModule,
 		MatExpansionModule,
 		AnyCardHasCategoryPipe,
-		BucketizeIdpObjectsPipe
+		BucketizeIdpObjectsPipe,
+		HasTranslationPipe
 	],
 	providers: [
 		LanguageService,

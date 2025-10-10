@@ -121,7 +121,7 @@ public class OidcExceptionHelper {
 	public static String buildLocationForAuthenticationException(HttpServletRequest request,
 			AuthenticationException authException, String errorUri, String errorBaseUri, String handler,
 			Predicate<String> urlValidator) {
-		var clientId = OidcSessionSupport.getOidcClientId(request);
+		var clientId = OidcSessionSupport.getOidcClientId(request, null);
 		if (authException == null) {
 			log.info("Missing OIDC exception - redirect to OIDC clientId={} not possible", clientId);
 			return null;
@@ -193,7 +193,7 @@ public class OidcExceptionHelper {
 		}
 		// construct redirect with error details
 		try {
-			var state = StringUtil.clean(request.getParameter(OidcUtil.OIDC_STATE_ID));
+			var state = OidcSessionSupport.getInitialClientState(request);
 			return getOidcErrorLocation(redirectUri, errorCode, description, errorUri, errorBaseUri, state);
 		}
 		catch (IllegalArgumentException ex) {
@@ -208,7 +208,7 @@ public class OidcExceptionHelper {
 		var builder = UriComponentsBuilder.fromUriString(baseUri);
 		builder.queryParam(OidcUtil.OIDC_ERROR, errorCode);
 		if (StringUtils.hasLength(state)) {
-			builder.queryParam(OidcUtil.OIDC_STATE_ID, state);
+			builder.queryParam(OidcUtil.OIDC_STATE_ID, WebUtil.urlEncodeValue(state));
 		}
 		if (StringUtils.hasLength(description)) {
 			builder.queryParam(ERROR_DESCRIPTION_PARAM, WebUtil.urlEncodeValue(description));

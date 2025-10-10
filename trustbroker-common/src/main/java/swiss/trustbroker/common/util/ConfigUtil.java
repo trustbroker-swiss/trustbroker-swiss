@@ -58,6 +58,7 @@ public class ConfigUtil {
 		return getConfig(config, name, Boolean.class, defaultValue);
 	}
 
+	@SuppressWarnings("unchecked")
 	public static <T> List<T> getConfigList(Map<String, ? extends Object> config, String name, List<T> defaultValue) {
 		return getConfig(config, name, List.class, defaultValue);
 	}

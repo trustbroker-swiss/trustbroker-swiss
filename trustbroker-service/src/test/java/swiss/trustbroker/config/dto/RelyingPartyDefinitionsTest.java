@@ -284,7 +284,7 @@ class RelyingPartyDefinitionsTest {
 		return AccessRequest.builder()
 				.enabled(enabled)
 				.authorizedApplications(
-						AuthorizedApplications.builder().authorizedApplicationLists(Arrays.asList(applications)).build())
+						AuthorizedApplications.builder().authorizedApplicationList(Arrays.asList(applications)).build())
 				.build();
 	}
 

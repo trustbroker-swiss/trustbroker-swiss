@@ -27,10 +27,6 @@ import org.junit.jupiter.api.Test;
 
 class StateDataTest {
 
-	private static final String SSO_GROUP = "group1";
-
-	private static final int SESSION_LIFE_TIME_SECS = 60;
-
 	@Test
 	void addAuthnRequest() {
 		var stateData = StateData.builder().id("id").build();

@@ -105,12 +105,10 @@ public class JwkCacheService {
 				log.warn("Detected jwkActiveKeysCount={}. HINT: Check trustbroker.config.oidc.keySchedule/keyExpirationMinutes",
 						active);
 			}
-		}
-		catch (InterruptedException e) {
+		} catch (InterruptedException e) {
 			log.info("JWK skipped reaper cycle");
 			Thread.currentThread().interrupt(); // restore interrupt state
-		}
-		catch (Exception ex) {
+		} catch (Exception ex) {
 			globalExceptionHandler.logException(ex);
 		}
 	}
@@ -126,6 +124,5 @@ public class JwkCacheService {
 				.keyUse(KeyUse.SIGNATURE)
 				.build();
 	}
-
 }
 

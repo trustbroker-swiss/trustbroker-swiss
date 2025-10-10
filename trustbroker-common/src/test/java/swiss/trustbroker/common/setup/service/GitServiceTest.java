@@ -63,7 +63,7 @@ class GitServiceTest {
 	private static final String GIT_BRANCH = "dummyBranch";
 
 	@BeforeEach
-	public void setup() {
+	void setup() {
 		Logger logger = (Logger) LoggerFactory.getLogger(GitService.class.getName());
 		memoryAppender = new MemoryAppender();
 		memoryAppender.setContext((LoggerContext) LoggerFactory.getILoggerFactory());
@@ -73,7 +73,7 @@ class GitServiceTest {
 	}
 
 	@AfterEach
-	public void cleanUp() {
+	void cleanUp() {
 		memoryAppender.reset();
 		memoryAppender.stop();
 	}

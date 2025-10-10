@@ -37,8 +37,6 @@ import swiss.trustbroker.util.ApiSupport;
 
 class OidcTxResponseWrapperTest {
 
-	private static final String CLIENT_ID = "oidcClient1";
-
 	private TrustBrokerProperties properties;
 
 	private MockHttpServletRequest request;

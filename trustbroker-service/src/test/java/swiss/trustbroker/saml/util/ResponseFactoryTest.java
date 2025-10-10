@@ -129,6 +129,7 @@ class ResponseFactoryTest extends SamlTestBase {
 	private ResponseFactory responseFactory;
 
 	@BeforeAll
+	@SuppressWarnings("java:S5786")
 	public static void setup() {
 		SamlTestBase.setup();
 		new CoreAttributeInitializer().init();
@@ -497,22 +498,6 @@ class ResponseFactoryTest extends SamlTestBase {
 		SamlUtil.signSamlObject(signableXmlObject, signature);
 
 		return signableXmlObject;
-	}
-
-	private static Map<Definition, List<String>> givenUserDetails() {
-		Map<Definition, List<String>> userDetails = new LinkedHashMap<>();
-		var email = Definition.builder()
-							  .name(CoreAttributeName.EMAIL.getName())
-							  .namespaceUri(CoreAttributeName.EMAIL.getNamespaceUri())
-							  .build();
-		var userExtId = Definition.builder()
-								  .name(CoreAttributeName.CLAIMS_NAME.getName())
-								  .namespaceUri(CoreAttributeName.CLAIMS_NAME.getNamespaceUri())
-								  .build();
-		userDetails.put(email, List.of("user@trustbroker.swiss"));
-		userDetails.put(userExtId, List.of("idm98765"));
-
-		return userDetails;
 	}
 
 	private KeyInfo createMockKeyInfo(Credential credential) {

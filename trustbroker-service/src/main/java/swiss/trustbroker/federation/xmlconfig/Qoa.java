@@ -52,7 +52,7 @@ public class Qoa implements Serializable {
 	 */
 	@XmlAttribute(name = "enforce")
 	@Builder.Default
-	private Boolean enforce = Boolean.FALSE;
+	private Boolean enforce = null;
 
 	/**
 	 * Enable mapping of outbound QoA.
@@ -136,12 +136,12 @@ public class Qoa implements Serializable {
 	private List<AcClass> classes = new ArrayList<>();
 
 	@JsonIgnore
-	public boolean isEnforce() {
+	public boolean enforce() {
 		return Boolean.TRUE.equals(enforce);
 	}
 
 	@JsonIgnore
-	public boolean isMapOutbound() {
+	public boolean mapOutbound() {
 		return Boolean.TRUE.equals(mapOutbound);
 	}
 

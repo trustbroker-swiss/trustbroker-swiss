@@ -52,6 +52,7 @@ import swiss.trustbroker.audit.dto.EventType;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.audit.service.OutboundAuditMapper;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.oidc.JwkUtil;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
 import swiss.trustbroker.common.util.OidcUtil;
@@ -104,6 +105,12 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		var cpResponse = setCpResponseAttributes(context, authorization, relyingParty);
 		var clientId = authorization.getRegisteredClientId();
 		var client = relyingPartyDefinitions.getOidcClientConfigById(clientId, properties);
+		boolean accessTokenOpaque = isAccessTokenOpaque(client, context);
+
+		if (accessTokenOpaque) {
+			log.debug("OidcClient={} opaque AccessToken is {}", clientId, accessTokenOpaque);
+			return;
+		}
 
 		addTokenClaims(cpResponse, context);
 
@@ -134,8 +141,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 
 		// Set kid and get the maximum kid through
 		String kid = null;
-		if (OAuth2TokenType.ACCESS_TOKEN.equals(context.getTokenType()) ||
-				OidcParameterNames.ID_TOKEN.equals(context.getTokenType().getValue())) {
+		if (OAuth2TokenType.ACCESS_TOKEN.equals(context.getTokenType()) || OidcParameterNames.ID_TOKEN.equals(context.getTokenType().getValue())) {
 			kid = addKeyIdFromJwkSource(jwkSource, context);
 		}
 
@@ -161,13 +167,23 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		auditTokenClaims(clientId, context, kid, cpResponse, conversationId);
 	}
 
+	private static boolean isAccessTokenOpaque(Optional<OidcClient> client, JwtEncodingContext context) {
+		boolean isAccessToken = context.getTokenType().equals(OAuth2TokenType.ACCESS_TOKEN);
+		var opaqueAccessToken = false;
+		if(client.isPresent()){
+			var oidcClient = client.get();
+			var oidcSecurityPolicies = oidcClient.getOidcSecurityPolicies();
+			opaqueAccessToken = oidcSecurityPolicies != null
+					&& Boolean.TRUE.equals(oidcSecurityPolicies.getRequireOpaqueAccessToken());
+		}
+		return isAccessToken && opaqueAccessToken;
+	}
+
 	private void addExpiresClaim(CpResponse cpResponse, Optional<OidcClient> client) {
 		if (client.isPresent()) {
 			var issuedAt = Instant.now();
-			var expiresAt = issuedAt.plus(properties.getSecurity()
-													.getTokenLifetimeSec(), ChronoUnit.SECONDS);
-			var oidcSecurityPolicies = client.get()
-											 .getOidcSecurityPolicies();
+			var expiresAt = issuedAt.plus(properties.getSecurity().getTokenLifetimeSec(), ChronoUnit.SECONDS);
+			var oidcSecurityPolicies = client.get().getOidcSecurityPolicies();
 			if (oidcSecurityPolicies != null && oidcSecurityPolicies.getIdTokenTimeToLiveMin() != null) {
 				expiresAt = issuedAt.plus(oidcSecurityPolicies.getIdTokenTimeToLiveMin(), ChronoUnit.MINUTES);
 			}
@@ -188,8 +204,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 
 	private static void addAudienceClaim(CpResponse cpResponse) {
 		// audience comes from spring-sec
-		var audienceClaim = cpResponse.getClaims()
-									  .get(OidcUtil.OIDC_AUDIENCE);
+		var audienceClaim = cpResponse.getClaims().get(OidcUtil.OIDC_AUDIENCE);
 		// transform audience into a single valued claim if we have a list with only one value (Keycloak behavior)
 		if (audienceClaim instanceof Collection<?> audiences) {
 			var audClaims = Arrays.stream(audiences.toArray())
@@ -262,9 +277,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 
 
 	private boolean isEnabledTokenHeader(String header) {
-		return properties.getOidc()
-						 .getAddTokenHeader()
-						 .contains(header);
+		return properties.getOidc().getAddTokenHeader().contains(header);
 	}
 
 	private static String getCurrentReferrer() {
@@ -332,8 +345,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 			return;
 		}
 		if (OAuth2TokenType.ACCESS_TOKEN.equals(context.getTokenType()) ||
-				OidcParameterNames.ID_TOKEN.equals(context.getTokenType()
-														  .getValue())) {
+				OidcParameterNames.ID_TOKEN.equals(context.getTokenType().getValue())) {
 			context.getJwsHeader()
 				   .headers(headers -> headers.put(HeaderParameterNames.TYPE, OidcUtil.OIDC_HEADER_TYPE_JWT));
 		}

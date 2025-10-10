@@ -59,7 +59,7 @@ class DirectoryUtilTest {
 	}
 
 	@Test
-	void backupDirectory() throws IOException  {
+	void backupDirectory() {
 		var oldDir = existingDir(tempDir, "bak");
 		var newDir = existingDir(tempDir, "new");
 		existingDir(newDir, "sub");

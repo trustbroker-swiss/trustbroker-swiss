@@ -23,7 +23,6 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonKey;
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
 import jakarta.xml.bind.annotation.XmlAttribute;
@@ -59,26 +58,31 @@ public class Definition implements Serializable, AttributeName {
 	static final String LIST_ATTRIBUTE_DELIMITER = ",";
 
 	/**
-	 * 	Short name used in auditing and for IDM attribute addressing.
- 	 */
+	 * Short name used in auditing and for IDM attribute addressing.
+	 * Compound primary key member in attribute maps using Definition(De)Serializer.
+	 */
 	@XmlAttribute(name = "name")
-	@JsonKey // needed for Jackson serialization as Map key
-	// So far we only use Definition as Map key in CpResponse and only with a name (no namespaceUri), so this is sufficient
-	// If we need both, we need to implement a proper JsonSerializer, see:
-	// https://www.baeldung.com/jackson-map
 	private String name;
 
 	/**
-	 * 	Known external attributes we just document here - used when we cannot use namespaceUri due to semantics.
- 	 */
-	@XmlAttribute(name = "altName")
-	private String altName;
-
-	/**
 	 * The long name is used in the generated SAML assertion towards the RP.
- 	 */
+	 * Compound primary key member in attribute maps using Definition(De)Serializer.
+	 */
 	@XmlAttribute(name = "namespaceUri")
 	private String namespaceUri;
+
+	/**
+	 * Source of the definition
+	 * Compound primary key member in attribute maps using Definition(De)Serializer.
+	 */
+	@XmlAttribute(name = "source")
+	private String source;
+
+	/**
+	 * Known external attributes we just document here - used when we cannot use namespaceUri due to semantics.
+	 */
+	@XmlAttribute(name = "altName")
+	private String altName;
 
 	/**
 	 * The claim names used when emitting an attribute to an OIDC client (comma-separated -
@@ -171,12 +175,6 @@ public class Definition implements Serializable, AttributeName {
 	@XmlAttribute(name = "scope")
 	private String scope;
 
-	/**
-	 * Source of the definition
-	 */
-	@XmlAttribute(name = "source")
-	private String source;
-
 	public Definition(String name) {
 		this.name = name;
 	}
@@ -208,20 +206,36 @@ public class Definition implements Serializable, AttributeName {
 		this.value = singleValue;
 	}
 
-	public static Definition ofName(AttributeName attributeName) {
-		return new Definition(attributeName.getName());
+	public static Definition ofName(String name) {
+		return Definition.builder().name(name).build();
 	}
 
-	public static Definition ofNames(AttributeName attributeName) {
-		return new Definition(attributeName.getName(), attributeName.getNamespaceUri());
+	public static Definition ofName(AttributeName name) {
+		return Definition.builder().name(name.getName()).build();
 	}
 
 	public static Definition ofNameAndSource(String name, String source) {
 		return Definition.builder().name(name).source(source).build();
 	}
 
-	public static Definition ofNameNamespaceUriAndSource(String name, String namespaceUri, String source) {
+	public static Definition ofNameAndSource(AttributeName name, String source) {
+		return Definition.builder().name(name.getName()).source(source).build();
+	}
+
+	public static Definition ofNames(String name, String namespaceUri) {
+		return Definition.builder().name(name).namespaceUri(namespaceUri).build();
+	}
+
+	public static Definition ofNames(AttributeName name) {
+		return Definition.builder().name(name.getName()).namespaceUri(name.getNamespaceUri()).build();
+	}
+
+	public static Definition ofNamesAndSource(String name, String namespaceUri, String source) {
 		return Definition.builder().name(name).namespaceUri(namespaceUri).source(source).build();
+	}
+
+	public static Definition ofNamesAndSource(AttributeName name, String source) {
+		return Definition.builder().name(name.getName()).namespaceUri(name.getNamespaceUri()).source(source).build();
 	}
 
 	private static String oidcNameListToString(List<String> oidcNameList) {
@@ -304,4 +318,5 @@ public class Definition implements Serializable, AttributeName {
 	public boolean isProvisioningIdAttribute() {
 		return Boolean.TRUE.equals(provisioningId);
 	}
+
 }

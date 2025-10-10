@@ -1,6 +1,5 @@
 plugins {
 	id 'java-library'
-	id "org.springframework.boot"
 }
 
 dependencies {
@@ -17,8 +16,4 @@ dependencies {
 
 	// spring-test baseline
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
-}
-
-springBoot {
-	mainClass = 'swiss.trustbroker.ldap.LdapStoreApplication'
 }

@@ -19,15 +19,19 @@ import java.io.Serializable;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.function.BiPredicate;
 
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
+import jakarta.xml.bind.annotation.XmlAttribute;
 import jakarta.xml.bind.annotation.XmlElement;
 import jakarta.xml.bind.annotation.XmlRootElement;
 import jakarta.xml.bind.annotation.XmlTransient;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.common.util.WebUtil;
 
 /**
@@ -39,6 +43,19 @@ import swiss.trustbroker.common.util.WebUtil;
 @Builder
 @Slf4j
 public class AcWhitelist implements Serializable {
+
+	/**
+	 * Use the first entry as default if the RP does not send an ACS URL.
+	 * <br/>
+	 * So far only supported for SAML.
+	 * <br/>
+	 * Default: false
+	 *
+	 * @since 1.11.0
+	 */
+	@XmlAttribute(name = "useDefault")
+	@Builder.Default
+	private Boolean useDefault = false;
 
 	/**
 	 * List of allowed URLs.
@@ -66,15 +83,17 @@ public class AcWhitelist implements Serializable {
 	private List<String> frameAncestors;
 
 	public AcWhitelist() {
-		this(null, null, null, null, null);
+		this(null, null, null, null, null, null);
 	}
 
 	public AcWhitelist(List<String> acUrls) {
-		this(acUrls, null, null, null, null);
+		this(null, acUrls, null, null, null, null);
 	}
 
-	public AcWhitelist(List<String> acUrls, List<URI> acNetUrls, List<String> redirectUrls, List<String> origins,
+	public AcWhitelist(Boolean useDefault, List<String> acUrls, List<URI> acNetUrls, List<String> redirectUrls,
+			List<String> origins,
 			List<String> frameAncestors) {
+		this.useDefault = useDefault;
 		this.acNetUrls = acNetUrls;
 		this.origins = origins;
 		this.redirectUrls = redirectUrls;
@@ -123,6 +142,20 @@ public class AcWhitelist implements Serializable {
 			return frameAncestors;
 		}
 		return origins;
+	}
+
+	public Optional<String> getDefault() {
+		if (!Boolean.TRUE.equals(useDefault) || CollectionUtils.isEmpty(acUrls)) {
+			return Optional.empty();
+		}
+		return Optional.of(acUrls.get(0));
+	}
+
+	public Optional<String> findFirst(BiPredicate<String, String> matcher, String checkUrl) {
+		if (CollectionUtils.isEmpty(acUrls)) {
+			return Optional.empty();
+		}
+		return acUrls.stream().filter(acUrl -> matcher.test(acUrl, checkUrl)).findFirst();
 	}
 
 }

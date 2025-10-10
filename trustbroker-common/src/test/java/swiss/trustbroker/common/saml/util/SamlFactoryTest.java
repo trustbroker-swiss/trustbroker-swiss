@@ -58,6 +58,7 @@ import swiss.trustbroker.test.saml.util.SamlTestBase;
 class SamlFactoryTest extends SamlTestBase {
 
 	@BeforeAll
+	@SuppressWarnings("java:S5786")
 	public static void setup() {
 		SamlTestBase.setup();
 	}
@@ -104,7 +105,6 @@ class SamlFactoryTest extends SamlTestBase {
 
 	@Test
 	void createSignatureSha1Test() {
-		var credential = dummyCredential();
 		var signature = SamlFactory.prepareSignableObject(
 				dummyObject(), dummyCredential(), SignatureConstants.ALGO_ID_SIGNATURE_RSA_SHA1, null,
 				SamlFactory.XML_SEC_DIGEST_METHOD_SHA1);
@@ -152,11 +152,13 @@ class SamlFactoryTest extends SamlTestBase {
 		var classRef = "classRef";
 		var sessionIndex = "SESSION INDEX";
 		var authnInstant = Instant.now();
-		var authnStates = SamlFactory.createAuthnState(List.of(classRef), sessionIndex, authnInstant);
+		var sessionNotOnOrAfter = authnInstant.plusSeconds(180);
+		var authnStates = SamlFactory.createAuthnStatements(List.of(classRef), sessionIndex, sessionNotOnOrAfter, authnInstant);
 		var authnState = authnStates.get(0);
 		assertNotNull(authnState.getAuthnInstant());
 		assertNotNull(authnState.getSessionIndex());
 		assertEquals(sessionIndex, authnState.getSessionIndex());
+		assertEquals(sessionNotOnOrAfter, authnState.getSessionNotOnOrAfter());
 		assertNotNull(authnState.getAuthnContext());
 	}
 
@@ -203,7 +205,7 @@ class SamlFactoryTest extends SamlTestBase {
 	void createSubjectConfirmationTest() {
 		var authnRequest = "AuthnRequest_2649a84f022e60ebd301e2d13030342e1220f609";
 		var recipient = "https://localhost:8321/SAML2.0/ServiceProvider/AssertionConsumer";
-		var subjectConfirmation = SamlFactory.createSubjectConfirmation(authnRequest, recipient, 5);
+		var subjectConfirmation = SamlFactory.createSubjectConfirmation(authnRequest, recipient, 5, null);
 		assertEquals(SubjectConfirmation.METHOD_BEARER, subjectConfirmation.getMethod());
 		assertNotNull(subjectConfirmation.getSubjectConfirmationData());
 	}
@@ -212,7 +214,7 @@ class SamlFactoryTest extends SamlTestBase {
 	void createSubjectConfirmationDataTest() {
 		var authnRequest = "AuthnRequest_2649a84f022e60ebd301e2d13030342e1220f609";
 		var recipient = "https://localhost:8321/SAML2.0/ServiceProvider/AssertionConsumer";
-		var subjectConfirmationData = SamlFactory.createSubjectConfirmationData(authnRequest, recipient, 5);
+		var subjectConfirmationData = SamlFactory.createSubjectConfirmationData(authnRequest, recipient, 5, null);
 		assertNotNull(subjectConfirmationData.getInResponseTo());
 		assertNotNull(subjectConfirmationData.getNotOnOrAfter());
 		assertNotNull(subjectConfirmationData.getRecipient());
@@ -241,7 +243,7 @@ class SamlFactoryTest extends SamlTestBase {
 		var authnRequest = "AuthnRequest_2649a84f022e60ebd301e2d13030342e1220f609";
 		var recipient = "https://localhost:8321/SAML2.0/ServiceProvider/AssertionConsumer";
 		var nameId = SamlFactory.createNameId("eid\\5300\\32306", NameIDType.UNSPECIFIED, null);
-		var subject = SamlFactory.createSubject(nameId, authnRequest, recipient, validitySec);
+		var subject = SamlFactory.createSubject(nameId, authnRequest, recipient, validitySec, null);
 		assertNotNull(subject.getNameID());
 		assertEquals(1, subject.getSubjectConfirmations().size());
 		var duration = Duration.between(Instant.now(),

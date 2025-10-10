@@ -31,6 +31,7 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.resource.PathResourceResolver;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.oidc.CustomOAuth2AuthorizationService;
 import swiss.trustbroker.oidc.session.TomcatSessionManager;
 import swiss.trustbroker.sessioncache.service.StateCacheService;
 import swiss.trustbroker.sso.service.SsoService;
@@ -93,9 +94,9 @@ public class WebConfiguration implements WebMvcConfigurer {
 	@Bean
 	public TomcatSessionManager tomcatSessionManager(
 			StateCacheService stateCacheService, SsoService ssoService, RelyingPartyDefinitions relyingPartyDefinitions,
-			TrustBrokerProperties trustBrokerProperties) {
+			TrustBrokerProperties trustBrokerProperties, CustomOAuth2AuthorizationService customOAuth2AuthorizationService) {
 		return new TomcatSessionManager(stateCacheService, ssoService, relyingPartyDefinitions, trustBrokerProperties,
-				trustBrokerProperties.getOidc().getSessionMode());
+				trustBrokerProperties.getOidc().getSessionMode(), customOAuth2AuthorizationService);
 	}
 
 }

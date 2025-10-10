@@ -17,6 +17,7 @@ package swiss.trustbroker.monitoring.controller;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
@@ -105,7 +106,7 @@ class MonitoringControllerTest {
 	private MockMvc mockMvc;
 
 	@BeforeEach
-	public void setup() {
+	void setup() {
 		SamlInitializer.initSamlSubSystem();
 		this.mockMvc = MockMvcBuilders.webAppContextSetup(this.webApplicationContext).build();
 		this.apiSupport = new ApiSupport(trustBrokerProperties);
@@ -132,7 +133,8 @@ class MonitoringControllerTest {
 		var rp = createRelyingParty();
 		doReturn(rp).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(RP_URN, null, true);
 		var state = createState();
-		doReturn(state).when(assertionConsumerService).saveState(any(), any(), eq(rp), eq(Optional.empty()), any());
+		doReturn(state).when(assertionConsumerService)
+					   .saveState(any(), anyBoolean(), any(), eq(rp), eq(Optional.empty()), any());
 		var rpRequest = createRpRequest("dummyCp");
 		doReturn(rpRequest).when(assertionConsumerService).handleRpAuthnRequest(any(), any(), eq(state));
 
@@ -147,7 +149,8 @@ class MonitoringControllerTest {
 		var rp = createRelyingParty();
 		doReturn(rp).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(RP_URN, null, true);
 		var state = createState();
-		doReturn(state).when(assertionConsumerService).saveState(any(), any(), eq(rp), eq(Optional.empty()), any());
+		doReturn(state).when(assertionConsumerService)
+					   .saveState(any(), anyBoolean(), any(), eq(rp), eq(Optional.empty()), any());
 		var rpRequest = createRpRequest(CP_URN, "otherCp");
 		doReturn(rpRequest).when(assertionConsumerService).handleRpAuthnRequest(any(), any(), eq(state));
 
@@ -162,7 +165,8 @@ class MonitoringControllerTest {
 		var rp = createRelyingParty();
 		doReturn(rp).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(RP_URN, null, true);
 		var state = createState();
-		doReturn(state).when(assertionConsumerService).saveState(any(), any(), eq(rp), eq(Optional.empty()), any());
+		doReturn(state).when(assertionConsumerService)
+					   .saveState(any(), anyBoolean(), any(), eq(rp), eq(Optional.empty()), any());
 		var rpRequest = createRpRequest(CP_URN);
 		doReturn(rpRequest).when(assertionConsumerService).handleRpAuthnRequest(any(), any(), eq(state));
 
@@ -181,7 +185,8 @@ class MonitoringControllerTest {
 		var rp = createRelyingParty();
 		doReturn(rp).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(RP_URN, null, true);
 		var state = createState();
-		doReturn(state).when(assertionConsumerService).saveState(any(), any(), eq(rp), eq(Optional.empty()), any());
+		doReturn(state).when(assertionConsumerService)
+					   .saveState(any(), anyBoolean(), any(), eq(rp), eq(Optional.empty()), any());
 		var rpRequest = createRpRequest("otherCp1", CP_URN);
 		doReturn(rpRequest).when(assertionConsumerService).handleRpAuthnRequest(any(), any(), eq(state));
 
@@ -206,7 +211,7 @@ class MonitoringControllerTest {
 	}
 
 	private static Function<String, String> encode() {
-		return id -> Base64Util.urlEncode(id);
+		return Base64Util::urlEncode;
 	}
 
 	@Test
@@ -244,8 +249,7 @@ class MonitoringControllerTest {
 		var response = SamlFactory.createResponse(Response.class, CP_URN);
 		response.setStatus(SamlFactory.createResponseStatus(statusCode));
 		var responseStr = OpenSamlUtil.samlObjectToString(response);
-		var responseStrEncoded = Base64Util.urlEncode(responseStr);
-		return responseStrEncoded;
+		return Base64Util.urlEncode(responseStr);
 	}
 
 	private static RelyingParty createRelyingParty() {
@@ -257,7 +261,7 @@ class MonitoringControllerTest {
 	}
 
 	private static RpRequest createRpRequest(String... cpUrn) {
-		var uiObjectList = Arrays.asList(cpUrn).stream().map(MonitoringControllerTest::createUiObject).toList();
+		var uiObjectList = Arrays.stream(cpUrn).map(MonitoringControllerTest::createUiObject).toList();
 		var uiObjects = UiObjects.builder().tiles(uiObjectList).build();
 		return RpRequest.builder().uiObjects(uiObjects).build();
 	}

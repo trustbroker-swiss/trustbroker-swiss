@@ -108,7 +108,7 @@ class TraceSupportTest {
 
 		// should not switch
 		var rpId = "XX-11111111111111111111111111111112-0000000000000002-00000002";
-		var ret = TraceSupport.switchToConversationFromSamlId(rpId);
+		TraceSupport.switchToConversationFromSamlId(rpId);
 		assertWireTrace(rpId.substring(3, 52).replace("-", "."));
 	}
 

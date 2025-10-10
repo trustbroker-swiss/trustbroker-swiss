@@ -29,7 +29,6 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -151,7 +150,7 @@ class RelyingPartySetupServiceTest {
 		var referer = "https://referring-party-acs.localdomain:43443";
 		var result = relyingPartySetupService.getOrderedRelyingPartiesForSlo("unknown", referer);
 		// the order is unspecified
-		assertThat(result.stream().map(RelyingParty::getId).collect(Collectors.toList()),
+		assertThat(result.stream().map(RelyingParty::getId).toList(),
 				containsInAnyOrder("https://referring-party.localdomain", "https://idp.referring-party.localdomain"));
 	}
 
@@ -182,7 +181,7 @@ class RelyingPartySetupServiceTest {
 		when(trustBrokerProperties.isPepIssuerMatchingEnabled(issuer)).thenReturn(true);
 		var result = relyingPartySetupService.getOrderedRelyingPartiesForSlo(issuer, null);
 		// the order is unspecified
-		assertThat(result.stream().map(RelyingParty::getId).collect(Collectors.toList()),
+		assertThat(result.stream().map(RelyingParty::getId).toList(),
 				containsInAnyOrder("urn:test:MOCKRP-REMOVE-DEVINT", "urn:test:MOCKRP-DROP-DEVINT"));
 	}
 
@@ -292,7 +291,7 @@ class RelyingPartySetupServiceTest {
 	}
 
 	@Test
-	void getCpSecurityPoliciesTest() throws Exception {
+	void getCpSecurityPoliciesTest() {
 		mockRelyingPartyConfiguration();
 		mockClaimsPartyConfiguration();
 

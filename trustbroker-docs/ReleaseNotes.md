@@ -1,27 +1,115 @@
 # Unreleased Versions
 
 
-## 1.11.0
+## 1.12.0
 
 ### Dependency upgrades
 
-- Spring Boot 3.5.3
-- Spring Cloud 2025.0.0
-- JGit 7.3.0.202506031305-r
+- Backend - minor version upgrades:
+  - Spring Boot 3.5.6
+  - owasp.dependencycheck 12.1.3
+  - github.node-gradle.node 7.1.0
+  - google.cloud.tools.jib 3.4.5
+- Frontend - major version upgrades:
+  - Angular 19.2.4 
+  - Oblique 13.3.3
+  - CSS files in config may need to be adapted due to this!
 
 ### Features
+- SAML:
+  - Support SOAP 1.1 binding for LogoutRequest
+
+### Improvements
 - OIDC:
-  - Support for JWE (JSON Web Encryption)
-- WSTrust
-  - Support for RENEW request
-- Improvements for LDAP IDM interface
+  - Cache RP side OIDC configurations used for JWE (JSON Web Encryption) 
+  - Add encryption algorithms and methods to metadata
+- SAML:
+  - Allow validation of origin/referer HTTP headers against ACWhitelist with validateHttpHeaders=true for AuthnRequests
+  - Allow restricting bindings via SupportedBinding
+  - Added forwardRpProtocolBinding to control forwarding the ProtocolBinding from RP to CP
+- WSTrust:
+  - Support ADFS compatibility URL /adfs/services/trust
+  - Support configuration of wsBasePath without hardcoded postfix
+  - Include SSO session ID in SessionIndex of RENEW response assertion
+  SSO:
+  - Use SessionIndex from LogoutRequest locate as fallback to find SSO session
+- IDM:
+  - LDAP filtering improvements supporting '*' as wildcard and 'IDM:query_name:definition_name'
+- QoA:
+  - Add specifig NoAuthnContext error screen for QoA issues    
+- UI:
+  - Render header buttons in the configured order to avoid use of tabIndex
 
 ### Bugfixes
- - State not sent back to OIDC client on SAML responder error
+- Config:
+  - Fixes copying of some AccessRequest, ProfileSelection and Announcement properties from profile to RP
+  - SetupRP can now reference keystores in SetupRP's sub-path of keystores directory without specifiying the path, as specified
+  - Merge SAML Qoa with OIDC Qoa
+- OIDC:
+  - Fixed double quoted encrypted userinfo response
+  - Fixed processing of multiple space-separated acr_values
+  - Using correct private key for decryption of encrypted internal SAML messages
+- WSTrust:
+  - Fixed validation and response issues in WSTrust RENEW request
+- SSO:
+  - Fix NPE in SSO session checking when SAML SessionIndex is used
+  - Joining was not possible if the initiating paricipant did not sign the AuthnRequest
+  - Logout notifications are now enabled by default when the configuration contains SloResponse entries for notifications
+- QoA:
+  - Use correct QoA config for OIDC side CP check
 
 
 # Released Versions
 
+
+## 1.11.0.20250911T090750Z
+
+### Dependency upgrades
+
+- Backend - minor version upgrades:
+  - Spring Boot 3.5.3
+  - Spring Cloud 2025.0.0
+  - JGit 7.3.0.202506031305-r
+  - commons-beanutils 1.11.0 
+
+### Features
+- OIDC:
+  - Support for JWE (JSON Web Encryption) 
+  - Fetching of OIDC client metadata for encryption key discovery
+- WSTrust:
+  - Support for RENEW request if enabled (not yet fully functional in this release)
+- IDM:
+  - Improvements for LDAP IDM interface
+
+### Improvmements
+- Config:
+  - IDM implementations can now be selected per query, allowing multiple implementations per RP
+- SAML:
+  - Allow AuthnRequest without AssertionConsumerServiceURL if enabled via AcWhitelist useDefault=true
+- SSO:
+  - Allow jointing SSO sessions with unsigned AuthnRequest if either requireSignedAuthnRequest=false or the new flag requireSignedAuthnRequestForSsoJoin=false
+- QoA:
+  - QoA handling is stricted with global policy enforceQoaIfMissing=true
+  - Support downgrade CP response QoA to highest QoA requested by RP via downgradeToMaximumRequested
+- Scripting:
+  - CPResponse Groovy hook API methods aligned between all claim sources
+  - Allow scripts to add parameters to OIDC CP authorization requests via context RpRequest.CONTEXT_OIDC_AUTHORIZATION_QUERY_PARAMETER
+  - AfterProvisioning script hook added
+
+### Bugfixes
+ - Config:
+   - Fixed SubjectNameMappings for CP IDs that contain colons
+ - OIDC:
+   - The state parameter is now sends back to OIDC client on SAML responder errors
+   - Multiple OIDC acr_values are now correctly handled as space separated, not comma separated
+ - SAML:
+   - AuthnStatement now contains the (optional but recommended) SessionNotOrAfter timestamp
+   - Fixed serialization issue in SamlMock artifact cache
+- SSO:
+   - SessionNotOnOrAfter now considers refresh_token activity on the SSO session
+   - No longer allow SSO if the AuthnRequest contains an invalid signature
+ - QoA:
+   - QoA enforcement now blocks properly in all cases also on RP side 
 
 ## 1.10.0.20250707T135922Z
 

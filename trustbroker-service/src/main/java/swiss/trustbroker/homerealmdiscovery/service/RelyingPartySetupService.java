@@ -16,7 +16,6 @@
 package swiss.trustbroker.homerealmdiscovery.service;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -39,6 +38,7 @@ import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
+import swiss.trustbroker.common.util.CollectionUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
@@ -95,7 +95,7 @@ public class RelyingPartySetupService {
 			var relyingParty = Optional.of(relyingParties.get(0));
 			if (relyingParties.size() > 1 && log.isDebugEnabled()) {
 				log.debug("Found multiple RP setups using issuerId={} referrer={}: {}",
-						relyingParty.get().getId(), refererUrl, Arrays.toString(relyingParties.toArray()));
+						relyingParty.get().getId(), refererUrl, CollectionUtil.toLogString(relyingParties));
 			}
 			return relyingParty;
 		}
@@ -267,14 +267,10 @@ public class RelyingPartySetupService {
 	}
 
 	private static boolean acsUrlListContainsReferrer(RelyingParty relyingParty, String referrerId) {
-		if (relyingParty != null && relyingParty.getAcWhitelist() != null && relyingParty.getAcWhitelist().getAcUrls() != null) {
-			for (String acsUrl : relyingParty.getAcWhitelist().getAcUrls()) {
-				if (acsUrl.contains(referrerId)) {
-					return true;
-				}
-			}
+		if (relyingParty == null || relyingParty.getAcWhitelist() == null) {
+			return false;
 		}
-		return false;
+		return relyingParty.getAcWhitelist().findFirst(String::contains, referrerId).isPresent();
 	}
 
 	private List<RelyingParty> getRelyingPartiesByAcsUrlMatch(String refererId) {

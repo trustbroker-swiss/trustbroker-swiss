@@ -44,6 +44,12 @@ import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 public class RpRequest extends ResponseStatus {
 
 	/**
+	 * Context key set by script to add one or several query parameters to the authorization request towards an OIDC CP.
+	 * @since 1.11.0
+	 */
+	public static final String CONTEXT_OIDC_AUTHORIZATION_QUERY_PARAMETER = "xtb.oidc.CP.authorization.queryParameter";
+
+	/**
 	 * Referer header from the incoming HTTP request.
 	 */
 	private String referer;

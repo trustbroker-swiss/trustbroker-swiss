@@ -23,11 +23,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Map;
 
 import com.nimbusds.jwt.JWTClaimsSet;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -36,6 +38,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.util.OidcUtil;
+import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.OidcClaimsSource;
@@ -67,18 +71,28 @@ class AuthorizationCodeFlowServiceTest {
 	@MockitoBean
 	private OidcClaimValidatorService oidcClaimValidatorService;
 
+	@MockitoBean
+	private TrustBrokerProperties trustBrokerProperties;
+
 	@Autowired
 	private AuthorizationCodeFlowService authorizationCodeFlowService;
 
+	@BeforeEach
+	void setUp() {
+		var securityChecks = new SecurityChecks();
+		when(trustBrokerProperties.getSecurity()).thenReturn(securityChecks);
+	}
+
 	@ParameterizedTest
 	@CsvSource(value = {
-			"null,false,false,null,''",
-			"null,null,true,null,&prompt=login", // CP default true
-			"true,null,true,QUERY,&prompt=login",
-			"null,true,true,null,&prompt=login"
+			"null,false,false,null,'',null",
+			"null,null,true,null,&prompt=login,null", // CP default true
+			"true,null,true,QUERY,&prompt=login,null",
+			"true,null,true,QUERY,&prompt=login,null,claims=%7B%22id_token%22%3A%7B%22acr%22%3A+%7B%22essential%22%3A+true%2C%22values%22%3A+%5B%22acrvalue%22%5D%7D%7D%7D",
+			"null,true,true,null,&prompt=login,null"
 	}, nullValues = "null")
 	void createAuthnRequest(Boolean stateForceAuthn, Boolean cpForceAuthn, Boolean resultForceAuthn,
-			ResponseMode responseMode, String prompt) {
+							ResponseMode responseMode, String prompt, String queryParam) {
 		var client = OidcMockTestData.givenClient();
 		var expectedResponseMode = ResponseMode.FORM_POST.getName();
 		if (responseMode != null) {
@@ -96,7 +110,7 @@ class AuthorizationCodeFlowServiceTest {
 		var acrValues = List.of("acr1", "acr2");
 		var qoaSpec = new QoaSpec(QoaComparison.EXACT, acrValues);
 
-		var result = authorizationCodeFlowService.createAuthnRequest(cp, state, qoaSpec);
+		var result = authorizationCodeFlowService.createAuthnRequest(cp, state, qoaSpec, queryParam);
 
 		assertThat(result.clientId(), is(OidcMockTestData.CLIENT_ID));
 		assertThat(result.acrValues(), is(acrValues));
@@ -104,16 +118,29 @@ class AuthorizationCodeFlowServiceTest {
 		assertThat(result.forceAuthn(), is(resultForceAuthn));
 		assertThat(result.destination(), is(OidcMockTestData.AUTHORIZE_ENDPOINT));
 		assertThat(result.assertionConsumerUrl(), is(OidcMockTestData.REDIRECT_URI));
-		assertThat(result.requestUri(), is(OidcMockTestData.AUTHORIZE_ENDPOINT +
-				"?response_type=code"
-				+ "&response_mode=" + expectedResponseMode
-				+ "&client_id=" + OidcMockTestData.CLIENT_ID
-				+ "&state=" + OidcMockTestData.SP_SESSION_ID
-				+ "&scope=openid+profile+email+address+phone"
-				+ "&nonce=" + OidcMockTestData.NONCE
-				+ "&acr_values=acr1+acr2"
-				+ "&redirect_uri=" + OidcMockTestData.REDIRECT_URI_ENCODED
-				+ prompt));
+		if (queryParam != null) {
+			assertThat(result.requestUri(), is(OidcMockTestData.AUTHORIZE_ENDPOINT +
+					"?response_type=code"
+					+ "&response_mode=" + expectedResponseMode
+					+ "&client_id=" + OidcMockTestData.CLIENT_ID
+					+ "&state=" + OidcMockTestData.SP_SESSION_ID
+					+ "&scope=openid+profile+email+address+phone"
+					+ "&nonce=" + OidcMockTestData.NONCE
+					+ "&redirect_uri=" + OidcMockTestData.REDIRECT_URI_ENCODED
+					+ "&claims=" + OidcMockTestData.CUSTOM_PARAM_ENCODED));
+		}
+		else {
+			assertThat(result.requestUri(), is(OidcMockTestData.AUTHORIZE_ENDPOINT +
+					"?response_type=code"
+					+ "&response_mode=" + expectedResponseMode
+					+ "&client_id=" + OidcMockTestData.CLIENT_ID
+					+ "&state=" + OidcMockTestData.SP_SESSION_ID
+					+ "&scope=openid+profile+email+address+phone"
+					+ "&nonce=" + OidcMockTestData.NONCE
+					+ "&redirect_uri=" + OidcMockTestData.REDIRECT_URI_ENCODED
+					+ prompt
+					+ "&acr_values=acr1+acr2"));
+		}
 	}
 
 	@Test
@@ -161,7 +188,7 @@ class AuthorizationCodeFlowServiceTest {
 	@ParameterizedTest
 	@MethodSource
 	void mergeClaims(List<OidcClaimsSource> sources, Map<String, Object> idTokenClaims,
-			Map<String, Object> userinfoClaims, Map<String, Object> expectedClaims) throws Exception {
+					 Map<String, Object> userinfoClaims, Map<String, Object> expectedClaims) throws Exception {
 		var client = OidcMockTestData.givenClient();
 		client.getClaimsSources().setClaimsSourceList(sources);
 		var tokenClaims = JWTClaimsSet.parse(idTokenClaims);
@@ -182,30 +209,30 @@ class AuthorizationCodeFlowServiceTest {
 				OidcMockTestData.CLAIM_GIVEN_NAME, OidcMockTestData.GIVEN_NAME,
 				OidcMockTestData.CLAIM_FAMILY_NAME, OidcMockTestData.FAMILY_NAME,
 				OidcMockTestData.CLAIM_EMAIL, OidcMockTestData.EMAIL
-				);
-		return new Object[][] {
-				{ List.of(OidcClaimsSource.ID_TOKEN), idTokenClaims, userinfoClaims, idTokenClaims },
-				{ List.of(OidcClaimsSource.USERINFO), idTokenClaims, userinfoClaims, userinfoClaims },
-				{ List.of(OidcClaimsSource.ID_TOKEN, OidcClaimsSource.USERINFO), idTokenClaims, userinfoClaims,
+		);
+		return new Object[][]{
+				{List.of(OidcClaimsSource.ID_TOKEN), idTokenClaims, userinfoClaims, idTokenClaims},
+				{List.of(OidcClaimsSource.USERINFO), idTokenClaims, userinfoClaims, userinfoClaims},
+				{List.of(OidcClaimsSource.ID_TOKEN, OidcClaimsSource.USERINFO), idTokenClaims, userinfoClaims,
 						Map.of(
-							// ID_TOKEN
-							OidcUtil.OIDC_SUBJECT, OidcMockTestData.SUBJECT,
-							OidcUtil.OIDC_ISSUER, OidcMockTestData.CP_ISSUER_ID,
-							OidcMockTestData.CLAIM_EMAIL, tokenEmail,
-							// USERINFO
-							OidcMockTestData.CLAIM_GIVEN_NAME, OidcMockTestData.GIVEN_NAME,
-							OidcMockTestData.CLAIM_FAMILY_NAME, OidcMockTestData.FAMILY_NAME
-						) },
-				{ List.of(OidcClaimsSource.USERINFO, OidcClaimsSource.ID_TOKEN), idTokenClaims, userinfoClaims,
+								// ID_TOKEN
+								OidcUtil.OIDC_SUBJECT, OidcMockTestData.SUBJECT,
+								OidcUtil.OIDC_ISSUER, OidcMockTestData.CP_ISSUER_ID,
+								OidcMockTestData.CLAIM_EMAIL, tokenEmail,
+								// USERINFO
+								OidcMockTestData.CLAIM_GIVEN_NAME, OidcMockTestData.GIVEN_NAME,
+								OidcMockTestData.CLAIM_FAMILY_NAME, OidcMockTestData.FAMILY_NAME
+						)},
+				{List.of(OidcClaimsSource.USERINFO, OidcClaimsSource.ID_TOKEN), idTokenClaims, userinfoClaims,
 						Map.of(
-							// USERINFO
-							OidcMockTestData.CLAIM_GIVEN_NAME, OidcMockTestData.GIVEN_NAME,
-							OidcMockTestData.CLAIM_FAMILY_NAME, OidcMockTestData.FAMILY_NAME,
-							OidcMockTestData.CLAIM_EMAIL, OidcMockTestData.EMAIL,
-							// ID_TOKEN
-							OidcUtil.OIDC_SUBJECT, OidcMockTestData.SUBJECT,
-							OidcUtil.OIDC_ISSUER, OidcMockTestData.CP_ISSUER_ID
-						) },
+								// USERINFO
+								OidcMockTestData.CLAIM_GIVEN_NAME, OidcMockTestData.GIVEN_NAME,
+								OidcMockTestData.CLAIM_FAMILY_NAME, OidcMockTestData.FAMILY_NAME,
+								OidcMockTestData.CLAIM_EMAIL, OidcMockTestData.EMAIL,
+								// ID_TOKEN
+								OidcUtil.OIDC_SUBJECT, OidcMockTestData.SUBJECT,
+								OidcUtil.OIDC_ISSUER, OidcMockTestData.CP_ISSUER_ID
+						)},
 		};
 	}
 

@@ -128,9 +128,9 @@ public class ClaimsProviderService {
 		return authnRequest;
 	}
 
-	private static void setForceAuthnAndAcUrl(StateData stateData, AuthnRequest authnRequest,  String consumerURL,
+	private void setForceAuthnAndAcUrl(StateData stateData, AuthnRequest authnRequest,  String consumerURL,
 			ClaimsParty claimsProvider) {
-		if (stateData.forceAuthn() || claimsProvider.forceAuthn(true)) {
+		if (stateData.forceAuthn() || claimsProvider.forceAuthn(trustBrokerProperties.getSecurity().isForceCpAuthentication())) {
 			authnRequest.setForceAuthn(true);
 		}
 		if (!Boolean.TRUE.equals(claimsProvider.getDisableACUrl())) {
@@ -269,6 +269,9 @@ public class ClaimsProviderService {
 		// map RP Qoa model to CP Qoa model
 		var cpQoaConfig = claimsProvider.getQoaConfig();
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuer, rpReferrer);
+
+		// Compute CP side qoa to be checked when IDP returns resulting Qoa
+		// Do not use any RP related settings for this because RP requirements are checked AfterProvisioning.
 		var rpQoaConfig = relyingPartySetupService.getQoaConfiguration(spStateData, relyingParty, trustBrokerProperties);
 		var qoaSpec = qoaMappingService.mapRequestQoasToOutbound(rpRequest.getComparisonType(), rpRequest.getContextClasses(),
 				rpQoaConfig, cpQoaConfig);
@@ -290,7 +293,8 @@ public class ClaimsProviderService {
 		// forward using OIDC authorization code flow
 		else {
 			stateData.getSpStateData().setOidcNonce(OidcUtil.generateNonce());
-			var authnCodeFlowRequest = authorizationCodeFlowService.createAuthnRequest(claimsParty, stateData, qoaSpec);
+			var queryParam = context.get(RpRequest.CONTEXT_OIDC_AUTHORIZATION_QUERY_PARAMETER);
+			var authnCodeFlowRequest = authorizationCodeFlowService.createAuthnRequest(claimsParty, stateData, qoaSpec, queryParam);
 			saveCorrelatedStateDataWithState(cpIssuer, deviceId, stateData);
 
 			// audit

@@ -17,8 +17,10 @@ package swiss.trustbroker.saml.dto;
 
 import java.io.Serializable;
 import java.util.Collections;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -62,11 +64,17 @@ public abstract class ResponseStatus implements Serializable {
 
 	/**
 	 * Set by scripts to toggle features, to be consumed by the respective implementations.
+	 * <br/>
+	 * Potentially breaking changes:
+	 * <ul>
+	 *     <li>With 1.11.0 This changed from <code>Set</code> to <code>Map</code>. Scripts that access the getter/setter
+	 *     directly have to be adapted (use <code>featureConditionSet</code>, <code>featureConditions</code>).</li>
+	 * </ul>
 	 *
 	 * @since 1.9.0
 	 */
 	@Builder.Default
-	private Set<String> featureConditions = new HashSet<>();
+	private Map<String, String> featureConditions = new HashMap<>();
 
 	// Error handling: Script might abort the federation with a message to RP
 
@@ -173,15 +181,44 @@ public abstract class ResponseStatus implements Serializable {
 	 * @since 1.9.0
 	 */
 	public void featureConditions(Set<String> featureConditions) {
-		log.debug("FeatureConditions={} set", featureConditions);
 		if (featureConditions == null) {
-			this.featureConditions = new HashSet<>();
+			reInitializeFeatureConditions();
 		}
 		else {
 			// make sure it is modifiable
-			this.featureConditions = new HashSet<>();
-			this.featureConditions.addAll(featureConditions);
+			reInitializeFeatureConditions();
+			featureConditions.forEach(featureCondition -> this.featureConditions.put(featureCondition, null));
 		}
+		log.debug("FeatureConditions={} set without parameters", this.featureConditions);
+
+	}
+
+	/**
+	 * Script hook: Toggle features via conditions.
+	 *
+	 * @since 1.11.0
+	 */
+	public void featureConditions(Map<String, String> featureConditions) {
+		if (featureConditions == null) {
+			reInitializeFeatureConditions();
+		}
+		else {
+			// make sure it is modifiable
+			reInitializeFeatureConditions();
+			this.featureConditions.putAll(featureConditions);
+		}
+		log.debug("FeatureConditions={} set with parameters", this.featureConditions);
+	}
+
+	private Map<String, String> initializedFeatureConditions() {
+		if (featureConditions == null) {
+			reInitializeFeatureConditions();
+		}
+		return featureConditions;
+	}
+
+	private void reInitializeFeatureConditions() {
+		featureConditions = new HashMap<>();
 	}
 
 	/**
@@ -190,9 +227,22 @@ public abstract class ResponseStatus implements Serializable {
 	 * @since 1.9.0
 	 */
 	public boolean addFeatureCondition(String featureCondition) {
-		if ((featureCondition != null) && featureConditions.add(featureCondition)) {
-			log.debug("FeatureCondition={} set", featureCondition);
-			return true;
+		return addFeatureCondition(featureCondition, null);
+	}
+
+	/**
+	 * Script hook: Add single feature condition with a nullable parameter.
+	 * @return true if it was not present before
+	 * @since 1.11.0
+	 */
+	public boolean addFeatureCondition(String featureCondition, String parameter) {
+		if (featureCondition != null) {
+			var exists = hasFeatureCondition(featureCondition);
+			var previous = initializedFeatureConditions().put(featureCondition, parameter);
+			if (!(exists && Objects.equals(previous, parameter))) {
+				log.debug("FeatureCondition={} set with parameter={}", featureCondition, parameter);
+				return true;
+			}
 		}
 		return false;
 	}
@@ -203,7 +253,8 @@ public abstract class ResponseStatus implements Serializable {
 	 * @since 1.9.0
 	 */
 	public boolean removeFeatureCondition(String featureCondition) {
-		if ((featureCondition != null) && featureConditions.remove(featureCondition)) {
+		if ((featureCondition != null) && (featureConditions != null) && featureConditions.containsKey(featureCondition)) {
+			featureConditions.remove(featureCondition);
 			log.debug("FeatureCondition={} cleared", featureCondition);
 			return true;
 		}
@@ -216,7 +267,7 @@ public abstract class ResponseStatus implements Serializable {
 	 * @since 1.9.0
 	 */
 	public boolean hasFeatureCondition(String featureCondition) {
-		if (featureCondition != null && featureConditions.contains(featureCondition)) {
+		if ((featureCondition != null) && (featureConditions != null) && featureConditions.containsKey(featureCondition)) {
 			log.debug("FeatureCondition={} is present", featureCondition);
 			return true;
 		}
@@ -224,15 +275,40 @@ public abstract class ResponseStatus implements Serializable {
 	}
 
 	/**
-	 * Set condition for Access Request (script hook).
-	 * <br/>
-	 * Note that depending on the feature, only <code>RPRequest</code> or <code>CPResponse</code> may be checked.
+	 * Script hook: Get single feature condition parameter.
 	 *
-	 * @deprecated replaced with <code>addFeatureCondition</code> / <code>setFeatureConditions</code>.
-	 * @since 1.8.0
+	 * @since 1.11.0
 	 */
-	@Deprecated(forRemoval = true, since = "1.9.0")
-	public void accessCondition(String accessCondition) {
-		addFeatureCondition(accessCondition);
+	public String featureCondition(String featureCondition) {
+		if ((featureCondition != null) && (featureConditions != null) && featureConditions.containsKey(featureCondition)) {
+			var parameter =  featureConditions.get(featureCondition);
+			log.debug("FeatureCondition={} is present with parameter={}", featureCondition, parameter);
+			return parameter;
+		}
+		return null;
+	}
+
+	/**
+	 * Get all feature conditions.
+	 *
+	 * @since 1.11.0
+	 */
+	public Map<String, String> featureConditions() {
+		if (featureConditions == null) {
+			return Collections.emptyMap();
+		}
+		return Collections.unmodifiableMap(featureConditions);
+	}
+
+	/**
+	 * Get all feature conditions without parameters.
+	 *
+	 * @since 1.11.0
+	 */
+	public Set<String> featureConditionSet() {
+		if (featureConditions == null) {
+			return Collections.emptySet();
+		}
+		return Collections.unmodifiableSet(featureConditions.keySet());
 	}
 }

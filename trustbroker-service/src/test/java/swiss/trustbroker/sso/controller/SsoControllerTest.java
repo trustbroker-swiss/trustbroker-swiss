@@ -87,7 +87,7 @@ class SsoControllerTest {
 	private MockMvc mockMvc;
 
 	@BeforeEach
-	public void setup() {
+	void setup() {
 		SamlInitializer.initSamlSubSystem();
 		this.mockMvc = MockMvcBuilders.webAppContextSetup(this.webApplicationContext).build();
 		this.apiSupport = new ApiSupport(trustBrokerProperties);

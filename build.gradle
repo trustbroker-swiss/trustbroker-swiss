@@ -1,7 +1,7 @@
 buildscript {
 	ext {
 		top = ''
-		buildVersion = '1.10.0'
+		buildVersion = '1.11.0'
 		buildTimestamp = null
 		// build promotion
 		buildName = System.env.BUILD_NAME
@@ -17,7 +17,7 @@ buildscript {
 
 plugins {
 	id 'base'
-	id 'org.springframework.boot' version '3.4.5' apply false
+	id 'org.springframework.boot' version '3.5.3' apply false
 	id 'org.ajoberstar.grgit' version '4.1.1' apply true
 	id "org.unbroken-dome.test-sets" version '4.1.0' apply false
 	id 'com.google.cloud.tools.jib' version '3.4.4' apply false
@@ -61,8 +61,8 @@ subprojects {
 				// https://central.sonatype.com/artifact/org.springframework.boot/spring-boot/2.7.11/versions
 				mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
 				// spring-cloud: https://spring.io/projects/spring-cloud
-				// https://central.sonatype.com/artifact/org.springframework.cloud/spring-cloud-dependencies/2023.0.1/versions
-				mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2024.0.0'
+				// https://central.sonatype.com/artifact/org.springframework.cloud/spring-cloud-dependencies/2025.0.0/versions
+				mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2025.0.0'
 			}
 			// dependency management for libraries used in multiple components
 			dependencies {
@@ -89,18 +89,18 @@ subprojects {
 				}
 
 				// git integration
-				// https://central.sonatype.com/artifact/org.eclipse.jgit/org.eclipse.jgit/6.8.0.202311291450-r/versions
-				dependency 'org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r'
-				dependency 'org.eclipse.jgit:org.eclipse.jgit.ssh.apache:6.10.0.202406032230-r'
+				// https://central.sonatype.com/artifact/org.eclipse.jgit/org.eclipse.jgit/7.3.0.202506031305-r/versions
+				dependency 'org.eclipse.jgit:org.eclipse.jgit:7.3.0.202506031305-r'
+				dependency 'org.eclipse.jgit:org.eclipse.jgit.ssh.apache:7.3.0.202506031305-r'
 
 				// apache baseline (opensaml mainly depends on these)
 				// https://central.sonatype.com/artifact/org.apache.commons/commons-text/1.12.0/versions
-				// https://central.sonatype.com/artifact/org.apache.commons/commons-lang3/3.14.0/versions
+				// https://central.sonatype.com/artifact/org.apache.commons/commons-lang3/3.17.0/versions
 				// https://central.sonatype.com/artifact/commons-beanutils/commons-beanutils/1.9.4/versions
 				// https://central.sonatype.com/artifact/commons-io/commons-io/2.16.1/versions
 				dependency 'org.apache.commons:commons-text:1.12.0'
 				dependency 'org.apache.commons:commons-lang3:3.17.0'
-				dependency 'commons-beanutils:commons-beanutils:1.9.4'
+				dependency 'commons-beanutils:commons-beanutils:1.11.0'
 				dependency 'commons-io:commons-io:2.17.0'
 
 				// state cache feature
@@ -122,7 +122,7 @@ subprojects {
 
 				// JCE provider
 				// https://www.bouncycastle.org/latest_releases.html
-				// https://central.sonatype.com/artifact/org.bouncycastle/bcprov-jdk18on/1.77/versions
+				// https://central.sonatype.com/artifact/org.bouncycastle/bcprov-jdk18on/1.79/versions
 				dependencySet(group: 'org.bouncycastle', version: '1.79') {
 					entry 'bcprov-jdk18on'
 					entry 'bcpkix-jdk18on'
@@ -137,13 +137,14 @@ subprojects {
 				dependency 'org.apache.wss4j:wss4j-ws-security-dom:3.0.3'
 
 				// exclude old opensaml stuff from spring-security too
-				// https://central.sonatype.com/artifact/org.springframework.security/spring-security-saml2-service-provider/6.2.4/versions
+				// https://central.sonatype.com/artifact/org.springframework.security/spring-security-saml2-service-provider/6.4.4/versions
 				dependency('org.springframework.security:spring-security-saml2-service-provider:6.4.4') {
 					exclude group: 'org.opensaml', name: 'opensaml-core'
 				}
 
 				// monitoring
-				dependency 'io.micrometer:micrometer-registry-prometheus:1.13.2'
+				// https://central.sonatype.com/artifact/io.micrometer/micrometer-registry-prometheus/1.13.2/versions
+				dependency 'io.micrometer:micrometer-registry-prometheus:1.13.0'
 
 				// JAX-WS
 				// https://central.sonatype.com/artifact/org.glassfish.jaxb/jaxb-xjc/4.0.5/versions
@@ -161,6 +162,8 @@ subprojects {
 			testImplementation 'org.mockito:mockito-junit-jupiter'
 			testImplementation 'org.assertj:assertj-core'
 			testImplementation 'org.junit.jupiter:junit-jupiter-engine'
+			// https://stackoverflow.com/questions/79640685/cannot-build-project-after-upgrading-spring-boot-to-3-5
+			testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
 			// boilerplate
 			compileOnly 'org.projectlombok:lombok:'

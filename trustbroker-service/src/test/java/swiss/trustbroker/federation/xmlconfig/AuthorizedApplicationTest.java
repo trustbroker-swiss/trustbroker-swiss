@@ -94,7 +94,8 @@ class AuthorizedApplicationTest {
 	@CsvSource(value = {
 			// none required (= default application)
 			"null,null,null,false,true",
-			"null,null,app1,false,true",
+			// name
+			"null,null,app1,false,false",
 			// clientId
 			"client1,client1,null,true,false",
 			"client1,null,client1,false,false",

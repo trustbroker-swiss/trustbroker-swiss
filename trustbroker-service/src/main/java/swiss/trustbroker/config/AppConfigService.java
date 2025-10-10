@@ -38,22 +38,20 @@ import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CredentialReader;
 import swiss.trustbroker.common.setup.config.BootstrapProperties;
 import swiss.trustbroker.common.setup.service.GitService;
-import swiss.trustbroker.common.util.DirectoryUtil;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.service.XmlConfigStatusService;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderSetup;
+import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.RelyingPartySetup;
-import swiss.trustbroker.federation.xmlconfig.SignerKeystore;
-import swiss.trustbroker.federation.xmlconfig.SignerStore;
-import swiss.trustbroker.federation.xmlconfig.SignerTruststore;
 import swiss.trustbroker.federation.xmlconfig.SsoGroupSetup;
 import swiss.trustbroker.homerealmdiscovery.service.WebResourceProvider;
 import swiss.trustbroker.homerealmdiscovery.util.ClaimsProviderUtil;
 import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
 import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.oidc.ClientConfigInMemoryRepository;
+import swiss.trustbroker.oidc.OidcEncryptionKeystoreService;
 import swiss.trustbroker.oidc.client.service.OidcMetadataCacheService;
 import swiss.trustbroker.script.service.ScriptService;
 
@@ -64,8 +62,6 @@ public class AppConfigService {
 
 	@SuppressWarnings("java:S1075")
 	private static final String CONFIG_CACHE_PATH = "/configCache/trustbroker-inventories/";
-
-	private static final String CONFIG_CACHE_KEYSTORE_SUBPATH = GitService.CONFIGURATION_PATH_SUB_DIR_LATEST + "keystore/";
 
 	private static final String CONFIG_CACHE_DEFINITION_SUBPATH =
 			GitService.CONFIGURATION_PATH_SUB_DIR_LATEST + RelyingPartySetupUtil.DEFINITION_PATH;
@@ -91,6 +87,10 @@ public class AppConfigService {
 	private final OidcMetadataCacheService oidcMetadataCacheService;
 
 	private final WebResourceProvider resourceProvider;
+
+	private final CredentialService credentialService;
+
+	private final OidcEncryptionKeystoreService oidcEncryptionKeystoreService;
 
 	public int checkAndUpdate() {
 		var changed = mustUpdateFiles();
@@ -129,8 +129,7 @@ public class AppConfigService {
 				if (StringUtils.isEmpty(ssoGroupName)) {
 					log.error("RelyingParty with rpId={} enables SSO without an SSO group", rp.getId());
 					rp.initializedValidationStatus().addError("RelyingParty enables SSO without an SSO group");
-				}
-				else if (groupMissing(ssoGroupSetup, ssoGroupName)) {
+				} else if (groupMissing(ssoGroupSetup, ssoGroupName)) {
 					log.error("SSO definition for ssoGroupName={} required for RelyingParty with rpId={} not found",
 							ssoGroupName, rp.getId());
 					rp.initializedValidationStatus().addError(
@@ -218,8 +217,7 @@ public class AppConfigService {
 				try {
 					clientConfigInMemoryRepository.findByClientId(oidcClient.getId());
 					oidcClientCount += 1;
-				}
-				catch (RuntimeException ex) {
+				} catch (RuntimeException ex) {
 					log.error("Invalid RP={} oidcClientId={}: {}", relyingParty.getId(), oidcClient.getId(), ex);
 					relyingParty.invalidate(ex);
 				}
@@ -232,8 +230,7 @@ public class AppConfigService {
 		for (ClaimsParty claimsParty : claimsProviderSetup.getClaimsParties()) {
 			try {
 				checkAndLoadCpCertificates(claimsParty);
-			}
-			catch (TechnicalException ex) {
+			} catch (TechnicalException ex) {
 				log.error("Invalid CP={}: {}", claimsParty.getId(), ex.getInternalMessage());
 				claimsParty.invalidate(ex);
 			}
@@ -251,12 +248,12 @@ public class AppConfigService {
 			return;
 		}
 		var signerTruststore = claimsParty.getCertificates().getSignerTruststore();
-		var credentials = checkAndLoadTrustCredential(signerTruststore, claimsParty.getId(), claimsParty.getSubPath());
+		var credentials = credentialService.checkAndLoadTrustCredential(signerTruststore, claimsParty.getId(), claimsParty.getSubPath());
 		claimsParty.setCpTrustCredential(credentials);
 
 		var encryptionKeystore = claimsParty.getCertificates().getEncryptionKeystore();
 		if (encryptionKeystore != null) {
-			var keystoreCredential = checkAndLoadCert(encryptionKeystore, claimsParty.getId(), claimsParty.getSubPath());
+			var keystoreCredential = credentialService.checkAndLoadCert(encryptionKeystore, claimsParty.getId(), claimsParty.getSubPath());
 			List<Credential> decryptionCredentials = new ArrayList<>();
 			decryptionCredentials.add(keystoreCredential);
 			claimsParty.setCpDecryptionCredentials(decryptionCredentials);
@@ -274,27 +271,30 @@ public class AppConfigService {
 		}
 
 		if (claimsParty.getCertificates().getBackendKeystore() != null) {
-			var backendCredential = checkAndLoadCert(claimsParty.getCertificates().getBackendKeystore(),
+			var backendCredential = credentialService.checkAndLoadCert(claimsParty.getCertificates().getBackendKeystore(),
 					claimsParty.getId(), claimsParty.getSubPath());
 			claimsParty.setCpBackendClientCredential(backendCredential);
 		}
 		if (claimsParty.getCertificates().getBackendTruststore() != null) {
-			var backendTrustCredentials = checkAndLoadTrustCredential(claimsParty.getCertificates().getBackendTruststore(),
+			var backendTrustCredentials = credentialService.checkAndLoadTrustCredential(claimsParty.getCertificates().getBackendTruststore(),
 					claimsParty.getId(), claimsParty.getSubPath());
 			claimsParty.setCpBackendTrustCredentials(backendTrustCredentials);
 		}
+
+		if (claimsParty.getOidc() != null) {
+			oidcEncryptionKeystoreService.loadClientsEncKeystore(claimsParty.getId(), claimsParty.getSubPath(), claimsParty.getOidc().getClients());
+		}
+
 	}
 
 	public void checkAndLoadRelyingPartyCertificates(RelyingPartySetup relyingParties) {
 		for (RelyingParty relyingParty : relyingParties.getRelyingParties()) {
 			try {
 				checkAndLoadRelyingPartyCertificates(relyingParty);
-			}
-			catch (TechnicalException ex) {
+			} catch (TechnicalException ex) {
 				log.error("Invalid RelyingParty={}: {}", relyingParty.getId(), ex.getInternalMessage());
 				relyingParty.invalidate(ex);
-			}
-			catch (Exception ex) {
+			} catch (Exception ex) {
 				log.error("Invalid RelyingParty={}: {}", relyingParty.getId(), ex.getMessage());
 				relyingParty.invalidate(ex);
 			}
@@ -315,11 +315,11 @@ public class AppConfigService {
 			return;
 		}
 
-		var credential = checkAndLoadCert(rpCerts.getSignerKeystore(), relyingParty.getId(), relyingParty.getSubPath());
+		var credential = credentialService.checkAndLoadCert(rpCerts.getSignerKeystore(), relyingParty.getId(), relyingParty.getSubPath());
 		relyingParty.setRpSigner(credential);
 		loadSloSignerCertificates(relyingParty);
 
-		var credentials = checkAndLoadTrustCredential(rpCerts.getSignerTruststore(), relyingParty.getId(),
+		var credentials = credentialService.checkAndLoadTrustCredential(rpCerts.getSignerTruststore(), relyingParty.getId(),
 				relyingParty.getSubPath());
 		if (!relyingParty.getOidcClients().isEmpty()) {
 			var selfSigner = trustBrokerProperties.getSigner();
@@ -333,23 +333,24 @@ public class AppConfigService {
 		var encryptionTruststore = rpCerts.getEncryptionTruststore();
 		if (encryptionTruststore != null) {
 			var truststoreCredentials =
-					checkAndLoadTrustCredential(encryptionTruststore, relyingParty.getId(), relyingParty.getSubPath());
+					credentialService.checkAndLoadTrustCredential(encryptionTruststore, relyingParty.getId(), relyingParty.getSubPath());
 			if (!truststoreCredentials.isEmpty()) {
 				if (truststoreCredentials.size() > 1) {
 					log.info("EncryptionTruststore has multiple certs for rpIssuerId={}. Picking first one.",
 							relyingParty.getId());
 				}
-				relyingParty.setRpEncryptionCredential(truststoreCredentials.get(0));
+				relyingParty.setRpEncryptionTrustCredential(truststoreCredentials.get(0));
 			}
 		}
+
+		loadOidcEncKeystores(relyingParty);
 	}
 
-	private List<Credential> checkAndLoadTrustCredential(SignerTruststore signerTruststore, String urn, String subPath) {
-		if (signerTruststore == null) {
-			throw new TechnicalException(String.format("Certificate invalid: Missing SignerTruststore for urn=%s", urn));
+	private void loadOidcEncKeystores(RelyingParty relyingParty) {
+		List<OidcClient> oidcClients = relyingParty.getOidcClients();
+		if (oidcClients != null && !oidcClients.isEmpty()) {
+			oidcEncryptionKeystoreService.loadClientsEncKeystore(relyingParty.getId(), relyingParty.getSubPath(), oidcClients);
 		}
-		checkCertPath(signerTruststore.getCertPath(), urn);
-		return loadTrustCredential(signerTruststore, subPath);
 	}
 
 	private void loadSloSignerCertificates(RelyingParty relyingParty) {
@@ -357,74 +358,11 @@ public class AppConfigService {
 			for (var sloConfig : relyingParty.getSso().getSloResponse()) {
 				var sloSignerKeystore = sloConfig.getSignerKeystore();
 				if (sloSignerKeystore != null) {
-					var sloCredential = checkAndLoadCert(sloSignerKeystore, relyingParty.getId(), relyingParty.getSubPath());
+					var sloCredential = credentialService.checkAndLoadCert(sloSignerKeystore, relyingParty.getId(), relyingParty.getSubPath());
 					sloConfig.setSloSigner(sloCredential);
 				}
 			}
 		}
-	}
-
-	private Credential checkAndLoadCert(SignerKeystore signerKeystore, String urn, String subPath) {
-		if (signerKeystore == null) {
-			throw new TechnicalException(String.format("Certificate invalid: Missing Signer Keystore for urn=%s", urn));
-		}
-		checkCertPath(signerKeystore.getCertPath(), urn);
-		return checkAndLoadCert(signerKeystore, subPath);
-	}
-
-	private Credential checkAndLoadCert(SignerStore store, String subPath) {
-		resolveStorePaths(store, subPath);
-		return CredentialReader.getCredential(store.getResolvedCertPath(), store.getCertType(),
-				store.getPassword(), store.getAlias(), store.getResolvedKeyPath());
-	}
-
-	private List<Credential> loadTrustCredential(SignerStore store, String subPath) {
-		resolveStorePaths(store, subPath);
-		return CredentialReader.readTrustCredentials(
-				store.getResolvedCertPath(), store.getCertType(), store.getPassword(), store.getAlias());
-	}
-
-	private void resolveStorePaths(SignerStore store, String subPath) {
-		var basePath = resolvePath(store.getCertPath(), subPath);
-		var resolvedCertPath = basePath + store.getCertPath();
-		store.setResolvedCertPath(resolvedCertPath);
-		if (store.getKeyPath() != null) {
-			// key is always loaded from the same path as cert
-			store.setResolvedKeyPath(basePath + store.getKeyPath());
-		}
-	}
-
-	private String resolvePath(String certPath, String subPath) {
-		// see ReferenceHolder for the order
-		var configPath = trustBrokerProperties.getConfigurationPath();
-		if (StringUtils.isNotEmpty(subPath)) {
-			// 1. relative path in definition
-			var path = configPath + CONFIG_CACHE_DEFINITION_SUBPATH + subPath;
-			if (certificateExists(certPath, path)) {
-				return path;
-			}
-			// 2. relative path in keystore
-			path = configPath + CONFIG_CACHE_KEYSTORE_SUBPATH + subPath;
-			if (certificateExists(certPath, path)) {
-				return path;
-			}
-		}
-		// 3. default directory
-		var path = configPath + CONFIG_CACHE_KEYSTORE_SUBPATH;
-		if (certificateExists(certPath, path)) {
-			return path;
-		}
-		throw new TechnicalException(String.format("Failed to load cert='%s' in path='%s' or subPath='%s'",
-				certPath, path, subPath));
-	}
-
-	private static boolean certificateExists(String certPath, String path) {
-		var certFile = Path.of(path, certPath).toString();
-		if (DirectoryUtil.existsOnFilesystemOrClasspath(certFile)) {
-			log.trace("Found cert={} on path={}", certPath, path);
-			return true;
-		}
-		return false;
 	}
 
 	private static void checkCertPath(String path, String urn) {
@@ -470,8 +408,7 @@ public class AppConfigService {
 					fileChanged += 1;
 				}
 				newFiles.remove(newFile.getPath());
-			}
-			catch (IOException e) {
+			} catch (IOException e) {
 				throw new TechnicalException(String.format(
 						"Could not compare config activeConfigFile=%s with checkoutConfigFile=%s fileCnt=%s/%s",
 						oldFileName, newFile, fileChecked, oldFiles.size()), e);
@@ -495,8 +432,7 @@ public class AppConfigService {
 					.map(Path::toString)
 					.toList();
 			return new ArrayList<>(immutableList); // we need it mutable
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			throw new TechnicalException(String.format("Could not read config files from dir=%s", newFilesDir), e);
 		}
 	}
@@ -533,5 +469,4 @@ public class AppConfigService {
 			claimsProviderSetup.setClaimsParties(validCps);
 		}
 	}
-
 }

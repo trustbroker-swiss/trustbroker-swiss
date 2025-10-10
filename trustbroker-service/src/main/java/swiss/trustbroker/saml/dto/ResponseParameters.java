@@ -82,6 +82,10 @@ public class ResponseParameters {
 	@Builder.Default
 	private boolean setSessionIndex = true;
 
+	private String sessionIndex; // assertionId is used if not set
+
+	private Instant sessionNotOnOrAfter;
+
 	// presentation polices
 
 	private String skinnyAssertionStyle;

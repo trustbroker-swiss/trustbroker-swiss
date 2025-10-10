@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -39,6 +38,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.opensaml.saml.saml2.core.RequestAbstractType;
 import org.opensaml.saml.saml2.core.Response;
+import org.opensaml.soap.wstrust.RequestSecurityTokenResponseCollection;
 import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
 import swiss.trustbroker.common.exception.TechnicalException;
@@ -65,26 +65,33 @@ public class ScriptService {
 
 	private static final String DIRECTORY_LATEST = GitService.CONFIGURATION_PATH_SUB_DIR_LATEST;
 
-	// hooks we support
-	private static final String SCRIPT_TYPE_BEFORE_IDM = "BeforeIdm";
+	// RP request hooks in the order of their invocation
 
-	private static final String SCRIPT_TYPE_AFTER_IDM = "AfterIdm";
+	private static final String SCRIPT_TYPE_ON_SAML_REQUEST = "OnRequest"; // SAML validation hook
 
-	private static final String SCRIPT_TYPE_BEFORE_HRD = "BeforeHrd";
+	private static final String SCRIPT_TYPE_BEFORE_HRD = "BeforeHrd"; // IDP pre-selection
 
-	private static final String SCRIPT_TYPE_OIDC_ON_TOKEN = "OnToken"; // OIDC claims enrichment
+	private static final String SCRIPT_TYPE_BEFORE_CP_REQUEST = "BeforeCpRequest"; // final request modifications
 
-	private static final String SCRIPT_TYPE_OIDC_ON_USERINFO = "OnUserInfo"; // OIDC claims reducer
+	private static final String SCRIPT_TYPE_ON_CP_REQUEST = "OnCpRequest"; // final SAML request modifications
 
-	private static final String SCRIPT_TYPE_ON_SAML_REQUEST = "OnRequest"; // validation hook
+	// CP response hooks in the order of their invocation
 
-	private static final String SCRIPT_TYPE_BEFORE_CP_REQUEST = "BeforeCpRequest"; // final RpRequest modifications
+	private static final String SCRIPT_TYPE_BEFORE_IDM = "BeforeIdm"; // begin IDM data fetching
 
-	private static final String SCRIPT_TYPE_ON_CP_REQUEST = "OnCpRequest"; // outbound hook
+	private static final String SCRIPT_TYPE_AFTER_IDM = "AfterIdm"; // completed IDM fetching step (re-fetches apply by features)
+
+	private static final String SCRIPT_TYPE_AFTER_PROVISIONING = "AfterProvisioning"; // completed IDM provisioning
 
 	private static final String SCRIPT_TYPE_BEFORE_RESPONSE = "BeforeResponse"; // after AccessRequest but before filtering
 
 	private static final String SCRIPT_TYPE_ON_SAML_RESPONSE = "OnResponse"; // validation hook
+
+	private static final String SCRIPT_TYPE_ON_WS_TRUST_RESPONSE = "OnWsTrustResponse"; // validation hook
+
+	private static final String SCRIPT_TYPE_OIDC_ON_TOKEN = "OnToken"; // OIDC claims enrichment
+
+	private static final String SCRIPT_TYPE_OIDC_ON_USERINFO = "OnUserInfo"; // OIDC claims reducer
 
 	// beans that groovy scripts can access directly by these names (Camel case with first character uppercase)
 	private static final String BEAN_LOGGER = "LOG";
@@ -97,9 +104,11 @@ public class ScriptService {
 
 	private static final String BEAN_CP_RESPONSE = "CPResponse"; // state we pass through processing i.e. CpResponse
 
-	private static final String BEAN_SAML_RESPONSE = "SAMLResponse"; // CP Response
+	private static final String BEAN_SAML_RESPONSE = "SAMLResponse"; // CP Response / response to RP
 
 	private static final String BEAN_SAML_REQUEST = "SAMLRequest"; // RP AuthRequest in opensaml dom API
+
+	private static final String BEAN_WS_TRUST_RESPONSE = "WsTrustResponse"; // RSTR
 
 	private static final String BEAN_IDM_QUERIES = "IDMQueryList"; // map of queries we shall execute
 
@@ -185,49 +194,68 @@ public class ScriptService {
 	public void processCpBeforeIdm(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_BEFORE_IDM;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, false);
-		processAllSamlScripts(hook, scripts, cpResponse, response, null);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null, null);
 	}
 
 	public void processRpBeforeIdm(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_BEFORE_IDM;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
-		processAllSamlScripts(hook, scripts, cpResponse, response, null);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null, null);
 	}
 
 	public void processCpAfterIdm(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_AFTER_IDM;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, false);
-		processAllSamlScripts(hook, scripts, cpResponse, response, null);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null, null);
 	}
 
 	public void processRpAfterIdm(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_AFTER_IDM;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
-		processAllSamlScripts(hook, scripts, cpResponse, response, null);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null, null);
+	}
+
+	public void processCpAfterProvisioning(CpResponse cpResponse, String requestIssuer) {
+		var hook = SCRIPT_TYPE_AFTER_PROVISIONING;
+		var scripts = getScriptsByType(requestIssuer, null, hook, false);
+		processAllSamlScripts(hook, scripts, cpResponse, null, null, null);
+	}
+
+	public void processRpAfterProvisioning(CpResponse cpResponse, String requestIssuer, String referrer) {
+		var hook = SCRIPT_TYPE_AFTER_PROVISIONING;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
+		processAllSamlScripts(hook, scripts, cpResponse, null, null, null);
 	}
 
 	public void processCpBeforeResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_BEFORE_RESPONSE;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, false);
-		processAllSamlScripts(hook, scripts, cpResponse, response, null);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null, null);
 	}
 
 	public void processRpBeforeResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_BEFORE_RESPONSE;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
-		processAllSamlScripts(hook, scripts, cpResponse, response, null);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null, null);
 	}
 
 	public void processCpOnResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_ON_SAML_RESPONSE;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, false);
-		processAllSamlScripts(hook, scripts, cpResponse, response, null);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null, null);
 	}
 
 	public void processRpOnResponse(CpResponse cpResponse, Response response, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_ON_SAML_RESPONSE;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
-		processAllSamlScripts(hook, scripts, cpResponse, response, null);
+		processAllSamlScripts(hook, scripts, cpResponse, response, null, null);
+	}
+
+	public void processWsTrustOnResponse(CpResponse cpResponse, RequestSecurityTokenResponseCollection wsTrustResponse,
+										 String requestIssuer, String referrer) {
+		var hook = SCRIPT_TYPE_ON_WS_TRUST_RESPONSE;
+		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
+		processAllSamlScripts(hook, scripts, cpResponse, null, wsTrustResponse, null);
 	}
 
 	// CP side script hooks
@@ -264,14 +292,15 @@ public class ScriptService {
 	void processAllOidcScripts(String hookType, List<Pair<String, CompiledScript>> scripts, CpResponse cpResponse,
 			Response response) {
 		for (var script : scripts) {
-			processOnResponse(hookType, script, cpResponse, response, null);
+			processOnResponse(hookType, script, cpResponse, response, null, null);
 		}
 	}
 
-	public void processAllSamlScripts(String hookType, List<Pair<String, CompiledScript>> scripts,
-									  CpResponse cpResponse, Response response, List<IdmQuery> idmQueries) {
+	public void processAllSamlScripts(String hookType, List<Pair<String, CompiledScript>> scripts, CpResponse cpResponse,
+									  Response response, RequestSecurityTokenResponseCollection wsTrustResponse,
+									  List<IdmQuery> idmQueries) {
 		for (var script : scripts) {
-			processOnResponse(hookType, script, cpResponse, response, idmQueries);
+			processOnResponse(hookType, script, cpResponse, response, wsTrustResponse, idmQueries);
 		}
 	}
 
@@ -302,22 +331,26 @@ public class ScriptService {
 	}
 
 	// On unit testing it's not very relevant which hook it is
-	protected void processOnResponse(String scriptName, CpResponse cpResponse, Response response, List<IdmQuery> idmQueries)
+	protected void processOnResponse(String scriptName, CpResponse cpResponse, Response response,
+									 RequestSecurityTokenResponseCollection wsTrustResponse, List<IdmQuery> idmQueries)
 			throws TechnicalException {
 		var compiledScript = resolveScript(scriptName);
-		processOnResponse("TestStep", compiledScript, cpResponse, response, idmQueries);
+		processOnResponse("TestStep", compiledScript, cpResponse, response, wsTrustResponse, idmQueries);
 	}
 
 	private void processOnResponse(String hookType, Pair<String, CompiledScript> script,
-			CpResponse cpResponse, Response response, List<IdmQuery> idmQueries) throws TechnicalException {
-		var bindings = bindResponseBeans(hookType, cpResponse, response, idmQueries);
+								   CpResponse cpResponse, Response response,
+								   RequestSecurityTokenResponseCollection wsTrustResponse,
+								   List<IdmQuery> idmQueries) throws TechnicalException {
+		var bindings = bindResponseBeans(hookType, cpResponse, response, wsTrustResponse, idmQueries);
 		try {
 			if (log.isTraceEnabled()) {
-				log.trace("Executing step={} script={} using {}={} {}={} {}={}",
+				log.trace("Executing step={} script={} using {}={} {}={} {}={} {}={}",
 						hookType, script.getKey(),
 						BEAN_CP_RESPONSE, cpResponse,
 						BEAN_SAML_RESPONSE, OpenSamlUtil.samlObjectToString(response),
-						BEAN_IDM_QUERIES, idmQueries == null ? idmQueries : Arrays.toString(idmQueries.toArray()));
+						BEAN_WS_TRUST_RESPONSE, OpenSamlUtil.samlObjectToString(wsTrustResponse),
+						BEAN_IDM_QUERIES, CollectionUtil.toLogString(idmQueries));
 			}
 			script.getValue().eval(bindings);
 		}
@@ -358,12 +391,14 @@ public class ScriptService {
 		return bindings;
 	}
 
-	private Bindings bindResponseBeans(String hookType, CpResponse cpResponse, Response response, List<IdmQuery> idmQueries) {
+	private Bindings bindResponseBeans(String hookType, CpResponse cpResponse, Response response,
+									   RequestSecurityTokenResponseCollection wsTrustResponse, List<IdmQuery> idmQueries) {
 		var bindings = scriptEngine.createBindings();
 		bindings.put(BEAN_SCRIPT_TYPE, hookType);
 		// input (undocumented, unused, just in case)
 		bindings.put(BEAN_RP_CONFIG, relyingPartySetupService);  // even dangerous when modified
-		bindings.put(BEAN_SAML_RESPONSE, response); // null in OIDC hooks
+		bindings.put(BEAN_SAML_RESPONSE, response); // null in OIDC/WS-Trust hooks
+		bindings.put(BEAN_WS_TRUST_RESPONSE, wsTrustResponse); // null in OIDC/SAML hooks
 		bindings.put(BEAN_IDM_QUERIES, idmQueries); // null in OIDC, even dangerous when modified
 		bindings.put(BEAN_HTTP_REQUEST, HttpExchangeSupport.getRunningHttpRequest()); // allow some HTTP wire based decisions
 		// input/output (documented)

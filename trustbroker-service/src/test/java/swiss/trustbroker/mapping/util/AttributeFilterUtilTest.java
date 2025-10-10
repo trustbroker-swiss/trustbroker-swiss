@@ -249,7 +249,7 @@ class AttributeFilterUtilTest {
 							.build();
 		List<String> values = new ArrayList<>();
 		values.add("value1");
-		values.add("value2");;
+		values.add("value2");
 		return new AbstractMap.SimpleEntry<>(key, values);
 	}
 

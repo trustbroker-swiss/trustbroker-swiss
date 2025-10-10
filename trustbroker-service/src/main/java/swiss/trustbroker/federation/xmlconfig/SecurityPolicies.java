@@ -122,6 +122,13 @@ public class SecurityPolicies implements Serializable {
 	private Boolean requireAudienceRestriction;
 
 	/**
+	 * Require signed SAML AuthnRequests to join an SSO session. If not set, falls back to <code>requireSignedAuthnRequest</code>.
+	 * @since 1.11.0
+	 */
+	@XmlAttribute(name = "requireSignedAuthnRequestForSsoJoin")
+	private Boolean requireSignedAuthnRequestForSsoJoin;
+
+	/**
 	 * Overrides the global <code>tokenLifetimeSec</code> for CP response AuthnInstant checks.
 	 * <br/>
 	 * Defaults to 60 minutes, override if needed.
@@ -164,10 +171,13 @@ public class SecurityPolicies implements Serializable {
 	/**
 	 * Always enforce re-authentication on this CP/on all CPs configured for this RP.
 	 * <br/>
+	 * Overrides the global <code>forceCpAuthentication</code>.
+	 * <br/>
 	 * Default: false (only enforced if RP requests it)
 	 *
 	 * @since 1.10.0
 	 */
 	@XmlAttribute(name = "forceAuthn")
 	private Boolean forceAuthn;
+
 }

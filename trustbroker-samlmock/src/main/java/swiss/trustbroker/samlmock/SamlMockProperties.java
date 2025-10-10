@@ -15,6 +15,8 @@
 
 package swiss.trustbroker.samlmock;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import lombok.Data;
@@ -94,6 +96,8 @@ public class SamlMockProperties {
 	private boolean useOriginalAcr = false;
 
 	private boolean signAuthnRequest = false;
+
+	private List<String> validReturnUrls = new ArrayList<>();
 
 	private boolean cacheMockFiles = false;
 

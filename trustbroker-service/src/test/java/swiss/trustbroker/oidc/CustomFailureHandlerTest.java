@@ -121,7 +121,7 @@ class CustomFailureHandlerTest {
 		when(trustBrokerProperties.getPerimeterUrl()).thenReturn(ISSUER);
 		when(relyingPartyDefinitions.getRelyingPartyOidcClientByOidcClientId(clientId, null, trustBrokerProperties, true))
 				.thenReturn(Pair.of(rp, client));
-		HttpExchangeSupport.begin(request, response, true);
+		HttpExchangeSupport.begin(request, response);
 
 		customFailureHandler.onAuthenticationFailure(request, response, exception);
 

@@ -175,7 +175,8 @@ public class SamlFactory {
 
 	// Some recipients care about what we send here, others don't.
 	// We also should not pass on what we receive from an IDP but declare our own session state here.
-	public static List<AuthnStatement> createAuthnState(List<String> classRefs, String sessionIndex, Instant authnInstant) {
+	public static List<AuthnStatement> createAuthnStatements(List<String> classRefs, String sessionIndex,
+			Instant sessionNotOnOrAfter, Instant authnInstant) {
 		List<AuthnStatement> authnStatements = new ArrayList<>();
 		if (classRefs == null) {
 			return authnStatements;
@@ -189,7 +190,9 @@ public class SamlFactory {
 			authnInstant = (authnInstant == null ? Instant.now() : authnInstant);
 			authnStatement.setAuthnInstant(authnInstant);
 			authnStatement.setAuthnContext(createAuthnContext(classRef));
-
+			if (sessionNotOnOrAfter != null) {
+				authnStatement.setSessionNotOnOrAfter(sessionNotOnOrAfter);
+			}
 			authnStatements.add(authnStatement);
 		}
 		return authnStatements;
@@ -256,9 +259,11 @@ public class SamlFactory {
 		return xmlObjects;
 	}
 
-	public static Conditions createConditions(String audience, long validitySeconds) {
+	public static Conditions createConditions(String audience, long validitySeconds, Instant now) {
+		if (now == null) {
+			now = Instant.now();
+		}
 		var conditions = OpenSamlUtil.buildSamlObject(Conditions.class);
-		Instant now = Instant.now();
 		conditions.setNotBefore(now);
 		conditions.setNotOnOrAfter(now.plusSeconds((int)validitySeconds));
 		conditions.getAudienceRestrictions().add(createAudienceRestriction(audience));
@@ -278,26 +283,29 @@ public class SamlFactory {
 		return audience;
 	}
 
-	public static Subject createSubject(NameID nameId, String authnRequest, String recipient, long validitySeconds) {
+	public static Subject createSubject(NameID nameId, String authnRequest, String recipient, long validitySeconds, Instant now) {
 		var subject = OpenSamlUtil.buildSamlObject(Subject.class);
 		subject.setNameID(nameId);
-		subject.getSubjectConfirmations().add(createSubjectConfirmation(authnRequest, recipient, validitySeconds));
+		subject.getSubjectConfirmations().add(createSubjectConfirmation(authnRequest, recipient, validitySeconds, now));
 		return subject;
 	}
 
-	static SubjectConfirmation createSubjectConfirmation(String authnRequest, String recipient, long validitySeconds) {
+	static SubjectConfirmation createSubjectConfirmation(String authnRequest, String recipient,
+			long validitySeconds, Instant now) {
 		var subjectConfirmation = OpenSamlUtil.buildSamlObject(SubjectConfirmation.class);
 		subjectConfirmation.setMethod(SubjectConfirmation.METHOD_BEARER);
-		subjectConfirmation.setSubjectConfirmationData(createSubjectConfirmationData(authnRequest, recipient, validitySeconds));
+		subjectConfirmation.setSubjectConfirmationData(
+				createSubjectConfirmationData(authnRequest, recipient, validitySeconds, now));
 		return subjectConfirmation;
 	}
 
-	static SubjectConfirmationData createSubjectConfirmationData(String authnRequest, String recipient, long validitySeconds) {
+	static SubjectConfirmationData createSubjectConfirmationData(String authnRequest, String recipient,
+			long validitySeconds, Instant now) {
 		var subjectConfirmationData = OpenSamlUtil.buildSamlObject(SubjectConfirmationData.class);
 		if (authnRequest != null) {
 			subjectConfirmationData.setInResponseTo(authnRequest);
 		}
-		var newNotOnOrAfter = Instant.now();
+		var newNotOnOrAfter = now != null ? now : Instant.now();
 		var dateTime = newNotOnOrAfter.plusSeconds((int)validitySeconds);
 		subjectConfirmationData.setNotOnOrAfter(dateTime);
 		if (recipient != null) {

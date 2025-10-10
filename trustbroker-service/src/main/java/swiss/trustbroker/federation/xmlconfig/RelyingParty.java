@@ -60,6 +60,7 @@ import swiss.trustbroker.common.saml.dto.SignatureParameters;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
+@SuppressWarnings("java:S6539") // the main configuration class containing quite a number of sub elements, hence many references
 public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 
 	@XmlAttribute(name = "id")
@@ -240,7 +241,7 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 
 	private transient Credential rpSigner;
 
-	private transient Credential rpEncryptionCredential;
+	private transient Credential rpEncryptionTrustCredential;
 
 	// Lombok would generate these, but schemagen compilation complains about not implementing RelyingPartyConfig / CounterParty
 
@@ -298,8 +299,8 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 	}
 
 	@XmlTransient
-	public Credential getRpEncryptionCredential() {
-		return rpEncryptionCredential;
+	public Credential getRpEncryptionTrustCredential() {
+		return rpEncryptionTrustCredential;
 	}
 
 	// derived

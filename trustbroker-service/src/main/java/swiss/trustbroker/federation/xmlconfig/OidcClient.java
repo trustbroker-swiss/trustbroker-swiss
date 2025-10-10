@@ -30,6 +30,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.commons.collections.CollectionUtils;
+import org.opensaml.security.credential.Credential;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import swiss.trustbroker.common.util.UrlAcceptor;
 import swiss.trustbroker.common.util.WebUtil;
@@ -100,6 +101,13 @@ public class OidcClient implements Serializable {
 	 */
 	@XmlElement(name = "RedirectUris")
 	private AcWhitelist redirectUris;
+
+	/**
+	 * Required for JWT encryption
+	 *
+	 */
+	@XmlElement(name = "Certificates", required = false)
+	private Certificates certificates;
 
 	/**
 	 * You can encode the secret with one of the supported encoders.
@@ -181,6 +189,8 @@ public class OidcClient implements Serializable {
 	@XmlTransient
 	private RegisteredClient registeredClient;
 
+	private transient Credential clientEncryptionCredential;
+
 	public boolean isValidRedirectUri(String requestedRedirectUri) {
 		return redirectUris != null &&
 				UrlAcceptor.isRedirectUrlOkForAccess(requestedRedirectUri, redirectUris.getAcNetUrls());
@@ -189,15 +199,14 @@ public class OidcClient implements Serializable {
 	public boolean isValidRedirectUris(List<String> requestedRedirectUris) {
 		return redirectUris != null && requestedRedirectUris != null &&
 				requestedRedirectUris.stream()
-						.anyMatch(u -> UrlAcceptor.isRedirectUrlOkForAccess(u, redirectUris.getAcNetUrls()));
+									 .anyMatch(u -> UrlAcceptor.isRedirectUrlOkForAccess(u, redirectUris.getAcNetUrls()));
 	}
 
 	// Best effort accepting Origin not considering port or protocol details against redirects URIs from config.
 	// We might match a bit too much in the DEV localhost configuration but that's ok.
 	public boolean isTrustedOrigin(String origin) {
 		var host = WebUtil.getUrlHost(origin);
-		return host != null && redirectUris != null && redirectUris.getAcUrls() != null &&
-				redirectUris.getAcUrls().stream().anyMatch(acuri -> acuri.contains(host));
+		return host != null && redirectUris != null && redirectUris.findFirst(String::contains, host).isPresent();
 	}
 
 	public boolean isSameRealm(String incomingRealm) {

@@ -15,6 +15,7 @@ dependencies {
 
 	// OIDC (compile-time constant references only so far)
 	compileOnly 'org.springframework.security:spring-security-oauth2-core'
+	implementation 'org.springframework.security:spring-security-oauth2-jose'
 
 	// optional optrace component
 	compileOnly 'org.aspectj:aspectjweaver'

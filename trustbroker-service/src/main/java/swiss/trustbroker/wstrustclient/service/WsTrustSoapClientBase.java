@@ -38,6 +38,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.shibboleth.shared.xml.ParserPool;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.client5.http.ssl.DefaultClientTlsStrategy;
@@ -47,6 +48,7 @@ import org.opensaml.core.xml.config.XMLObjectProviderRegistrySupport;
 import org.opensaml.core.xml.io.MarshallerFactory;
 import org.opensaml.core.xml.io.MarshallingException;
 import org.opensaml.core.xml.util.XMLObjectSupport;
+import org.opensaml.saml.saml2.core.Assertion;
 import org.opensaml.soap.wsaddressing.Address;
 import org.opensaml.soap.wsaddressing.EndpointReference;
 import org.opensaml.soap.wspolicy.AppliesTo;
@@ -54,6 +56,7 @@ import org.opensaml.soap.wstrust.CanonicalizationAlgorithm;
 import org.opensaml.soap.wstrust.Claims;
 import org.opensaml.soap.wstrust.EncryptionAlgorithm;
 import org.opensaml.soap.wstrust.KeyType;
+import org.opensaml.soap.wstrust.RenewTarget;
 import org.opensaml.soap.wstrust.RequestSecurityToken;
 import org.opensaml.soap.wstrust.RequestType;
 import org.opensaml.soap.wstrust.TokenType;
@@ -61,7 +64,9 @@ import org.opensaml.soap.wstrust.WSTrustConstants;
 import org.springframework.ws.client.core.WebServiceMessageCallback;
 import org.springframework.ws.client.core.support.WebServiceGatewaySupport;
 import org.springframework.ws.soap.saaj.SaajSoapMessageFactory;
-import org.springframework.ws.transport.http.HttpComponents5MessageSender;
+import org.springframework.ws.transport.http.AbstractHttpComponents5MessageSender;
+import org.springframework.ws.transport.http.HttpComponents5ClientFactory;
+import org.springframework.ws.transport.http.SimpleHttpComponents5MessageSender;
 import org.springframework.xml.transform.StringSource;
 import org.w3c.dom.Element;
 import swiss.trustbroker.common.config.KeystoreProperties;
@@ -69,11 +74,14 @@ import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CredentialUtil;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlTracer;
+import swiss.trustbroker.wstrustclient.dto.WsTrustRstRequest;
 import swiss.trustbroker.wstrustclient.xml.ClaimType;
 import swiss.trustbroker.wstrustclient.xml.ClaimTypeImpl;
 
 @Slf4j
 public class WsTrustSoapClientBase extends WebServiceGatewaySupport {
+
+	private static final String TOKEN_TYPE_SAML = "http://docs.oasis-open.org/wss/oasis-wss-saml-token-profile-1.1#SAMLV2.0";
 
 	@Data
 	@RequiredArgsConstructor(staticName = "of")
@@ -204,28 +212,36 @@ public class WsTrustSoapClientBase extends WebServiceGatewaySupport {
 		return transformerFactory.newTransformer();
 	}
 
-	public RequestSecurityToken createRequestSecToken(String rstAddress, String keyTypeStr, List<String> claimTypes) {
+	public RequestSecurityToken createRequestSecToken(WsTrustRstRequest rstRequest) {
 		var requestSecurityToken =
 				(RequestSecurityToken) XMLObjectSupport.buildXMLObject(RequestSecurityToken.ELEMENT_NAME);
 
-		var requestType = createRequestType();
+		if (rstRequest.getRequestType() == null) {
+			throw new TechnicalException("Missing RequestType for RST request");
+		}
+		var requestType = createRequestType(rstRequest.getRequestType());
 		requestSecurityToken.getUnknownXMLObjects().add(requestType);
 
 		var tokenType = createTokenType();
 		requestSecurityToken.getUnknownXMLObjects().add(tokenType);
 
-		if (keyTypeStr != null) {
-			var keyType = createKeyType(keyTypeStr);
+		if (rstRequest.getKeyType() != null) {
+			var keyType = createKeyType(rstRequest.getKeyType());
 			requestSecurityToken.getUnknownXMLObjects().add(keyType);
 		}
 
-		if (!claimTypes.isEmpty()) {
-			var claimTypesObj = createClaims(claimTypes);
+		if (rstRequest.getAssertion() != null && RequestType.RENEW.equals(rstRequest.getRequestType())) {
+			var renewTarget = createRenewTarget(rstRequest.getAssertion());
+			requestSecurityToken.getUnknownXMLObjects().add(renewTarget);
+		}
+
+		if (CollectionUtils.isNotEmpty(rstRequest.getClaimTypes())) {
+			var claimTypesObj = createClaims(rstRequest.getClaimTypes());
 			requestSecurityToken.getUnknownXMLObjects().add(claimTypesObj);
 		}
 
 		// who sent the message
-		var appliesTo = createAppliesTo(rstAddress);
+		var appliesTo = createAppliesTo(rstRequest.getRstAddress());
 		requestSecurityToken.getUnknownXMLObjects().add(appliesTo);
 
 		return requestSecurityToken;
@@ -290,17 +306,23 @@ public class WsTrustSoapClientBase extends WebServiceGatewaySupport {
 
 	private static TokenType createTokenType() {
 		var tokenType = (TokenType) XMLObjectSupport.buildXMLObject(TokenType.ELEMENT_NAME);
-		tokenType.setURI("http://docs.oasis-open.org/wss/oasis-wss-saml-token-profile-1.1#SAMLV2.0");
+		tokenType.setURI(TOKEN_TYPE_SAML);
 		return tokenType;
 	}
 
-	private static RequestType createRequestType() {
+	private static RequestType createRequestType(String requestTypeStr) {
 		var requestType = (RequestType) XMLObjectSupport.buildXMLObject(RequestType.ELEMENT_NAME);
-		requestType.setURI(RequestType.ISSUE);
+		requestType.setURI(requestTypeStr);
 		return requestType;
 	}
 
-	private static HttpComponents5MessageSender createHttpComponentsMessageSender(KeystoreProperties trustStoreProperties) {
+	private static RenewTarget createRenewTarget(Assertion assertion) {
+		var renewTarget = (RenewTarget) XMLObjectSupport.buildXMLObject(RenewTarget.ELEMENT_NAME);
+		renewTarget.setUnknownXMLObject(assertion);
+		return renewTarget;
+	}
+
+	private static AbstractHttpComponents5MessageSender createHttpComponentsMessageSender(KeystoreProperties trustStoreProperties) {
 		var trustStoreFile = trustStoreProperties.getSignerCert();
 		try {
 			var password = CredentialUtil.processPassword(trustStoreProperties.getPassword());
@@ -314,11 +336,10 @@ public class WsTrustSoapClientBase extends WebServiceGatewaySupport {
 
 			var httpClient = HttpClientBuilder.create()
 											  .setConnectionManager(connectionManager)
-											  .addRequestInterceptorFirst(new HttpComponents5MessageSender.RemoveSoapHeadersInterceptor())
+											  .addRequestInterceptorFirst(new HttpComponents5ClientFactory.RemoveSoapHeadersInterceptor())
 											  .build();
 
-			var httpComponentsMessageSender = new HttpComponents5MessageSender();
-			httpComponentsMessageSender.setHttpClient(httpClient);
+			var httpComponentsMessageSender = new SimpleHttpComponents5MessageSender(httpClient);
 
 			log.info("Using truststore={}", trustStoreFile);
 

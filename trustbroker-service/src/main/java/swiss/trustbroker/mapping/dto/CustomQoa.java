@@ -21,6 +21,7 @@ import swiss.trustbroker.common.saml.util.SamlContextClass;
 
 @Data
 @AllArgsConstructor
+@SuppressWarnings("java:S6548") // false positive - class has "named instance, not a singleton
 public class CustomQoa
 {
 

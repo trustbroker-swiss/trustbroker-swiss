@@ -108,7 +108,7 @@ public class OidcTxFilter implements Filter {
 			}
 			else {
 				// stop here to check on requests, responses, sessions
-				OidcSessionSupport.checkSessionOnFederationRedirect(path);
+				OidcSessionSupport.checkSessionOnFederationRedirect(path, httpRequest);
 				chain.doFilter(wrappedRequest, wrappedResponse);
 			}
 
@@ -216,7 +216,7 @@ public class OidcTxFilter implements Filter {
 
 	private boolean handleOidcPromptNone(HttpServletRequest request, HttpServletResponse response) throws IOException {
 		if (OidcUtil.isOidcPromptNone(request)) {
-			var clientId = OidcSessionSupport.getOidcClientId(request);
+			var clientId = OidcSessionSupport.getOidcClientId(request, relyingPartyDefinitions);
 			var session = HttpExchangeSupport.getRunningHttpSession();
 			var principal = OidcSessionSupport.getAuthenticatedPrincipal(session);
 			if (principal != null) {

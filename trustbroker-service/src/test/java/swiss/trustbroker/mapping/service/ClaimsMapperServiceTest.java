@@ -345,7 +345,7 @@ class ClaimsMapperServiceTest {
 		var fqClaim = "fq-a1";
 		var selection = AttributesSelection
 				.builder()
-				.definitions(List.of(Definition.ofNameNamespaceUriAndSource(claim, fqClaim, null)))
+				.definitions(List.of(Definition.ofNamesAndSource(claim, fqClaim, null)))
 				.build();
 		var relyingParty = RelyingParty
 				.builder()
@@ -366,17 +366,17 @@ class ClaimsMapperServiceTest {
 				// CP attributes
 				.issuer(claimsParty.getId())
 				.attributes(Map.of(
-						Definition.ofNameNamespaceUriAndSource(claim, fqClaim, "CP"), List.of("cp-value")
+						Definition.ofNamesAndSource(claim, fqClaim, "CP"), List.of("cp-value")
 				))
 				// IDM user details (source null until applied through query and claims selections)
 				.userDetails(new HashMap<>(Map.of(
-						Definition.ofNameNamespaceUriAndSource(claim, null, "IDM:Q0"), List.of("idm-value-q0"),
-						Definition.ofNameNamespaceUriAndSource(claim, fqClaim, "IDM:Q1"), List.of("idm-value-q1"),
-						Definition.ofNameNamespaceUriAndSource(claim, fqClaim, "IDM:Q2"), List.of("idm-value-q2")
+						Definition.ofNamesAndSource(claim, null, "IDM:Q0"), List.of("idm-value-q0"),
+						Definition.ofNamesAndSource(claim, fqClaim, "IDM:Q1"), List.of("idm-value-q1"),
+						Definition.ofNamesAndSource(claim, fqClaim, "IDM:Q2"), List.of("idm-value-q2")
 				)))
 				// computed properties
 				.properties(Map.of(
-						Definition.ofNameNamespaceUriAndSource(claim, fqClaim, "PROPS"), List.of("props-value-props")
+						Definition.ofNamesAndSource(claim, fqClaim, "PROPS"), List.of("props-value-props")
 				))
 				// OIDC claims
 				.claims(Map.of(claim, List.of("claims-value")))
@@ -437,13 +437,11 @@ class ClaimsMapperServiceTest {
 				assertThat(cpResponse.getAttributes(claim), is(expectedList));
 				assertThat(cpResponse.getAttribute(claim), is(expectedFirst));
 				break;
-			case IDM:
-			case SCRIPT:
+			case IDM, SCRIPT:
 				assertThat(cpResponse.getUserDetails(claim), is(expectedList));
 				assertThat(cpResponse.getUserDetail(claim), is(expectedFirst));
 				break;
-			case PROPS:
-			case CONFIG:
+			case PROPS, CONFIG:
 				assertThat(cpResponse.getProperties(claim, source), is(expectedList));
 				assertThat(cpResponse.getProperty(claim, source), is(expectedFirst));
 				break;

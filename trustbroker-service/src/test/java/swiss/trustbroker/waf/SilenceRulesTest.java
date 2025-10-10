@@ -48,7 +48,7 @@ class SilenceRulesTest {
 			"/actuator/health:INTRANET:LB.IP.AD.DR,true",
 			"/actuator/health:INTRANET:LB.IP.AD.DR,true"
 	})
-	void testSilenced(String pathAndNetwork, boolean silenced) throws Exception {
+	void testSilenced(String pathAndNetwork, boolean silenced) {
 		var request = new MockHttpServletRequest();
 		var tokens = pathAndNetwork.split(":");
 		var network = new NetworkConfig(); // default names INTERNET/INTRANET

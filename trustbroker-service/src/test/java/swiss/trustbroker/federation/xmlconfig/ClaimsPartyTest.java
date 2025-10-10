@@ -61,7 +61,7 @@ class ClaimsPartyTest {
 	@ParameterizedTest
 	@MethodSource
 	void getSingleOidcClientFailed(ClaimsParty cp) {
-		assertThrows(TechnicalException.class, () -> cp.getSingleOidcClient());
+		assertThrows(TechnicalException.class, cp::getSingleOidcClient);
 	}
 
 	static Object[][] getSingleOidcClientFailed() {

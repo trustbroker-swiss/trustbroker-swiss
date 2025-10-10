@@ -204,8 +204,8 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	 * the AuditService when SAML response comes in from CP.
 	 */
 	@Builder.Default
-	@JsonSerialize(keyUsing = DefinitionSerializer.class)
 	@JsonProperty("attributes")
+	@JsonSerialize(keyUsing = DefinitionSerializer.class)
 	@JsonDeserialize(keyUsing = DefinitionDeserializer.class)
 	private Map<Definition, List<String>> attributes = new HashMap<>();
 
@@ -213,8 +213,8 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	 * Copy of Attributes before filtering. Necessary for SSO
 	 */
 	@Builder.Default
-	@JsonSerialize(keyUsing = DefinitionSerializer.class)
 	@JsonProperty("originalAttributes")
+	@JsonSerialize(keyUsing = DefinitionSerializer.class)
 	@JsonDeserialize(keyUsing = DefinitionDeserializer.class)
 	private Map<Definition, List<String>> originalAttributes = new HashMap<>();
 
@@ -227,8 +227,8 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	 * IDM user data returned from IDM backends, filtered by RP setup.
 	 */
 	@Builder.Default
-	@JsonSerialize(keyUsing = DefinitionSerializer.class)
 	@JsonProperty("userDetails")
+	@JsonSerialize(keyUsing = DefinitionSerializer.class)
 	@JsonDeserialize(keyUsing = DefinitionDeserializer.class)
 	private Map<Definition, List<String>> userDetails = new HashMap<>();
 
@@ -239,8 +239,8 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	 * They are selected by the <PropertiesSelection/> configuration.
 	 */
 	@Builder.Default
-	@JsonSerialize(keyUsing = DefinitionSerializer.class)
 	@JsonProperty("properties")
+	@JsonSerialize(keyUsing = DefinitionSerializer.class)
 	@JsonDeserialize(keyUsing = DefinitionDeserializer.class)
 	private Map<Definition, List<String>> properties = new HashMap<>();
 
@@ -293,15 +293,39 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 
 	// better API for groovy scripts
 
+	/**
+	 * Script hook: Get multi-valued CP/IDP claim
+	 */
 	@Override
 	public List<String> getAttributes(String name) {
-		var ret = findAttributesInMap(name, attributes);
+		return getAttributes(name, null);
+	}
+
+	/**
+	 * Script hook: Get single-valued CP/IDP claim
+	 */
+	@Override
+	public String getAttribute(String name) {
+		return getAttribute(name, null);
+	}
+
+	/**
+	 * Script hook: Get multi-valued CP/IDP claim including source selector.
+	 * Source CP and null are equivalent for the time being. Future extensions might add new sources.
+	 * @since 1.11.0
+	 */
+	public List<String> getAttributes(String name, String source) {
+		var ret = findAttributesInMap(name, source, attributes);
 		return ret == null ? Collections.emptyList() : ret;
 	}
 
-	@Override
-	public String getAttribute(String name) {
-		var ret = findAttributesInMap(name, attributes);
+	/**
+	 * Script hook: Get single-valued CP/IDP claim including source selector.
+	 * Source CP and null are equivalent for the time being. Future extensions might add new sources.
+	 * @since 1.11.0
+	 */
+	public String getAttribute(String name, String source) {
+		var ret = findAttributesInMap(name, source, attributes);
 		return CollectionUtils.firstElement(ret);
 	}
 
@@ -332,17 +356,24 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	}
 
 	/**
-	 * Set multi-value attribute.
+	 * Set multi-value attribute with namespace.
+	 * @since 1.11.0
 	 */
-	public void setAttributes(String name, List<String> values) {
+	public void setAttributes(String name, String namespaceUri, List<String> values) {
 		if (name == null || values == null || values.isEmpty()) {
 			log.warn("CpResponse.setAttributes(name={}, values={}) rejected", name, values);
 			return;
 		}
-
-		var definition = DefinitionUtil.getOrCreateDefinition(name, null, ClaimSource.CP.name(), attributes);
+		var definition = DefinitionUtil.getOrCreateDefinition(name, namespaceUri, ClaimSource.CP.name(), attributes);
 		var oldValue = attributes.put(definition, values);
 		log.debug("CpResponse.attribute change name={} value={} oldValue={}", name, values, oldValue);
+	}
+
+	/**
+	 * Set multi-value attribute.
+	 */
+	public void setAttributes(String name, List<String> values) {
+		setAttributes(name, null, values);
 	}
 
 	/**
@@ -359,7 +390,7 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	}
 
 	/**
-	 * Script hook: Add value or create entry.
+	 * Script hook: Add CP/IDP claim value to existing attribute or create entry.
  	 */
 	public void addAttribute(String name, String value) {
 		if (name == null || value == null) {
@@ -376,7 +407,7 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	}
 
 	/**
-	 * Remove attributes with name.
+	 * Remove CP/IDP claim with name or FQ name.
 	 */
 	public void removeAttributes(String name) {
 		removeAttributeFromMap(name, null, attributes);
@@ -434,24 +465,39 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	}
 
 	/**
-	 * Script hook use: Add entry with a single value.
- 	 */
+	 * Script hook use: Add entry with a single value and a FQ name for outbound mapping.
+	 */
 	public void setUserDetail(String name, String fqName, String value) {
 		if ((name == null && fqName == null) || value == null) {
 			log.warn("CpResponse.setUserDetail(name={}, fqName={}, values={}) rejected", name, fqName, value);
 			return;
 		}
-
 		removeUserDetails(name != null ? name : fqName, null); // switch source to script
 		DefinitionUtil.putDefinitionValue(userDetails, name, fqName,
 				ClaimSourceUtil.buildClaimSource(ClaimSource.IDM, ClaimSource.SCRIPT), value);
 	}
 
 	/**
-	 * Script hook: Add value or create entry.
- 	 */
+	 * Script hook use: Add user claim with a single value.
+	 * @since 1.11.0
+	 */
+	public void setUserDetail(String name, String value) {
+		setUserDetail(name, null, value);
+	}
+
+	/**
+	 * Script hook: Add value to existing user claim or create entry.
+	 */
 	public void addUserDetail(String name, String fqName, String value) {
 		addUserDetail(name, fqName, value, null);
+	}
+
+	/**
+	 * Script hook: Add value to existing user claim or create entry.
+	 * @since 1.11.0
+	 */
+	public void addUserDetail(String name, String value) {
+		addUserDetail(name, null, value);
 	}
 
 	/**
@@ -487,8 +533,16 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	}
 
 	/**
-	 * Script hook use: Add entry with a list value.
- 	 */
+	 * Script hook use: Set user claims with a list value.
+	 * @since 1.11.0
+	 */
+	public void setUserDetails(String name, List<String> values) {
+		setUserDetails(name, null, values);
+	}
+
+	/**
+	 * Script hook use: Set user claims with a list value and a FQ name.
+	 */
 	public void setUserDetails(String name, String fqName, List<String> values) {
 		if ((name == null && fqName == null) || values == null || values.isEmpty()) {
 			log.warn("CpResponse.setUserDetails(name={}, fqName={}, values={}) rejected", name, fqName, values);
@@ -496,10 +550,10 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 		}
 		removeUserDetails(name != null ? name : fqName, null); // switch source to script
 		userDetails.put(Definition.builder()
-								  .name(name)
-								  .namespaceUri(fqName)
-								  .source(ClaimSourceUtil.buildClaimSource(ClaimSource.IDM, ClaimSource.SCRIPT))
-								  .build(), values);
+				.name(name)
+				.namespaceUri(fqName)
+				.source(ClaimSourceUtil.buildClaimSource(ClaimSource.IDM, ClaimSource.SCRIPT))
+				.build(), values);
 	}
 
 	/**
@@ -552,6 +606,7 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 
 	/**
 	 * Script hook use: Get property values by name or FQ name with optional source.
+	 * As source cannot be set directly on this class the default source CP used by ClaimsPartyService and null are equivalent.
 	 */
 	@Override
 	public List<String> getProperties(String name, String source) {
@@ -564,6 +619,7 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 
 	/**
 	 * Script hook use: Get first property value using name or FQ name with optional source.
+	 * As source cannot be set directly on this class the default source CP used by ClaimsPartyService and null are equivalent.
 	 */
 	@Override
 	public String getProperty(String name, String source) {
@@ -579,8 +635,8 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	}
 
 	/**
-	 * Script hook use: Add entry with a list value.
- 	 */
+	 * Script hook use: Add CP/IDP claims with a list value.using FQ name.
+	 */
 	public void setProperties(String name, String fqName, List<String> values) {
 		if ((name == null && fqName == null) || values == null || values.isEmpty()) {
 			log.warn("CpResponse.setProperties(name={}, fqName={}, values={}) rejected", name, fqName, values);
@@ -590,8 +646,24 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	}
 
 	/**
+	 * Script hook use: Add entry with a list value.
+	 * @since 1.11.0
+	 */
+	public void setProperties(String name, List<String> values) {
+		setProperties(name, null, values);
+	}
+
+	/**
 	 * Script hook use: Add entry with a single value
- 	 */
+	 * @since 1.11.0
+	 */
+	public void setProperty(String name, String value) {
+		setProperty(name, null, value);
+	}
+
+	/**
+	 * Script hook use: Add entry with a single value
+	 */
 	public void setProperty(String name, String fqName, String value) {
 		if ((name == null && fqName == null) || value == null) {
 			log.warn("CpResponse.setProperty(name={}, fqName={}, values={}) rejected", name, fqName, value);
@@ -618,7 +690,15 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 
 	/**
 	 * Script hook use: Add value to an already available list value or create.
- 	 */
+	 * @since 1.11.0
+	 */
+	public void addProperty(String name, String value) {
+		addProperty(name, null, value);
+	}
+
+	/**
+	 * Script hook use: Add value to an already available list value or create.
+	 */
 	public void addProperty(String name, String fqName, String value) {
 		if ((name == null && fqName == null) || value == null) {
 			log.warn("CpResponse.addProperty(name={}, fqName={}, values={}) rejected", name, fqName, value);
@@ -629,7 +709,7 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 
 	/**
 	 * 	Script hook use: Add values to an already available list value or create.
- 	 */
+	 */
 	public void addProperties(String name, String fqName, List<String> values) {
 		if (name == null || values == null || values.isEmpty()) {
 			log.warn("CpResponse.addProperty(name={}, values={}) rejected", name, values);
@@ -791,8 +871,8 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 
 	// private internal methods not to be used by scripts directly
 
-	private static List<String> findAttributesInMap(String name, Map<Definition, List<String>> map) {
-		var ret = DefinitionUtil.findByNameOrNamespace(name, null, map); // source only attributes for now
+	private static List<String> findAttributesInMap(String name, String source, Map<Definition, List<String>> map) {
+		var ret = DefinitionUtil.findByNameOrNamespace(name, source, map); // source only attributes for now
 		return ret.map(Map.Entry::getValue).orElse(null);
 	}
 

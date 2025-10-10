@@ -177,13 +177,14 @@ public class DefinitionUtil {
 
 	// Restricted by design: Use to set sessionProfileExtId only
 	public static void putAttributeDefinitionValue(Map<AttributeName, List<String>> attributes,
-			String name, String fqName, String value) {
+			String name, String fqName, String source, String value) {
 		var newValue = valueToList(value);
 		var key = Definition.builder()
 							.name(name)
 							.namespaceUri(fqName)
-							.source(null)
+							.source(source)
 							.build();
+		checkSource(key);
 		attributes.put(key, newValue);
 	}
 
@@ -196,13 +197,25 @@ public class DefinitionUtil {
 							.namespaceUri(fqName)
 							.source(source)
 							.build();
+		checkSource(key);
 		attributes.put(key, newValue);
 	}
 
-	public static void putAttributeValue(Map<AttributeName, List<String>> attributes, AttributeName attribute, String value) {
+	public static void putAttributeValue(Map<AttributeName, List<String>> attributes, AttributeName attribute,
+										 String source, String value) {
 		var newValue = valueToList(value);
 		var key = new Definition(attribute);
+		if (source != null) {
+			key.setSource(source);
+		}
+		checkSource(key);
 		attributes.put(key, newValue);
+	}
+
+	private static void checkSource(Definition key) {
+		if (key.getSource() == null) {
+			log.debug("Missing source on key='{}'", key);
+		}
 	}
 
 	private static ArrayList<String> valueToList(String value) {
@@ -358,6 +371,6 @@ public class DefinitionUtil {
 			var definition = ret.get().getKey();
 			return definition.toBuilder().source(source).build();
 		}
-		return Definition.ofNameNamespaceUriAndSource(name, namespaceUri, source);
+		return Definition.ofNamesAndSource(name, namespaceUri, source);
 	}
 }

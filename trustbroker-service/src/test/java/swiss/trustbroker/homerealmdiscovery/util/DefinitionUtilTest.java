@@ -86,14 +86,6 @@ class DefinitionUtilTest {
 
 		var resultCp = DefinitionUtil.findByNameOrNamespace(inputName, null, inputCp);
 		validateAttributes(expected, resultCp, definition);
-
-		Map<AttributeName, List<String>> attributes = Map.of(
-				Definition.ofName(CoreAttributeName.NAME), List.of("other"),
-				Definition.builder()
-							 .name(definitionName)
-							 .namespaceUri(definitionNamespace)
-							 .build(),
-				List.of(expected));
 	}
 
 	static String[][] findByNameOrNamespace() {
@@ -256,19 +248,18 @@ class DefinitionUtilTest {
 											   .namespaceUri(attribute.getNamespaceUri())
 											   .build();
 		Map<AttributeName, List<String>> cpAttributes = new HashMap<>();
-		DefinitionUtil.putAttributeDefinitionValue(cpAttributes, attribute.getName(), attribute.getNamespaceUri(), value);
+		DefinitionUtil.putAttributeDefinitionValue(cpAttributes, attribute.getName(), attribute.getNamespaceUri(), null, value);
 		assertThat(cpAttributes.get(attributeDefinition), is(expected));
 
 		Map<AttributeName, List<String>> attrs = new HashMap<>();
-		DefinitionUtil.putAttributeDefinitionValue(attrs, attribute.getName(), attribute.getNamespaceUri(), value);
+		DefinitionUtil.putAttributeDefinitionValue(attrs, attribute.getName(), attribute.getNamespaceUri(), null, value);
 		assertThat(attrs.get(attributeDefinition), is(expected));
 
 		cpAttributes = new HashMap<>();
-		DefinitionUtil.putAttributeDefinitionValue(cpAttributes, attribute.getName(), attribute.getNamespaceUri(), value);
+		DefinitionUtil.putAttributeDefinitionValue(cpAttributes, attribute.getName(), attribute.getNamespaceUri(), null, value);
 		assertThat(cpAttributes.get(attributeDefinition), is(expected));
 
 		Map<Definition, List<String>> attributes = new HashMap<>();
-		attributes = new HashMap<>();
 		DefinitionUtil.putDefinitionValue(attributes, attribute.getName(), attribute.getNamespaceUri(), null, value);
 		assertThat(attributes.get(new Definition(attribute)), is(expected));
 	}
@@ -493,8 +484,8 @@ class DefinitionUtilTest {
 
 		var attributes = Map.of(
 				Definition.ofName(CoreAttributeName.FIRST_NAME), List.of("name1"),
-				Definition.ofNameNamespaceUriAndSource(CoreAttributeName.HOME_NAME.getName(), CoreAttributeName.HOME_NAME.getNamespaceUri(), "CP"), List.of("name2"),
-				Definition.ofNameNamespaceUriAndSource(CoreAttributeName.CLAIMS_NAME.getName(), CoreAttributeName.CLAIMS_NAME.getNamespaceUri(), "CP"), List.of("name3"));
+				Definition.ofNamesAndSource(CoreAttributeName.HOME_NAME.getName(), CoreAttributeName.HOME_NAME.getNamespaceUri(), "CP"), List.of("name2"),
+				Definition.ofNamesAndSource(CoreAttributeName.CLAIMS_NAME.getName(), CoreAttributeName.CLAIMS_NAME.getNamespaceUri(), "CP"), List.of("name3"));
 		return new Object[][]{
 				{CoreAttributeName.NAME.getName(), null, "CP", attributes, CoreAttributeName.NAME.getName()},
 				{CoreAttributeName.HOME_NAME.getName(), null, "CP", attributes, CoreAttributeName.HOME_NAME.getName()},

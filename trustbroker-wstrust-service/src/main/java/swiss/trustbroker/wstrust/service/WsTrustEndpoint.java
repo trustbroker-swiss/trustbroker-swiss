@@ -19,7 +19,6 @@ import javax.xml.namespace.QName;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.opensaml.core.xml.io.Marshaller;
 import org.opensaml.core.xml.util.XMLObjectSupport;
 import org.opensaml.soap.wstrust.RequestSecurityToken;
 import org.opensaml.soap.wstrust.RequestSecurityTokenResponseCollection;
@@ -29,8 +28,8 @@ import org.springframework.ws.server.endpoint.annotation.RequestPayload;
 import org.springframework.ws.server.endpoint.annotation.ResponsePayload;
 import org.springframework.ws.soap.SoapHeader;
 import org.w3c.dom.Element;
-import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.exception.TrustBrokerException;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SoapUtil;
 import swiss.trustbroker.common.util.WSSConstants;
@@ -54,22 +53,22 @@ public class WsTrustEndpoint {
 		try {
 
 			// soapHeader above does not contain the required SAML security token, so we pass it from an interceptor via
-			// ThreadLocal. Header contains the xml-sec element with the input assertion.
+			// ThreadLocal. The header contains the xml-sec element with the input assertion (ISSUE) or certificate (RENEW).
 			soapContext = RequestLocalContextHolder.getRequestContext();
 
 			// RST we shall process
 			RequestSecurityToken requestSecurityToken = SoapUtil.unmarshallDomElement(requestSecurityTokenType);
 
 			// service entry point
-			RequestSecurityTokenResponseCollection response =
-					wsTrustService.processSecurityTokenRequest(requestSecurityToken, soapContext.getAssertion());
+			var response = wsTrustService.processSecurityTokenRequest(requestSecurityToken,
+					soapContext.getAssertion(), soapContext.getSecurityToken());
 
-			Marshaller marshaller = XMLObjectSupport.getMarshaller(new QName(WSSConstants.WST_NS_05_12,
+			var marshaller = XMLObjectSupport.getMarshaller(new QName(WSSConstants.WST_NS_05_12,
 					RequestSecurityTokenResponseCollection.ELEMENT_LOCAL_NAME));
 
 			return marshaller.marshall(response);
 		}
-		catch (RequestDeniedException | TechnicalException e) {
+		catch (TrustBrokerException e) {
 			throw e;
 		}
 		catch (Exception e) {

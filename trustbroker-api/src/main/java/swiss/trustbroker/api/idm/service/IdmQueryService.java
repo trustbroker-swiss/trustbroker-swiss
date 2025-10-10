@@ -76,4 +76,28 @@ public interface IdmQueryService {
 	default List<IdmRequest> sortIdmRequests(IdmRequests idmRequests) {
 		return idmRequests != null ? idmRequests.getQueryList() : Collections.emptyList();
 	}
+
+	/**
+	 * @param requestedStore Defines the store requesting this check
+	 * @param idmRequests Defines the requests to be performed by this call to query the store.
+	 * @param defaultStore Default store of the application
+	 * @return boolean whether those requests are interesting for this store.
+	 */
+	default boolean hasQueryOfStore(String requestedStore, IdmRequests idmRequests, String defaultStore) {
+		return idmRequests != null && idmRequests.getQueryList() != null &&
+				(requestedStore.equals(idmRequests.getStore())
+						|| idmRequests.getQueryList().stream().anyMatch(q -> requestedStore.equals(q.getStore())
+						|| idmRequests.getStore() == null && requestedStore.equals(defaultStore)));
+	}
+
+	/**
+	 * @param requestedStore Defines the store requesting this check
+	 * @param idmQuery Defines the request to be performed by this call to query the store.
+	 * @param defaultStore Default store of the application
+	 * @return boolean whether this particular request is interesting for this store.
+	 */
+	default boolean isQueryOfStore(String requestedStore, IdmRequest idmQuery, String defaultStore) {
+		return requestedStore.equals(idmQuery.getStore())
+				|| idmQuery.getStore() == null && requestedStore.equals(defaultStore);
+	}
 }

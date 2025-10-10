@@ -104,7 +104,7 @@ public class CorsSupport {
 
 	/**
 	 *
-	 * @param request
+	 * @param request received from HTTP client
 	 * @param allowedOrigins may be null
 	 * @return request's origin header if in allowedOrigins (truncated to scheme, host, port)
 	 */

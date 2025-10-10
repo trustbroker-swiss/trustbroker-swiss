@@ -84,7 +84,7 @@ import swiss.trustbroker.test.saml.util.SamlTestBase;
 @ExtendWith(MockitoExtension.class)
 class OpenSamlUtilTest {
 
-	private static String TEST_ORIG = """
+	private static final String TEST_ORIG = """
 			<saml2p:Response xmlns:saml2p="urn:oasis:names:tc:SAML:2.0:protocol"
 							 xmlns:xs="http://www.w3.org/2001/XMLSchema"
 							 Destination="https://test.trustbroker.swiss/api/v1/saml"
@@ -197,7 +197,7 @@ class OpenSamlUtilTest {
 			</saml2p:Response>
 			""";
 
-	private static String TEST_SECURED = """
+	private static final String TEST_SECURED = """
 			<saml2p:Response xmlns:saml2p="urn:oasis:names:tc:SAML:2.0:protocol"
 							 xmlns:xs="http://www.w3.org/2001/XMLSchema"
 							 Destination="https://test.trustbroker.swiss/api/v1/saml"

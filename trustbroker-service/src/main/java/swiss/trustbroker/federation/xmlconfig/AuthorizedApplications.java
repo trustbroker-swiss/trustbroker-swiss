@@ -44,6 +44,6 @@ public class AuthorizedApplications implements Serializable {
 	 */
 	@XmlElement(name = "AuthorizedApplication", required = true)
 	@Builder.Default
-	private List<AuthorizedApplication> authorizedApplicationLists = new ArrayList<>();
+	private List<AuthorizedApplication> authorizedApplicationList = new ArrayList<>();
 
 }

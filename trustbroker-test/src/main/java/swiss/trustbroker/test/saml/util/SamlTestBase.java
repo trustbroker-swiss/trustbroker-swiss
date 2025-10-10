@@ -29,9 +29,16 @@ import org.opensaml.core.criterion.EntityIdCriterion;
 import org.opensaml.saml.common.SignableSAMLObject;
 import org.opensaml.saml.saml2.core.AuthnRequest;
 import org.opensaml.saml.saml2.core.RequestAbstractType;
+import org.opensaml.security.SecurityException;
 import org.opensaml.security.credential.Credential;
 import org.opensaml.security.credential.impl.KeyStoreCredentialResolver;
+import org.opensaml.xmlsec.SecurityConfigurationSupport;
+import org.opensaml.xmlsec.signature.KeyInfo;
+import org.opensaml.xmlsec.signature.Signature;
+import org.opensaml.xmlsec.signature.X509Data;
+import org.opensaml.xmlsec.signature.support.SignatureConstants;
 import swiss.trustbroker.api.sessioncache.dto.AttributeName;
+import swiss.trustbroker.common.config.KeystoreProperties;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.AttributeRegistry;
 import swiss.trustbroker.common.saml.util.CredentialReader;
@@ -88,6 +95,8 @@ public class SamlTestBase {
 	//   -storepass testit -keypass testit -noprompt -alias mocksigner -srcstorepass testit
 	public static final String TEST_IDP_MOCK_KEYSTORE_JKS = "test-idp-mock-keystore.jks";
 
+	public static final String TEST_IDP_MOCK_KEYSTORE_PEM = "test-idp-mock-keystore.pem";
+
 	@SuppressWarnings("java:S2068") // (test JKS password)
 	public static final String TEST_KEYSTORE_PW = "testit";
 
@@ -99,6 +108,8 @@ public class SamlTestBase {
 	// openssl rsa -in key.pem -aes256 -passout pass:testit>>test-keystore.pem
 	// test-key.pem only the key, test-cert.pem only the cert, test-ca.pem the same self-signed cert (we could set up a test CA)
 	public static final String X509_RSAENC_PEM = "test-keystore.pem";
+
+	public static final String X509_CERT_PEM = "test-cert.pem";
 
 	// openssl pkcs12 -export -in test-keystore.pem -inkey test-keystore.pem -passin pass:testit -passout pass:testit >
 	// test-keystore.p12
@@ -146,6 +157,15 @@ public class SamlTestBase {
 		catch (Exception e) {
 			throw new TechnicalException("Dummy credential keystore read failed ", e);
 		}
+	}
+
+	public static KeystoreProperties dummyKeystoreProperties() {
+		return KeystoreProperties.builder()
+								 .signerKey(filePathFromClassPath(TEST_TB_KEYSTORE_JKS))
+								 .signerCert(filePathFromClassPath(TEST_TB_KEYSTORE_JKS))
+								 .password(TEST_KEYSTORE_PW)
+								 .keyEntryId(TEST_KEYSTORE_TB_ALIAS)
+								 .build();
 	}
 
 	public static SignableSAMLObject dummyObject() {
@@ -208,6 +228,51 @@ public class SamlTestBase {
 		var attribute = TestAttributeName.of(attributeName);
 		attribute.setNamespaceUri(namespaceUri);
 		AttributeRegistry.updateAttributeNameFromConfig(attribute);
+	}
+
+	public static void signSamlObject(SignableSAMLObject samlObject) {
+		var newSignature = givenSignature(false);
+		samlObject.setSignature(newSignature);
+
+		SamlUtil.signSamlObject(samlObject, newSignature);
+	}
+
+	public static Signature givenSignature(boolean emptyKeyInfo) {
+		var signature = OpenSamlUtil.buildSamlObject(Signature.class);
+		signature.setSigningCredential(SamlTestBase.dummyCredential());
+		signature.setSignatureAlgorithm(SignatureConstants.ALGO_ID_SIGNATURE_RSA_SHA1);
+		signature.setCanonicalizationAlgorithm(SignatureConstants.ALGO_ID_C14N_EXCL_OMIT_COMMENTS);
+		signature.setSchemaLocation("http://www.w3.org/2000/09/xmldsig#");
+		if (emptyKeyInfo) {
+			var keyInfo = OpenSamlUtil.buildSamlObject(KeyInfo.class);
+			var certificate = OpenSamlUtil.buildSamlObject(X509Data.class);
+			keyInfo.getXMLObjects().add(certificate);
+			signature.setKeyInfo(keyInfo);
+		}
+		else {
+			signature.setKeyInfo(createMockKeyInfo(SamlTestBase.dummyCredential()));
+		}
+		return signature;
+	}
+
+	private static KeyInfo createMockKeyInfo(Credential credential) {
+		var secConfiguration = SecurityConfigurationSupport.getGlobalEncryptionConfiguration();
+		var namedKeyInfoGeneratorManager = secConfiguration.getDataKeyInfoGeneratorManager();
+		if (namedKeyInfoGeneratorManager == null) {
+			throw new TechnicalException("NamedKeyInfoGeneratorManager is null");
+		}
+		var keyInfoGeneratorManager = namedKeyInfoGeneratorManager.getDefaultManager();
+		var keyInfoGeneratorFactory = keyInfoGeneratorManager.getFactory(credential);
+		if (keyInfoGeneratorFactory == null) {
+			throw new TechnicalException("KeyInfoGeneratorFactory is null");
+		}
+		var keyInfoGenerator = keyInfoGeneratorFactory.newInstance();
+		try {
+			return keyInfoGenerator.generate(credential);
+		}
+		catch (SecurityException e) {
+			throw new TechnicalException("Key generation exception", e);
+		}
 	}
 
 	public enum Qoa {

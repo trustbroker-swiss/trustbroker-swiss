@@ -91,13 +91,12 @@ class AttributeRegistryTest {
 	}
 
 	private static SamlTestBase.TestAttributeName givenAttribute(String name) {
-		var overwrite = SamlTestBase.TestAttributeName.builder()
+		return SamlTestBase.TestAttributeName.builder()
 				.name(name)
 				.namespaceUri("ns1")
 				.altName("alt1")
 				.oidcNameList(List.of("oidc1", "oidc2"))
 				.build();
-		return overwrite;
 	}
 
 	private static void assertSame(AttributeName expected, AttributeName actual) {

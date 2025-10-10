@@ -69,7 +69,7 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 	@Override
 	public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response,
 			AuthenticationException exception) throws IOException {
-		var clientId = OidcSessionSupport.getOidcClientId(request);
+		var clientId = OidcSessionSupport.getOidcClientId(request, relyingPartyDefinitions);
 		var client = relyingPartyDefinitions.getRelyingPartyOidcClientByOidcClientId(clientId, null, trustBrokerProperties, true);
 		var rpIssuerId = client != null ? client.getLeft().getId() : null;
 		var oidcClient = client != null ? client.getRight() : null;

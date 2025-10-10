@@ -170,6 +170,7 @@ trustbroker:
       messageLifetimeSec: 28800 # AuthnRequest/Response/LogoutRequest IssueInstant timestamp check (accepted max)
       notBeforeToleranceSec: -5 # NTP time drift accepted from peer for notBefore timestamps
       notOnOrAfterToleranceSec: 5 # NTP time drift accepted from peer for notOnOrAfter timestamps
+      renewNotOnOrAfterToleranceRenewSec: 5 # accept WSTrust assertion RENEW requests after assertion expiry (if enabled)
       requireAudienceRestriction: false
       requireSignedAssertion: true
       requireSignedAuthnRequest: true
@@ -182,6 +183,7 @@ trustbroker:
       validateAudience: true
       validateAuthnRequest: true
       validateAuthnStatementIssueInstant: true
+      enforceQoaIfMissing: false
       validateRelayState: true
       validateRequestCondition: true
       validateRequestIssueInstant: true
@@ -294,6 +296,8 @@ trustbroker:
       revocationEnabled: true
       introspectionEnabled: true
       userInfoEnabled: true
+      # refresh token for PKCE
+      refreshTokenForPKCEEnabled: false
       # No acr_values in /authorize request? No Qoa element on RelyingParty or Oidc Client?
       defaultQoa: "urn:oasis:names:tc:SAML:2.0:ac:classes:unspecified"
       keycloakTransparencyModeOn: false
@@ -339,6 +343,9 @@ trustbroker:
     # WSTrust is supported for clients sending our own assertions in the SOAP security header of w RST request to get a new one
     wstrust:
       enabled: true
+      renewEnabled: false
+      renewRequiresSsoSession: true
+      renewRequiresSecurityToken: true
       wsBasePath: /api/v1/wstrust
       soapHeadersToConsider:
         - Security

@@ -17,6 +17,8 @@ package swiss.trustbroker.oidcmock;
 
 import java.util.Map;
 
+import com.nimbusds.jose.EncryptionMethod;
+import com.nimbusds.jose.JWEAlgorithm;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +30,14 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "oidcmock")
 @Data
 public class OidcMockProperties {
+
+	private boolean encryptIdToken = false;
+
+	private boolean signEncIdToken = true;
+
+	private String encryptionAlgorithm = JWEAlgorithm.RSA_OAEP_256.getName();
+
+	private String encryptionMethod = EncryptionMethod.A256GCM.getName();
 
 	private Map<String, Map<String, String>> clients;
 }

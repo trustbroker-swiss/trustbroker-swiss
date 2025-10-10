@@ -94,13 +94,12 @@ class SkinnyHrdTest {
 	}
 
 	private static List<UiObject> givenUiObjects() {
-		var uiObjects = List.of(
+		return List.of(
 				// complete:
 				UiObject.builder().urn(URN).description(TILE_TITLE).shortcut(SHORTCUT).name(NAME).image(IMAGE).color(COLOR).build(),
 				// minimal, with truncations:
 				UiObject.builder().description(TILE_TITLE_2).name(NAME_2).build()
 		);
-		return uiObjects;
 	}
 
 }

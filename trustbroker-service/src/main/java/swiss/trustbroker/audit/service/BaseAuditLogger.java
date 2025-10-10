@@ -70,6 +70,10 @@ public abstract class BaseAuditLogger implements AuditLogger {
 			case RST_RESPONSE -> log::info;
 			case OIDC_TOKEN -> log::info; // access_token is not opaque so we log that primarily
 			case OIDC_IDTOKEN -> log::debug; // id_token has same content currently so DEBUG
+			// in: artifact resolve
+			case ARTIFACT_RESOLVE -> log::debug;
+			// out: artifact response
+			case ARTIFACT_RESPONSE -> log::info;
 			default -> log::warn;
 		};
 	}

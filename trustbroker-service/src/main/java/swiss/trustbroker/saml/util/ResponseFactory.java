@@ -43,7 +43,9 @@ import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
+import swiss.trustbroker.mapping.dto.QoaConfig;
 import swiss.trustbroker.mapping.service.QoaMappingService;
+import swiss.trustbroker.mapping.util.QoaMappingUtil;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.ResponseParameters;
 import swiss.trustbroker.sessioncache.dto.StateData;
@@ -75,10 +77,13 @@ public class ResponseFactory {
 		var constAttr = relyingParty.getConstAttributes();
 		var rpQoaConfig = relyingPartySetupService.getQoaConfiguration(idpStateData.getSpStateData(),
 				relyingParty, trustBrokerProperties);
+		rpQoaConfig = rpQoaConfig != null ?  rpQoaConfig : new QoaConfig(null, null);
+
 		// map CP Qoa model to RP Qoa model (the relevant comparison type is what the RP requested)
+		var rpContextClasses = QoaMappingUtil.getRpContextClasses(idpStateData, rpQoaConfig.config());
 		var contextClasses = qoaMappingService.mapResponseQoasToOutbound(
 				cpResponse.getContextClasses(), claimsParty.getQoaConfig(),
-				params.getRpComparison(), params.getRpContextClasses(), rpQoaConfig);
+				params.getRpComparison(), rpContextClasses, rpQoaConfig);
 		var assertion = createSamlAssertion(cpResponse, constAttr, contextClasses, params, null);
 
 		// disable setting OriginalIssuer on Attribute
@@ -118,9 +123,10 @@ public class ResponseFactory {
 		// Note that audience condition and subject confirmation use the same tolerance (default 8min)
 		var nameId = SamlFactory.createNameId(params.getNameId(), params.getNameIdFormat(), params.getNameIdQualifier());
 		var rpAuthRequestId = params.getRpAuthnRequestId();
+		var now = Instant.now();
 		assertion.setSubject(SamlFactory.createSubject(nameId, rpAuthRequestId, params.getRecipientId(),
-				params.getSubjectValiditySeconds()));
-		assertion.setConditions(SamlFactory.createConditions(params.getIssuerId(), params.getAudienceValiditySeconds()));
+				params.getSubjectValiditySeconds(), now));
+		assertion.setConditions(SamlFactory.createConditions(params.getIssuerId(), params.getAudienceValiditySeconds(), now));
 
 		var attributes = createAttributes(params.getCpAttrOriginIssuer(), constAttr, cpResponse.getAttributes(),
 				params.getRpClientName(), cpResponse.getProperties(), cpResponse.getUserDetails());
@@ -132,12 +138,14 @@ public class ResponseFactory {
 			samlAttributes.addAll(additionalAttributes);
 		}
 
+		// AttributeStatement
 		var attributeStatement = SamlFactory.createAttributeStatement(samlAttributes);
-
 		assertion.getAttributeStatements().add(attributeStatement);
 		if (contextClasses != null) {
-			var sessionIndex = params.isSetSessionIndex() ? assertionId : null;
-			assertion.getAuthnStatements().addAll(SamlFactory.createAuthnState(contextClasses, sessionIndex, params.getAuthnStatementInstant()));
+			var sessionIndexToUse = params.getSessionIndex() != null ? params.getSessionIndex() : assertionId;
+			var sessionIndex = params.isSetSessionIndex() ? sessionIndexToUse : null;
+			assertion.getAuthnStatements().addAll(SamlFactory.createAuthnStatements(contextClasses, sessionIndex,
+					params.getSessionNotOnOrAfter(), params.getAuthnStatementInstant()));
 		}
 
 		// audit input

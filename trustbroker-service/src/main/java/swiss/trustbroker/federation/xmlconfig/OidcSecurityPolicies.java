@@ -17,6 +17,8 @@ package swiss.trustbroker.federation.xmlconfig;
 
 import java.io.Serializable;
 
+import com.nimbusds.jose.EncryptionMethod;
+import com.nimbusds.jose.JWEAlgorithm;
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
 import jakarta.xml.bind.annotation.XmlAttribute;
@@ -57,20 +59,88 @@ public class OidcSecurityPolicies implements Serializable {
 	private Boolean requireAuthorizationConsent = Boolean.FALSE;
 
 	/**
-	 * Token valitity in minutes.
+	 * Allow to enable Opaque AccessToken for Rp.
+	 * <br/>
+	 * Default: false
+	 * @since 1.11.0
+	 */
+	@XmlAttribute(name = "requireOpaqueAccessToken")
+	@Builder.Default
+	private Boolean requireOpaqueAccessToken = Boolean.FALSE;
+
+	/**
+	 * Allow to enable Encrypted IdToken JWT Singing for Rp.
+	 * <br/>
+	 * Default: false
+	 * @since 1.11.0
+	 */
+
+	@XmlAttribute(name = "requireIdTokenEncryption")
+	@Builder.Default
+	private Boolean requireIdTokenEncryption = Boolean.FALSE;
+
+	/**
+	 * Allow to enable Opaque RefreshToken for Rp.
+	 * <br/>
+	 * Default: false
+	 * @since 1.11.0
+	 */
+	@XmlAttribute(name = "requireOpaqueRefreshToken")
+	@Builder.Default
+	private Boolean requireOpaqueRefreshToken = Boolean.FALSE;
+
+	/**
+	 * Allow to enable Encrypted UserInfo response
+	 * <br/>
+	 * Default: false
+	 * @since 1.11.0
+	 */
+	@XmlAttribute(name = "requireUserInfoResponseEncryption")
+	@Builder.Default
+	private Boolean requireUserInfoResponseEncryption = Boolean.FALSE;
+
+	/**
+	 * Encryption algorithm
+	 * <br/>
+	 * Default: RSA_OAEP_256
+	 * @since 1.11.0
+	 */
+	@XmlAttribute(name = "encryptionAlgorithm")
+	@Builder.Default
+	private String encryptionAlgorithm = JWEAlgorithm.RSA_OAEP_256.getName();
+
+	/**
+	 * Encryption method
+	 * <br/>
+	 * Default: A256GCM
+	 * @since 1.11.0
+	 */
+	@XmlAttribute(name = "encryptionMethod")
+	@Builder.Default
+	private String encryptionMethod = EncryptionMethod.A256GCM.getName();
+
+	/**
+	 * Encryption keyID
+	 * @since 1.11.0
+	 */
+	@XmlAttribute(name = "encryptionKid")
+	private String encryptionKid;
+
+	/**
+	 * Token validity in minutes.
 	 */
 	@XmlAttribute(name = "tokenTimeToLiveMin")
 	private Integer tokenTimeToLiveMin;
 
 	/**
 	 * Overrides tokenTimeToLiveMin for the access token.
- 	 */
+	 */
 	@XmlAttribute(name = "accessTokenTimeToLiveMin")
 	private Integer accessTokenTimeToLiveMin;
 
 	/**
 	 * Overrides tokenTimeToLiveMin for the ID token.
- 	 */
+	 */
 	@XmlAttribute(name = "idTokenTimeToLiveMin")
 	private Integer idTokenTimeToLiveMin;
 
@@ -87,10 +157,10 @@ public class OidcSecurityPolicies implements Serializable {
 	private Integer authorizationCodeTimeToLiveMin;
 
 	/**
-	 * allow to invalidate OIDC sessions before token TTL, keep for 1 minute to allow login sequence termination.
+	 * Allow to invalidate OIDC sessions before token TTL, keep for 1 minute to allow login sequence termination.
 	 * <br/>
 	 * Default: 1
- 	 */
+	 */
 	@XmlAttribute(name = "sessionTimeToLiveMin")
 	@Builder.Default
 	private Integer sessionTimeToLiveMin = 1;
@@ -116,7 +186,7 @@ public class OidcSecurityPolicies implements Serializable {
 	 * (A value of Lax while valid has no benefits over Strict and is too restrictive for cross-domain use.)
 	 * <br/>
 	 * Default: Dynamic
- 	 */
+	 */
 	@XmlAttribute(name = "sessionCookieSameSite")
 	@Builder.Default
 	private String sessionCookieSameSite = WebUtil.COOKIE_SAME_SITE_DYNAMIC;

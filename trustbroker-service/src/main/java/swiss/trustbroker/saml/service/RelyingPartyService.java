@@ -17,6 +17,7 @@ package swiss.trustbroker.saml.service;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -82,9 +83,11 @@ import swiss.trustbroker.homerealmdiscovery.dto.ProfileRequest;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.homerealmdiscovery.util.DefaultIdmStatusPolicyCallback;
 import swiss.trustbroker.homerealmdiscovery.util.DefinitionUtil;
+import swiss.trustbroker.mapping.dto.QoaConfig;
 import swiss.trustbroker.mapping.service.ClaimsMapperService;
 import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.mapping.util.AttributeFilterUtil;
+import swiss.trustbroker.mapping.util.QoaMappingUtil;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.ResponseData;
 import swiss.trustbroker.saml.dto.ResponseParameters;
@@ -255,19 +258,53 @@ public class RelyingPartyService {
 		// fetch data and have a first response with all data, profile selection follows
 		fetchIdmData(cpResponse, cpStateData, cpResponse.getClientName(), true);
 
+		// update data if provisioning modified the IDM
 		if (provisionIdm(cpResponse)) {
-			// update data if provisioning modified the IDM
 			fetchIdmData(cpResponse, cpStateData, cpResponse.getClientName(), false);
 		}
 
 		// block CP users not found in IDM
 		unknownUserPolicyService.applyUnknownUserPolicy(cpResponse, getClaimsParty(cpResponse));
 
-		cpStateData.setCpResponse(cpResponse);
+		// before generating any further IDM data (e.g. AccessRequest) allow hook to do e.g. custom Qoa checks
+		scriptService.processCpAfterProvisioning(cpResponse, cpResponse.getIssuer());
+		scriptService.processRpAfterProvisioning(cpResponse, cpResponse.getRpIssuer(), cpResponse.getRpReferer());
+
+		// validate with RP Qoa requirement
+		if (!cpResponse.isAborted()) {
+			validateRpQoaRequirement(cpStateData, cpResponse);
+		}
 
 		// process CP response
+		cpStateData.setCpResponse(cpResponse);
 		return sendSuccessSamlResponseToRp(outputService, responseData,
 				cpStateData, cpStateData.getDeviceId(), httpServletRequest, httpServletResponse);
+	}
+
+	public void validateRpQoaRequirement(StateData cpStateData, CpResponse cpResponse) {
+		var spStateData = cpStateData.getSpStateData();
+		var requestIssuer = spStateData.getIssuer();
+		var requestReferer = spStateData.getReferer();
+		Map<String, Integer> globalMapping = trustBrokerProperties.getQoaMap();
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(
+				requestIssuer, requestReferer);
+		var rpQoaConf = relyingPartySetupService.getQoaConfiguration(cpStateData.getSpStateData(),
+				relyingParty, trustBrokerProperties);
+		rpQoaConf = rpQoaConf != null ? rpQoaConf : new QoaConfig(null, null);
+
+		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpResponse.getIssuerId()).orElseThrow(() ->
+				new TechnicalException(String.format("Could not find cpIssuerId=%s", cpResponse.getIssuer())));
+		var cpQoaConf = claimsParty != null ? claimsParty.getQoaConfig() : new QoaConfig(null, null);
+
+		var rpComparison = QoaMappingUtil.getRpComparison(cpStateData, rpQoaConf.config());
+		var rpContextClasses = QoaMappingUtil.getRpContextClasses(cpStateData, rpQoaConf.config());
+
+		// map before validation to apply downgrade
+		// NOTE: NoAuthnContext status responder towards relying party is not implemented (cpResponse.abort() handling here)
+		var mappedQoas = qoaService.mapResponseQoasToOutbound(cpResponse.getContextClasses(), cpQoaConf, rpComparison, rpContextClasses, rpQoaConf);
+		for (String qoa : mappedQoas) {
+			AssertionValidator.validateQoaRequirement(qoa, rpQoaConf, rpComparison, rpContextClasses, globalMapping, cpQoaConf.issuerId());
+		}
 	}
 
 	// return true if any modifications (create/update) were performed
@@ -789,13 +826,9 @@ public class RelyingPartyService {
 		return relayState;
 	}
 
-	private boolean isRelyingPartyOkForSso(RelyingParty relyingParty, StateData idpStateData) {
-		return relyingParty.isSsoEnabled() && ssoService.allowSso(idpStateData);
-	}
-
 	// pre-establish SSO before message generation
 	private void adjustSsoSessionIdForRpResponse(RelyingParty relyingParty, StateData idpStateData, CpResponse cpResponse) {
-		if (isRelyingPartyOkForSso(relyingParty, idpStateData)) {
+		if (ssoService.isRelyingPartyOkForSso(relyingParty, idpStateData)) {
 			idpStateData.setSsoSessionId(SsoSessionIdPolicy.generateSsoId(true, trustBrokerProperties.getSsoSessionIdPolicy()));
 			adjustSsoSessionIdProperty(idpStateData, cpResponse);
 		}
@@ -804,7 +837,7 @@ public class RelyingPartyService {
 	// post-establish SSO after message generation
 	private void establishSsoOrInvalidateState(RelyingParty relyingParty, ClaimsParty claimsParty, StateData idpStateData,
 			boolean success) {
-		if (success && isRelyingPartyOkForSso(relyingParty, idpStateData)) {
+		if (success && ssoService.isRelyingPartyOkForSso(relyingParty, idpStateData)) {
 			var ssoGroupName = relyingParty.getSso().getGroupName();
 			var ssoGroup = relyingPartySetupService.getSsoGroupConfig(ssoGroupName);
 			ssoService.establishSso(relyingParty, claimsParty, idpStateData, ssoGroup);
@@ -939,7 +972,7 @@ public class RelyingPartyService {
 		// derived attributes
 		setProperties(cpResponse);
 
-		// scripts (just before signing)
+		// scripts (just before feature processing)
 		scriptService.processCpAfterIdm(cpResponse, null, cpResponse.getIssuer(), null);
 		scriptService.processRpAfterIdm(cpResponse, null, requestIssuer, requestReferer);
 
@@ -953,12 +986,23 @@ public class RelyingPartyService {
 		var requestIssuer = spStateData.getIssuer();
 		var requestReferer = spStateData.getReferer();
 		var relyingParty = getRelyingParty(stateData);
-		var responseParameters = ResponseParameters.builder()
+		var responseParameterBuilder = ResponseParameters.builder()
 												   .rpIssuerId(requestIssuer)
 												   .nameIdQualifier(null)
 												   .setSessionIndex(true)
-												   .rpReferer(requestReferer)
-												   .build();
+												   .rpReferer(requestReferer);
+		if (stateData.isSsoEstablished()) {
+			responseParameterBuilder.sessionIndex(stateData.getId());
+			if (stateData.getExpirationTimestamp() != null) {
+				var latestSessionEndTime = stateData.getLatestSsoSessionEndTime(trustBrokerProperties.getSsoSessionLifetimeSec());
+				responseParameterBuilder.sessionNotOnOrAfter(latestSessionEndTime);
+			}
+			else {
+				// calculated in StateCacheService on saving, should not happen at this stage
+				log.info("Missing ExpirationTimestamp on SSO sessionId={}", stateData.getId());
+			}
+		}
+		var responseParameters = responseParameterBuilder.build();
 		var destination = ResponseFactory.getRpDestination(stateData, cpResponse);
 
 		// Adjust final settings
@@ -1045,7 +1089,7 @@ public class RelyingPartyService {
 		var kea = getKeyEncryptionAlgorithm(encryption);
 		var dea = getDataEncryptionAlgorithm(encryption);
 
-		Credential encryptionCred = relyingParty.getRpEncryptionCredential();
+		Credential encryptionCred = relyingParty.getRpEncryptionTrustCredential();
 
 		// If destination is XTB -> encryption for OIDC
 		boolean isXtbDestination = HrdSupport.isXtbDestination(trustBrokerProperties, authnResponse.getDestination());

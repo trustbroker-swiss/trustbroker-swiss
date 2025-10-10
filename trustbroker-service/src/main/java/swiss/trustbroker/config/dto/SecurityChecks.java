@@ -41,6 +41,8 @@ public class SecurityChecks {
 
 	public static final long TOLERANCE_NOT_AFTER_SEC = 480; // use notOnOrAfter timestamp _tolerance_ only
 
+	public static final long RENEW_TOLERANCE_NOT_AFTER_SEC = 7200; // notOnOrAfter timestamp _tolerance_ for assertion RENEW
+
 	/**
 	 * Reject unsigned AuthnRequest?
 	 * <br/>
@@ -88,6 +90,15 @@ public class SecurityChecks {
 	 */
 	@Builder.Default
 	private boolean validateAuthnRequest = true;
+
+	/**
+	 * Reject request without getAuthnContextClassRef or Qoa configuration
+	 * <br/>
+	 * Default: false
+	 * @since 1.11.0
+	 */
+	@Builder.Default
+	private boolean enforceQoaIfMissing = false;
 
 	/**
 	 * Check incoming WSTrust SecurityTokenRequest on WSS4J level.
@@ -189,6 +200,15 @@ public class SecurityChecks {
 	private boolean validateSubjectConfirmationInResponseTo = true;
 
 	/**
+	 * Check subject confirmation recipient.
+	 * <br/>
+	 * Default: true
+	 * @since 1.11.0
+	 */
+	@Builder.Default
+	private boolean validateSubjectConfirmationRecipient = true;
+
+	/**
 	 * Validate OID Logout request.
 	 * <br/>
 	 * Default: false
@@ -211,6 +231,15 @@ public class SecurityChecks {
 	 */
 	@Builder.Default
 	private long notOnOrAfterToleranceSec = TOLERANCE_NOT_AFTER_SEC;
+
+	/**
+	 * Duration after expiration of an assertion for which RENEW request is accepted.
+	 * <br/>
+	 * Default: 2h
+	 * @since 1.11.0
+	 */
+	@Builder.Default
+	private long renewNotOnOrAfterToleranceRenewSec = RENEW_TOLERANCE_NOT_AFTER_SEC;
 
 	/**
 	 * IssueInstant timestamp check should accept Assertion.Condition.NotValidOnOrAfter over WS-Trust.
@@ -287,6 +316,15 @@ public class SecurityChecks {
 	 */
 	@Builder.Default
 	private boolean doSignArtifactResponse = true;
+
+	/**
+	 * Enforce CP authentication via corresponding OIDC/SAML flags.
+	 * <br/>
+	 * Default: true (since 1.10.0 the hard coded default was true, before it was false)
+	 * @since 1.11.0
+	 */
+	@Builder.Default
+	private boolean forceCpAuthentication = true;
 
 	/**
 	 * Check IssueInstant attribute in AuthnRequest

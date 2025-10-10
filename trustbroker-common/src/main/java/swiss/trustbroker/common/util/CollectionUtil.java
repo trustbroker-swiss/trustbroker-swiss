@@ -16,6 +16,7 @@
 package swiss.trustbroker.common.util;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -94,7 +95,21 @@ public class CollectionUtil {
 		return values.stream().map(value -> value != null ? converter.apply(value) : null).toList();
 	}
 
-	// cf. Spring CollectionUtils.firstElement which does the same except for the ambiguity logging
+	// convert to array string format for logging
+	public static String toLogString(Collection<?> collection) {
+		if (collection == null) {
+			return String.valueOf(collection);
+		}
+		return toLogString(collection.toArray());
+	}
+
+	// convert to array string format for logging
+	// (use instead of Arrays.toString so we could change the format for both collections and arrays in one place)
+	public static String toLogString(Object[] array) {
+		return Arrays.toString(array);
+	}
+
+		// cf. Spring CollectionUtils.firstElement which does the same except for the ambiguity logging
 	public static <T, K> T getSingleValue(List<T> list, K nameForTracing) {
 		if (CollectionUtils.isEmpty(list)) {
 			return null;

@@ -29,6 +29,10 @@ spring:
                 - email
             require-authorization-consent: false
 oidcmock:
+  encryptIdToken: false
+  signEncIdToken: false
+  encryptionAlgorithm: "RSA-OAEP-256"
+  encryptionMethod: "A256GCM"
   clients:
     XTB-dev:
       acr: "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport"

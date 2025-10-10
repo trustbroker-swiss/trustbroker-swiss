@@ -21,6 +21,10 @@ import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 
+/**
+ * Because jackson cannot properly deal with complex map keys, custom deserialization support on maps are necessary.
+ * https://github.com/FasterXML/jackson-docs/wiki/JacksonHowToCustomSerializers
+ */
 public class DefinitionDeserializer extends KeyDeserializer {
 
 	private ObjectMapper mapper = new ObjectMapper();

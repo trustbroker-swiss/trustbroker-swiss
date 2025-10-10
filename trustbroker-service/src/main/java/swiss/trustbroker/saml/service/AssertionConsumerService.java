@@ -16,7 +16,6 @@
 package swiss.trustbroker.saml.service;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -56,14 +55,17 @@ import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
 import swiss.trustbroker.common.saml.util.SamlUtil;
 import swiss.trustbroker.common.tracing.TraceSupport;
+import swiss.trustbroker.common.util.CollectionUtil;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.Banner;
 import swiss.trustbroker.config.dto.GuiFeatures;
+import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.Definition;
+import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
@@ -288,6 +290,7 @@ public class AssertionConsumerService {
 		List<Credential> claimTrustCred = claimsParty.getCpTrustCredential();
 		var expectedAudienceId = claimsParty.getAuthnRequestIssuerId();
 		var spStateData = idpStateData.getSpStateData();
+		var rpQoa = getRpQoa(idpStateData, spStateData);
 
 		var expectedValues = AssertionValidator.ExpectedAssertionValues
 				.builder()
@@ -295,14 +298,21 @@ public class AssertionConsumerService {
 				.expectedAudience(expectedAudienceId)
 				.expectSuccess(expectSuccess)
 				.expectedRelayState(existingRelayState)
-				.expectedComparison(idpStateData.getComparisonType())
-				.expectedContextClasses(idpStateData.getContextClasses())
+				.expectedCpComparison(idpStateData.getComparisonType())
+				.expectedCpContextClasses(idpStateData.getContextClasses())
 				.expectedRpId(spStateData.getOidcClientId() != null ?
 						spStateData.getOidcClientId() : idpStateData.getRpIssuer())
 				.build();
 
 		AssertionValidator.validateResponse(responseData, responseAssertions, claimTrustCred,
-				trustBrokerProperties, claimsParty, claimsParty.getQoa(), expectedValues);
+				trustBrokerProperties, claimsParty, rpQoa, expectedValues);
+	}
+
+	private Qoa getRpQoa(StateData idpStateData, StateData spStateData) {
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(
+				idpStateData.getRpIssuer(), null);
+		var rpQoa = relyingPartySetupService.getQoaConfiguration(spStateData, relyingParty, trustBrokerProperties);
+		return rpQoa != null ? rpQoa.config() : null;
 	}
 
 	private static void validateBinding(ClaimsParty claimsParty, SamlBinding actualBinding,
@@ -450,17 +460,25 @@ public class AssertionConsumerService {
 	// - HTTP Origin was dropped because we actually never used it anywhere an ambiguity hurts here
 	String getAssertionConsumerServiceUrl(final String consumerUrl,
 			final String referer, final String origin, RelyingParty relyingParty) {
-		var acUrls = relyingParty != null && relyingParty.getAcWhitelist() != null ?
-				relyingParty.getAcWhitelist().getAcUrls() : new ArrayList<String>();
+		var acWhitelist = relyingParty != null && relyingParty.getAcWhitelist() != null ?
+				relyingParty.getAcWhitelist() : new AcWhitelist(new ArrayList<>());
 
 		var rpIssuer = relyingParty != null ? relyingParty.getId() : null;
 		if (log.isDebugEnabled()) {
 			log.debug("Checking AuthRequest from rpIssuer={} with consumerUrl={} referer={} origin={} against ACWhitelist={}",
-					rpIssuer, consumerUrl, referer, origin, Arrays.toString(acUrls.toArray()));
+					rpIssuer, consumerUrl, referer, origin, CollectionUtil.toLogString(acWhitelist.getAcUrls()));
 		}
 
 		//  may be signed AuthnRequest
-		var consumer = acUrls.stream().filter(acurl -> acurl.equals(consumerUrl)).findFirst();
+		Optional<String> consumer;
+		// use default?
+		if (consumerUrl == null) {
+			consumer = acWhitelist.getDefault();
+			log.debug("rpIssuerId={} did not send an ACS URL - using default={}", rpIssuer, consumer.orElse(null));
+		}
+		else {
+			consumer = acWhitelist.findFirst(String::equals, consumerUrl);
+		}
 
 		// internal AuthnRequest for monitoring
 		if (consumer.isEmpty() && consumerUrl != null && consumerUrl.startsWith(ApiSupport.MONITORING_ACS_URL)) {
@@ -469,10 +487,10 @@ public class AssertionConsumerService {
 
 		// unsigned HTTP headers
 		if (consumer.isEmpty() && referer != null) {
-			consumer = acUrls.stream().filter(acurl -> acurl.startsWith(referer)).findFirst();
+			consumer = acWhitelist.findFirst(String::startsWith, referer);
 		}
 		if (consumer.isEmpty() && origin != null) {
-			consumer = acUrls.stream().filter(acurl -> acurl.startsWith(origin)).findFirst();
+			consumer = acWhitelist.findFirst(String::startsWith, origin);
 		}
 
 		// block
@@ -480,21 +498,21 @@ public class AssertionConsumerService {
 			if (!trustBrokerProperties.getSecurity().isValidateAcs()) {
 				log.warn("trustbroker.config.security.validateAcs=false: Accepting AssertionConsumerServiceUrl={} "
 								+ " httpReferer={} and origin={} not having a match in ACWhitelist ACWhitelist={} for rpIssuer={}",
-						consumerUrl, referer, origin, Arrays.toString(acUrls.toArray()), rpIssuer);
+						consumerUrl, referer, origin, CollectionUtil.toLogString(acWhitelist.getAcUrls()), rpIssuer);
 				return consumerUrl;
 			}
 			throw new RequestDeniedException(String.format("Got a SAML message with AssertionConsumerServiceUrl=%s "
 							+ "httpReferer=%s and origin=%s not having a match in ACWhitelist ACWhitelist=%s."
 							+ " Please add an entry to rpIssuer=%s and in case referer is null fix RP to send it or an ACSUrl "
 							+ "instead.",
-					consumerUrl, referer, origin, Arrays.toString(acUrls.toArray()), rpIssuer));
+					consumerUrl, referer, origin, CollectionUtil.toLogString(acWhitelist.getAcUrls()), rpIssuer));
 		}
 
 		return consumer.get();
 	}
 
 	// In the discontinued stealth mode we also needed to save this state as well to be able to analyse the SAMLResponse
-	public StateData saveState(AuthnRequest authnRequest, HttpServletRequest request,
+	public StateData saveState(AuthnRequest authnRequest, boolean signatureValidated, HttpServletRequest request,
 			RelyingParty relyingParty, Optional<StateData> ssoState, SamlBinding requestBinding) {
 		// without a consumer URL we at least need something from the config
 		var referer = WebUtil.getHeader(HttpHeaders.REFERER, request);
@@ -569,27 +587,15 @@ public class AssertionConsumerService {
 
 		// Keep the following in sync with SsoService.copyToSsoStateAndInvalidateAuthnRequestState
 		stateData.setLastConversationId(spStateData.getLastConversationId()); // conversation the same for CP and RP side
+		// RP side default is false, so CPs can override the global default:
 		stateData.setForceAuthn(OpenSamlUtil.isForceAuthnRequest(authnRequest) || relyingParty.forceAuthn(false));
-		stateData.setSignedAuthnRequest(authnRequest.isSigned());
+		stateData.setSignedAuthnRequest(signatureValidated);
 
 		stateCacheService.save(stateData, this.getClass().getSimpleName());
 		return stateData;
 	}
 
-	private static QoaComparison getRpComparison(StateData stateData) {
-		if (stateData == null || stateData.getSpStateData() == null) {
-			return null;
-		}
-		return stateData.getSpStateData().getComparisonType();
-	}
 
-	private static List<String> getRpContextClasses(StateData stateData) {
-		List<String> contextClasses = new ArrayList<>();
-		if (stateData != null && stateData.getRpContextClasses() != null) {
-			contextClasses.addAll(stateData.getRpContextClasses());
-		}
-		return contextClasses;
-	}
 
 	private static Map<String, String> getRpContext(StateData stateData) {
 		Map<String, String> rpContext = new HashMap<>();
@@ -616,7 +622,7 @@ public class AssertionConsumerService {
 				.rpIssuer(rpIssuer)
 				.requestId(requestId)
 				.referer(referer)
-				.contextClasses(getRpContextClasses(stateData))
+				.contextClasses(QoaMappingUtil.getRpContextClasses(stateData))
 				.applicationName(applicationName)
 				.context(getRpContext(stateData)) // RP initiated internal state
 				.build();
@@ -689,14 +695,13 @@ public class AssertionConsumerService {
 		var globalDisabledAppNames = getGlobalDisabledAppNames(relyingParty, httpRequest, rpRequest);
 
 		var hrdBanners = trustBrokerProperties.getGui().hasFeature(GuiFeatures.HRD_BANNERS);
-		rpRequest.getClaimsProviders().stream()
-				.filter(ClaimsProvider::isDisplayed)
-				.forEach(
+		var displayedClaimsProviders = filterDisplayedClaimsProviders(requestId, rpRequest.getClaimsProviders());
+		displayedClaimsProviders.forEach(
 						mapping -> {
 							var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(mapping.getId(), referer);
 							var qoaOkForCp = qoaMappingService.canCpFulfillRequestQoas(
-									getRpComparison(stateData),
-									getRpContextClasses(stateData),
+									QoaMappingUtil.getRpComparison(stateData),
+									QoaMappingUtil.getRpContextClasses(stateData),
 									relyingParty.getQoaConfig(),
 									claimsParty.getQoaConfig());
 							uiObjects.addTile(
@@ -718,6 +723,35 @@ public class AssertionConsumerService {
 
 		log.debug("HRD final selecting uiObjects='{}'", uiObjects);
 		return rpRequest;
+	}
+
+	static List<ClaimsProvider> filterDisplayedClaimsProviders(String requestId, List<ClaimsProvider> claimsProviders) {
+		var displayedClaimsProviders = claimsProviders
+				.stream()
+				.filter(ClaimsProvider::isDisplayed)
+				.toList();
+		if (displayedClaimsProviders.isEmpty()) {
+			var maxOrderCp = claimsProviders
+					.stream()
+					.max(Comparator.comparing(ClaimsProvider::getOrder)); // not displayed => orders not null
+			if (maxOrderCp.isEmpty()) {
+				// should not happen here
+				log.error("No CPs available for HRD for authnRequestId={}", requestId);
+			}
+			else {
+				displayedClaimsProviders = List.of(maxOrderCp.get());
+				if (log.isInfoEnabled()) {
+					var cpIds = claimsProviders
+							.stream()
+							.map(ClaimsProvider::getId)
+							.toList();
+					log.info("All cpIssuerIds={} are hidden, picked cpIssuerId={} with maximum negative order={} for "
+									+ "authnRequestId={}",
+							cpIds, maxOrderCp.get().getId(), maxOrderCp.get().getOrder(), requestId);
+				}
+			}
+		}
+		return displayedClaimsProviders;
 	}
 
 	// sort by order and restrict
@@ -747,7 +781,7 @@ public class AssertionConsumerService {
 		var skipUserFeatures = OperationalUtil.skipUserFeatures(rpRequest, httpRequest, trustBrokerProperties); // skip
 		// disabling
 		var globalAnnouncements = new ArrayList<String>();
-		if (announcementService.showAnnouncements(relyingParty.getAnnouncement(), rpRequest.getApplicationName(), rpRequest.getFeatureConditions()) && !skipUserFeatures) {
+		if (announcementService.showAnnouncements(relyingParty.getAnnouncement(), rpRequest.getApplicationName(), rpRequest.featureConditionSet()) && !skipUserFeatures) {
 			for (Announcement announcement : announcementService.getGlobalAnnouncements()) {
 				if (announcement.getApplicationAccessible() != null && !announcement.getApplicationAccessible()) {
 					globalAnnouncements.add(getGlobalAppName(announcement.getApplicationName()));
@@ -855,7 +889,10 @@ public class AssertionConsumerService {
 		return id.replace("-", "").toUpperCase();
 	}
 
-	public void validateAuthnRequest(AuthnRequest authnRequest, HttpServletRequest request,
+	/**
+	 * @return true if a signature is present and has been successfully validated
+	 */
+	public AssertionValidator.MessageValidationResult validateAuthnRequest(AuthnRequest authnRequest, HttpServletRequest request,
 			SignatureContext signatureContext, SecurityPolicies securityPolicies) {
 		// pre conditions
 		if (authnRequest == null) {
@@ -869,12 +906,13 @@ public class AssertionConsumerService {
 			var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(issuer, referer);
 			var trustCredentials = relyingParty.getRpTrustCredentials();
 			var acWhiteList = relyingParty.getAcWhitelist();
-			var qoa = relyingParty.getQoa();
-			AssertionValidator.validateAuthnRequest(authnRequest, trustCredentials, acWhiteList, trustBrokerProperties,
-					securityPolicies, signatureContext, qoa);
+			var rpQoa = relyingParty.getQoa();
+			return AssertionValidator.validateAuthnRequest(authnRequest, trustCredentials, acWhiteList, trustBrokerProperties,
+					securityPolicies, signatureContext, rpQoa);
 		}
 		else {
 			log.error("trustbroker.config.security.validateAuthnRequest=false: Security on AuthnRequest disabled!!!");
+			return AssertionValidator.MessageValidationResult.unvalidated();
 		}
 	}
 

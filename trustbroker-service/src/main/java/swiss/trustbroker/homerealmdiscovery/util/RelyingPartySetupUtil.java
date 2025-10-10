@@ -128,7 +128,7 @@ public class RelyingPartySetupUtil {
 
 		// apply global defaults from ClaimsProviderDefinition.xml )backward compat)
 		var globalDefFile = trustBrokerProperties != null ? trustBrokerProperties.getClaimsDefinitionMapping() : "global CPD.xml";
-		if (defaultClaimsProviderDefinitions != null &&	isValidClaimsProviderMappings(
+		if (defaultClaimsProviderDefinitions != null && isValidClaimsProviderMappings(
 				defaultClaimsProviderDefinitions.getClaimsProviders(), globalDefFile)) {
 			mergeClaimsProviderMappings(relyingParty, defaultClaimsProviderDefinitions, claimsProviderSetup, true);
 		}
@@ -154,7 +154,7 @@ public class RelyingPartySetupUtil {
 	}
 
 	private static String getRpClaimsMappingDef(ClaimsProviderMappings mappings) {
-		return mappings != null && !StringUtils.isBlank(mappings.getDefinition()) ?	mappings.getDefinition() : null;
+		return mappings != null && !StringUtils.isBlank(mappings.getDefinition()) ? mappings.getDefinition() : null;
 	}
 
 	public static void validateScripts(CounterParty counterParty, ScriptService scriptService) {
@@ -172,7 +172,7 @@ public class RelyingPartySetupUtil {
 	}
 
 	private static String resolvePath(String definitionPath, String pullConfigPath, String baseRule, String subPath,
-			TrustBrokerProperties trustBrokerProperties) {
+									  TrustBrokerProperties trustBrokerProperties) {
 		// see ReferenceHolder for the order
 		var pullConfigDefinition = pullConfigPath + DEFINITION_PATH;
 		if (StringUtils.isNotEmpty(subPath)) {
@@ -198,8 +198,8 @@ public class RelyingPartySetupUtil {
 			return path;
 		}
 		throw new TechnicalException(String.format("Provided base=%s does not exist in definitions=%s or cache=%s directly, "
-								+ "or within globalProfilesPath=%s or subPath=%s",
-					baseRule, definitionPath, pullConfigPath, globalProfilesPath, subPath));
+						+ "or within globalProfilesPath=%s or subPath=%s",
+				baseRule, definitionPath, pullConfigPath, globalProfilesPath, subPath));
 	}
 
 	private static String findInConfigOrCache(String definitionPath, String pullConfigDefinition, String baseRule) {
@@ -230,7 +230,7 @@ public class RelyingPartySetupUtil {
 					if (CollectionUtils.isEmpty(c.getRedirectUris().getRedirectUrls())) {
 						log.error("Invalid rpIssuerId={} oidcClient={} - empty redirect URL list derived from "
 								+ "ACUrls={}", relyingParty.getId(), c.getId(), c.getRedirectUris().getAcUrls());
-							// such a client would fail when building the OIDC registry
+						// such a client would fail when building the OIDC registry
 						relyingParty.invalidate("Empty redirect URL list derived from ACUrls");
 					}
 				}
@@ -340,6 +340,9 @@ public class RelyingPartySetupUtil {
 		// Certificates
 		mergeCertificates(relyingParty, baseRelyingParty);
 
+		// Announcements
+		mergeAnnouncements(relyingParty, baseRelyingParty);
+
 		// ClaimsSelection
 		var baseClaimsSelection = baseRelyingParty.getClaimsSelection();
 		mergeClaimsSelection(relyingParty, baseClaimsSelection);
@@ -426,7 +429,7 @@ public class RelyingPartySetupUtil {
 		relyingParty.getFlowPolicies().getFlows().stream().forEachOrdered(flow -> flowMap.put(flow.getId(), flow));
 		var flowList = new ArrayList<>(flowMap.values());
 		relyingParty.getFlowPolicies()
-					.setFlows(flowList);
+				.setFlows(flowList);
 	}
 
 	private static void mergeEncryption(RelyingParty relyingParty, Encryption baseEncryption) {
@@ -465,10 +468,12 @@ public class RelyingPartySetupUtil {
 		var rpQoa = relyingParty.getQoa();
 		if (rpQoa == null) {
 			relyingParty.setQoa(baseQoa);
+			return;
 		}
-		else if (CollectionUtils.isEmpty(rpQoa.getClasses())) {
-			relyingParty.getQoa().setClasses(baseQoa.getClasses());
+		if (CollectionUtils.isEmpty(rpQoa.getClasses())) {
+			rpQoa.setClasses(baseQoa.getClasses());
 		}
+		PropertyUtil.copyMissingAttributes(rpQoa, baseQoa);
 	}
 
 	private static void mergeProfileSelection(RelyingParty relyingParty, ProfileSelection baseProfileSelection) {
@@ -502,8 +507,8 @@ public class RelyingPartySetupUtil {
 					relyingParty, baseRelyingParty)) {
 				var authorizedApplications = relyingParty.getAccessRequest().getAuthorizedApplications();
 				var baseAuthorizedApplications = baseRelyingParty.getAccessRequest().getAuthorizedApplications();
-				mergeAuthorizedApplications(authorizedApplications.getAuthorizedApplicationLists(),
-						baseAuthorizedApplications.getAuthorizedApplicationLists());
+				mergeAuthorizedApplications(authorizedApplications.getAuthorizedApplicationList(),
+						baseAuthorizedApplications.getAuthorizedApplicationList());
 			}
 			// check for all cases, after merge
 			if (relyingParty.getOidcClients().isEmpty()) {
@@ -527,8 +532,8 @@ public class RelyingPartySetupUtil {
 			return;
 		}
 		var authorizedApplications = relyingParty.getAccessRequest()
-												 .getAuthorizedApplications()
-												 .getAuthorizedApplicationLists();
+				.getAuthorizedApplications()
+				.getAuthorizedApplicationList();
 		var defaultApplications = authorizedApplications.stream()
 				.filter(AuthorizedApplication::isDefaultApplication)
 				.toList();
@@ -541,7 +546,7 @@ public class RelyingPartySetupUtil {
 
 	// 0 to 1 application defined for profile into 0 to n applications defined for RP
 	private static void mergeAuthorizedApplications(List<AuthorizedApplication> targetApplications,
-			List<AuthorizedApplication> baseApplications) {
+													List<AuthorizedApplication> baseApplications) {
 		if (baseApplications.isEmpty()) {
 			return;
 		}
@@ -562,7 +567,7 @@ public class RelyingPartySetupUtil {
 	}
 
 	private static void mergeSecurityPoliciesConfig(RelyingParty relyingParty,
-			SecurityPolicies baseRelyingPartySecurityPolicies) {
+													SecurityPolicies baseRelyingPartySecurityPolicies) {
 		var rpSecurityPolicy = relyingParty.getSecurityPolicies();
 		if (rpSecurityPolicy == null) {
 			relyingParty.setSecurityPolicies(baseRelyingPartySecurityPolicies);
@@ -579,6 +584,8 @@ public class RelyingPartySetupUtil {
 		}
 		else if (baseAcWhitelist != null) {
 			// merge with base
+			PropertyUtil.copyAttributeIfMissing(AcWhitelist::setUseDefault, AcWhitelist::getUseDefault,
+					acWhitelist, baseAcWhitelist);
 			var collect = joinAndDistinctLists(acWhitelist.getAcUrls(), baseAcWhitelist.getAcUrls());
 			acWhitelist.setAcUrls(collect);
 		}
@@ -625,7 +632,7 @@ public class RelyingPartySetupUtil {
 
 	// v1.8 behavior: Profile claims providers were ignored, v1.9: consider them when setup uses enabled flags for compatibility
 	private static boolean hasEnabledClaimsProvidersForMerge(ClaimsProviderMappings claimsProviderMappings,
-			ClaimsProviderMappings baseClaimsProviderMappings) {
+															 ClaimsProviderMappings baseClaimsProviderMappings) {
 		return baseClaimsProviderMappings != null
 				&& !CollectionUtils.isEmpty(baseClaimsProviderMappings.getClaimsProviderList())
 				&& (Boolean.TRUE.equals(claimsProviderMappings.getEnabled())
@@ -656,7 +663,7 @@ public class RelyingPartySetupUtil {
 						bc.getId(), relyingParty.getId(), claimsProviders.size());
 				claimsProviders.add(bc);
 			}
-			else{
+			else {
 				log.debug("Ignore cp={} from default definitions to setup rp={}", bc.getId(), relyingParty.getId());
 			}
 		});
@@ -699,8 +706,8 @@ public class RelyingPartySetupUtil {
 	}
 
 	static List<ClaimsProvider> getRpClaimsMapping(ClaimsProvider baseClaimsProvider,
-													   List<ClaimsProvider> claimsProviders,
-													   boolean defaultMerge) {
+												   List<ClaimsProvider> claimsProviders,
+												   boolean defaultMerge) {
 		// not expecting ambiguous ids apart from the ones with not matching relyingPartyAlias (that are not merged)
 		// if the aliases are equal the RP considered to be the same
 		return claimsProviders.stream()
@@ -804,6 +811,15 @@ public class RelyingPartySetupUtil {
 		}
 	}
 
+	static void mergeAnnouncements(RelyingParty relyingParty, RelyingParty baseClaim) {
+		if (relyingParty.getAnnouncement() == null) {
+			relyingParty.setAnnouncement(baseClaim.getAnnouncement());
+		}
+		else if (baseClaim.getAnnouncement() != null) {
+			PropertyUtil.copyMissingAttributes(relyingParty.getAnnouncement(), baseClaim.getAnnouncement());
+		}
+	}
+
 	static void mergeIdmQueries(RelyingParty relyingParty, IdmLookup baseLookup, List<IdmQueryService> idmQueryServices) {
 		if (baseLookup.getQueries() == null) {
 			return;
@@ -845,8 +861,8 @@ public class RelyingPartySetupUtil {
 						+ "Check the SetupRP and the corresponding RpProfile", relyingParty.getId(), baseIdmQuery.getName());
 			}
 			relyingParty.getIdmLookup()
-						.getQueries()
-						.add(baseIdmQuery);
+					.getQueries()
+					.add(baseIdmQuery);
 		}
 	}
 
@@ -876,6 +892,9 @@ public class RelyingPartySetupUtil {
 
 	// note: attributes is modified!
 	static <T> List<T> joinAndDistinctLists(List<T> attributes, List<T> baseAttributes) {
+		if (attributes == null || baseAttributes == null) {
+			return new ArrayList<>();
+		}
 		if (!CollectionUtils.isEmpty(baseAttributes)) {
 			attributes.addAll(baseAttributes);
 			return attributes.stream()
@@ -894,9 +913,7 @@ public class RelyingPartySetupUtil {
 		}
 		List<Definition> toRemoveFromBase = new ArrayList<>();
 		if (baseAttributes != null && !baseAttributes.isEmpty()) {
-			attributes = attributes.stream()
-					.filter(attribute -> notInBaseOrHasOidcConf(baseAttributes, attribute, toRemoveFromBase))
-					.collect(Collectors.toList());
+			attributes.forEach(attribute -> setBaseToRemove(baseAttributes, attribute, toRemoveFromBase));
 			attributes.addAll(filterBaseAttributes(baseAttributes, toRemoveFromBase));
 			return attributes;
 		}
@@ -912,20 +929,15 @@ public class RelyingPartySetupUtil {
 		return baseAttributes;
 	}
 
-	static boolean notInBaseOrHasOidcConf(List<Definition> baseAttributes, Definition attribute,
-			List<Definition> toRemoveFromBase) {
+	static void setBaseToRemove(List<Definition> baseAttributes, Definition attribute, List<Definition> toRemoveFromBase) {
 		Optional<Definition> baseAttr = definitionInList(attribute, baseAttributes);
+
 		if (baseAttr.isPresent()) {
-			if (attribute.getOidcNames() != null && (attribute.getScope() != null || baseAttr.get().getOidcNames() == null)) {
-				toRemoveFromBase.add(attribute);
-				return true;
-			}
-			if (baseAttr.get().getOidcNames() != null) {
-				PropertyUtil.copyAttributeIfBlank(Definition::setMappers, Definition::getMappers, baseAttr.get(), attribute);
-				return false;
-			}
+			PropertyUtil.copyAttributeIfBlank(Definition::setOidcNames, Definition::getOidcNames, attribute, baseAttr.get());
+			PropertyUtil.copyAttributeIfBlank(Definition::setMappers, Definition::getMappers, attribute, baseAttr.get());
+			PropertyUtil.copyAttributeIfBlank(Definition::setScope, Definition::getScope, attribute, baseAttr.get());
+			toRemoveFromBase.add(attribute);
 		}
-		return baseAttr.isEmpty();
 	}
 
 	static Optional<Definition> definitionInList(Definition attributeDefinition, List<Definition> definitionList) {

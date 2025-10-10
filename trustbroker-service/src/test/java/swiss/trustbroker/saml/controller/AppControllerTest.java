@@ -344,7 +344,7 @@ class AppControllerTest {
 		this.mockMvc.perform(get(URL_TEMPLATE).queryParam(SamlIoUtil.SAML_REQUEST_NAME, encodedMessage))
 				.andExpect(status().isFound())
 				.andExpect(header().string(HttpHeaders.LOCATION,
-						apiSupport.getHrdUrl(ServiceSamlTestUtil.AUTHN_REQUEST_ISSUER_ID, authnRequest.getID())));;
+						apiSupport.getHrdUrl(ServiceSamlTestUtil.AUTHN_REQUEST_ISSUER_ID, authnRequest.getID())));
 	}
 
 	@Test
@@ -363,7 +363,7 @@ class AppControllerTest {
 		this.mockMvc.perform(get(new URI(URL_TEMPLATE + '?' + query)))
 				.andExpect(status().isFound())
 				.andExpect(header().string(HttpHeaders.LOCATION,
-						apiSupport.getHrdUrl(ServiceSamlTestUtil.AUTHN_REQUEST_ISSUER_ID, authnRequest.getID())));;
+						apiSupport.getHrdUrl(ServiceSamlTestUtil.AUTHN_REQUEST_ISSUER_ID, authnRequest.getID())));
 	}
 
 	@Test
@@ -947,10 +947,8 @@ class AppControllerTest {
 	}
 
 	private RelyingParty getRelyingParty(String rpId) {
-		var relyingParty =
-				relyingPartyDefinitions.getRelyingPartySetup().getRelyingParties().stream()
+		return relyingPartyDefinitions.getRelyingPartySetup().getRelyingParties().stream()
 						.filter(rp -> rp.getId().equals(rpId)).findFirst().orElseThrow();
-		return relyingParty;
 	}
 
 	private Assertion resetAssertionSignature(Response response) {

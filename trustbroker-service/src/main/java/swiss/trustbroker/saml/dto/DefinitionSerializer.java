@@ -24,6 +24,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 
+/**
+ * Because jackson cannot properly deal with complex map keys, custom serialization support on maps are necessary.
+ * https://github.com/FasterXML/jackson-docs/wiki/JacksonHowToCustomSerializers
+ */
 public class DefinitionSerializer extends JsonSerializer<Definition> {
 
 	private ObjectMapper mapper = new ObjectMapper();

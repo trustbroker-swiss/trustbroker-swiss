@@ -29,7 +29,7 @@ import swiss.trustbroker.config.TrustBrokerProperties;
 
 class AuditLoggerTest {
 
-	private Logger log = (Logger) LoggerFactory.getLogger(AuditLogger.class.getPackageName());;
+	private Logger log = (Logger) LoggerFactory.getLogger(AuditLogger.class.getPackageName());
 
 	private Level originalLevel = log.getLevel();
 

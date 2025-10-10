@@ -49,6 +49,7 @@ import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.AuthorizationGrantType;
 import swiss.trustbroker.federation.xmlconfig.AuthorizationGrantTypes;
 import swiss.trustbroker.federation.xmlconfig.AuthorizedApplication;
+import swiss.trustbroker.federation.xmlconfig.ClaimsMapper;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderMappings;
@@ -218,13 +219,13 @@ class RelyingPartySetupUtilTest {
 	void mergeAccessRequestCopyApplication() {
 		var profile = createRelyingPartyWithAccessRequest();
 		var templateApp = AuthorizedApplication.builder().name("app1").build();
-		profile.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationLists().add(templateApp);
+		profile.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList().add(templateApp);
 		var rp = createRelyingPartyWithAccessRequest();
 
 		RelyingPartySetupUtil.mergeAccessRequest(rp, profile);
 
-		assertThat(rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationLists().size(), is(1));
-		assertThat(rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationLists().get(0),
+		assertThat(rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList().size(), is(1));
+		assertThat(rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList().get(0),
 				sameInstance(templateApp));
 	}
 
@@ -232,17 +233,17 @@ class RelyingPartySetupUtilTest {
 	void mergeAccessRequestDuplicateDefault() {
 		var profile = createRelyingPartyWithAccessRequest();
 		var rp = createRelyingPartyWithAccessRequest();
-		var defaultAppName = "defaultApp";
-		var defaultApp = AuthorizedApplication.builder().name(defaultAppName).build();
-		rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationLists().add(defaultApp);
-		var otherDefaultAppName = "otherDefaultApp";
-		var otherDefaultApp = AuthorizedApplication.builder().name(otherDefaultAppName).build();
-		rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationLists().add(otherDefaultApp);
+		var defaultTriggerRole = "defaultApp.role";
+		var defaultApp = AuthorizedApplication.builder().triggerRole(defaultTriggerRole).build();
+		rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList().add(defaultApp);
+		var otherTriggerRole = "otherApp.role";
+		var otherDefaultApp = AuthorizedApplication.builder().triggerRole(otherTriggerRole).build();
+		rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList().add(otherDefaultApp);
 
 		var ex = assertThrows(TechnicalException.class, () -> RelyingPartySetupUtil.mergeAccessRequest(rp, profile));
 
-		assertThat(ex.getInternalMessage(), containsString(defaultAppName));
-		assertThat(ex.getInternalMessage(), containsString(otherDefaultAppName));
+		assertThat(ex.getInternalMessage(), containsString(defaultTriggerRole));
+		assertThat(ex.getInternalMessage(), containsString(otherTriggerRole));
 	}
 
 	@Test
@@ -252,33 +253,33 @@ class RelyingPartySetupUtilTest {
 		var mode = "SILENT";
 		var url = "https://localhost/silent";
 		var templateApp = AuthorizedApplication.builder().mode(mode).serviceUrl(url).build();
-		profile.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationLists().add(templateApp);
+		profile.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList().add(templateApp);
 
 		var rp = createRelyingPartyWithAccessRequest();
 		// one retained and one merged attribute each to ensure both are updated
 		var app1Name = "app1";
 		var url1 = "https://localhost/silent2";
 		var app1 = AuthorizedApplication.builder().name(app1Name).serviceUrl(url1).build();
-		rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationLists().add(app1);
+		rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList().add(app1);
 		var app2Name = "app2";
 		var mode2 = "INTERACTIVE";
 		// set URL for second one, there must be only one default
 		var app2 = AuthorizedApplication.builder().name(app2Name).url("/url").mode(mode2).build();
-		rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationLists().add(app2);
+		rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList().add(app2);
 
 		RelyingPartySetupUtil.mergeAccessRequest(rp, profile);
 
 		assertThat(rp.getAccessRequest().getEnabled(), is(Boolean.TRUE)); // not copied
 
 		var apps = rp.getAccessRequest().getAuthorizedApplications();
-		assertThat(apps.getAuthorizedApplicationLists().size(), is(2));
+		assertThat(apps.getAuthorizedApplicationList().size(), is(2));
 
-		var mergedApp1 = apps.getAuthorizedApplicationLists().get(0);
+		var mergedApp1 = apps.getAuthorizedApplicationList().get(0);
 		assertThat(mergedApp1.getName(), is(app1Name));
 		assertThat(mergedApp1.getMode(), is(mode));
 		assertThat(mergedApp1.getServiceUrl(), is(url1));
 
-		var mergedApp2 = apps.getAuthorizedApplicationLists().get(1);
+		var mergedApp2 = apps.getAuthorizedApplicationList().get(1);
 		assertThat(mergedApp2.getName(), is(app2Name));
 		assertThat(mergedApp2.getMode(), is(mode2));
 		assertThat(mergedApp2.getServiceUrl(), is(url));
@@ -288,9 +289,9 @@ class RelyingPartySetupUtilTest {
 	@CsvSource(value = { "true", "false" })
 	void mergeAccessRequestWrongTemplate(boolean enabled) {
 		var profile = createRelyingPartyWithAccessRequest();
-		profile.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationLists()
+		profile.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList()
 				.add(AuthorizedApplication.builder().build());
-		profile.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationLists()
+		profile.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList()
 				.add(AuthorizedApplication.builder().build());
 
 		var rp = createRelyingPartyWithAccessRequest();
@@ -308,9 +309,9 @@ class RelyingPartySetupUtilTest {
 	void mergeAccessRequestOidc() {
 		var profile = createRelyingPartyWithAccessRequest();
 		var rp = createRelyingPartyWithAccessRequest();
-		rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationLists()
+		rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList()
 				.add(AuthorizedApplication.builder().name("test1").build());
-		rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationLists()
+		rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList()
 				.add(AuthorizedApplication.builder().name("test2").build());
 		rp.setOidc(Oidc.builder().clients(List.of(OidcClient.builder().build())).build());
 
@@ -325,9 +326,9 @@ class RelyingPartySetupUtilTest {
 		assertDoesNotThrow(() -> RelyingPartySetupUtil.mergeQoaLevels(relyingParty, baseRelyingParty));
 
 		// use base profile
-		var expectedQoa = givenQoa(null, null, SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED);
-		var rpOoa = givenQoa(null, true, null);
-		var mergedQoa = givenQoa(null, true, SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED);
+		var expectedQoa = givenQoa(null, true, false, SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED);
+		var rpOoa = givenQoa(null, null, null, null);
+		var mergedQoa = givenQoa(null, true, false, SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED);
 		baseRelyingParty.setQoa(expectedQoa);
 		RelyingPartySetupUtil.mergeQoaLevels(relyingParty, baseRelyingParty);
 		assertThat(relyingParty.getQoa(), is(expectedQoa));
@@ -338,7 +339,7 @@ class RelyingPartySetupUtilTest {
 		assertThat(relyingParty.getQoa(), is(mergedQoa));
 
 		// preserve
-		baseRelyingParty.setQoa(givenQoa(2, null, SamlContextClass.SMART_CARD_PKI));
+		baseRelyingParty.setQoa(givenQoa(2, false, true, SamlContextClass.SMART_CARD_PKI));
 		RelyingPartySetupUtil.mergeQoaLevels(relyingParty, baseRelyingParty);
 		assertThat(relyingParty.getQoa(), is(mergedQoa));
 	}
@@ -354,7 +355,7 @@ class RelyingPartySetupUtilTest {
 				.namespaceUri(CoreAttributeName.FIRST_NAME.getNamespaceUri())
 				.build();
 		toRemove = new ArrayList<>();
-		assertTrue(RelyingPartySetupUtil.notInBaseOrHasOidcConf(baseAttributes, definition, toRemove));
+		RelyingPartySetupUtil.setBaseToRemove(baseAttributes, definition, toRemove);
 		assertEquals(0, toRemove.size());
 
 		// In Base, no OIDC attribute
@@ -362,7 +363,8 @@ class RelyingPartySetupUtilTest {
 				.name(CoreAttributeName.NAME.getName())
 				.namespaceUri(CoreAttributeName.NAME.getNamespaceUri())
 				.build();
-		assertFalse(RelyingPartySetupUtil.notInBaseOrHasOidcConf(baseAttributes, definition, toRemove));
+		RelyingPartySetupUtil.setBaseToRemove(baseAttributes, definition, toRemove);
+		assertEquals(1, toRemove.size());
 
 		// In Base, OIDC attribute in SetupRP conf
 		definition = Definition.builder()
@@ -372,18 +374,22 @@ class RelyingPartySetupUtilTest {
 				.scope("scope")
 				.build();
 		toRemove = new ArrayList<>();
-		assertTrue(RelyingPartySetupUtil.notInBaseOrHasOidcConf(baseAttributes, definition, toRemove));
-		assertFalse(toRemove.isEmpty());
+		RelyingPartySetupUtil.setBaseToRemove(baseAttributes, definition, toRemove);
+		assertEquals(1, toRemove.size());
+		assertNotNull(definition.getOidcNames());
+		assertNull(definition.getMappers());
 
 		// In Base, only OIDC name attribute in SetupRP conf
 		definition = Definition.builder()
 				.name(CoreAttributeName.NAME.getName())
 				.namespaceUri(CoreAttributeName.NAME.getNamespaceUri())
-				.oidcNames("oidcname")
+				.mappers("STRING")
 				.build();
 		toRemove = new ArrayList<>();
-		assertTrue(RelyingPartySetupUtil.notInBaseOrHasOidcConf(baseAttributes, definition, toRemove));
-		assertFalse(toRemove.isEmpty());
+		RelyingPartySetupUtil.setBaseToRemove(baseAttributes, definition, toRemove);
+		assertEquals(1, toRemove.size());
+		assertNull(definition.getOidcNames());
+		assertNotNull(definition.getMappers());
 
 		// In Base, OIDC name attribute in Profile and in SetupRP conf
 		definition = Definition.builder()
@@ -392,8 +398,11 @@ class RelyingPartySetupUtilTest {
 				.oidcNames("oidcname")
 				.build();
 		toRemove = new ArrayList<>();
-		assertFalse(RelyingPartySetupUtil.notInBaseOrHasOidcConf(baseAttributes, definition, toRemove));
-
+		RelyingPartySetupUtil.setBaseToRemove(baseAttributes, definition, toRemove);
+		assertEquals(1, toRemove.size());
+		assertNotNull(definition.getOidcNames());
+		assertEquals("oidcname", definition.getOidcNames());
+		assertNull(definition.getMappers());
 
 		// In Base, OIDC name attribute only in Profile
 		definition = Definition.builder()
@@ -401,7 +410,32 @@ class RelyingPartySetupUtilTest {
 				.namespaceUri(CoreAttributeName.EMAIL.getNamespaceUri())
 				.build();
 		toRemove = new ArrayList<>();
-		assertFalse(RelyingPartySetupUtil.notInBaseOrHasOidcConf(baseAttributes, definition, toRemove));
+		RelyingPartySetupUtil.setBaseToRemove(baseAttributes, definition, toRemove);
+		assertEquals(1, toRemove.size());
+
+		// In Base, OIDC mapper set in base
+		definition = Definition.builder()
+				.name(CoreAttributeName.LOCALITY.getName())
+				.namespaceUri(CoreAttributeName.LOCALITY.getNamespaceUri())
+				.build();
+		toRemove = new ArrayList<>();
+		RelyingPartySetupUtil.setBaseToRemove(baseAttributes, definition, toRemove);
+		assertEquals(1, toRemove.size());
+		assertNull(definition.getOidcNames());
+		assertNotNull(definition.getMappers());
+
+		// In Base, OIDC mapper set in base and Rp
+		definition = Definition.builder()
+				.name(CoreAttributeName.LOCALITY.getName())
+				.namespaceUri(CoreAttributeName.LOCALITY.getNamespaceUri())
+				.mappers(ClaimsMapper.BOOLEAN.toString())
+				.build();
+		toRemove = new ArrayList<>();
+		RelyingPartySetupUtil.setBaseToRemove(baseAttributes, definition, toRemove);
+		assertEquals(1, toRemove.size());
+		assertNull(definition.getOidcNames());
+		assertNotNull(definition.getMappers());
+		assertEquals(ClaimsMapper.BOOLEAN.toString(), definition.getMappers());
 	}
 
 	@Test
@@ -514,10 +548,15 @@ class RelyingPartySetupUtilTest {
 				.name(CoreAttributeName.NAME_ID.getName())
 				.namespaceUri(CoreAttributeName.NAME_ID.getNamespaceUri())
 				.build());
+		definitions.add(Definition.builder()
+				.name(CoreAttributeName.LOCALITY.getName())
+				.namespaceUri(CoreAttributeName.LOCALITY.getNamespaceUri())
+				.mappers(ClaimsMapper.EMAIL.name())
+				.build());
 		return definitions;
 	}
 
-	private Qoa givenQoa(Integer order, Boolean enforce, String qoaClass) {
+	private Qoa givenQoa(Integer order, Boolean enforce, Boolean mapOutbound, String qoaClass) {
 		List<AcClass> classes = new ArrayList<>();
 		if (qoaClass != null || order != null) {
 			classes.add(AcClass.builder()
@@ -528,6 +567,7 @@ class RelyingPartySetupUtilTest {
 		return Qoa.builder()
 				  .classes(classes)
 				  .enforce(enforce)
+				  .mapOutbound(mapOutbound)
 				  .build();
 	}
 

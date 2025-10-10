@@ -97,7 +97,7 @@ class FederationMetadataServiceTest {
 
 		List<RelyingParty> relyingParties = new ArrayList<>();
 		var relyingParty = RelyingParty.builder()
-				.rpEncryptionCredential(SamlTestBase.dummyCredential()) // does not affect metadata
+				.rpEncryptionTrustCredential(SamlTestBase.dummyCredential()) // does not affect metadata
 				.build();
 		relyingParties.add(relyingParty);
 

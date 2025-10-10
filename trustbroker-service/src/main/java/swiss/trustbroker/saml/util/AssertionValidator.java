@@ -23,10 +23,10 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import lombok.Builder;
@@ -67,6 +67,7 @@ import swiss.trustbroker.common.saml.util.Base64Util;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
 import swiss.trustbroker.common.saml.util.SamlUtil;
+import swiss.trustbroker.common.util.CollectionUtil;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.common.util.UrlAcceptor;
 import swiss.trustbroker.config.TrustBrokerProperties;
@@ -99,6 +100,8 @@ public class AssertionValidator {
 
 		private boolean expectSuccess;
 
+		private boolean renew;
+
 		private String expectedRequestId;
 
 		private String expectedIssuer;
@@ -111,19 +114,38 @@ public class AssertionValidator {
 
 		private String expectedRelayState;
 
-		private QoaComparison expectedComparison;
+		private String expectedSessionIndex;
 
-		private List<String> expectedContextClasses;
+		private String expectedRecipient;
+
+		private QoaComparison expectedCpComparison;
+
+		private List<String> expectedCpContextClasses;
+
+	}
+
+	@Data
+	@Builder
+	public static class MessageValidationResult {
+
+		private boolean signatureValidated;
+
+		public static MessageValidationResult unvalidated() {
+			return MessageValidationResult.builder().build();
+		}
 
 	}
 
 	private AssertionValidator() {
 	}
 
-	// the check 'require signed AuthnRequest' is based on signatureContext (not SecurityPolicies)
-	public static void validateAuthnRequest(AuthnRequest authnRequest, List<Credential> credentials,
-			AcWhitelist acWhiteList, TrustBrokerProperties properties, SecurityPolicies securityPolicies,
-			SignatureContext signatureContext, Qoa qoa) {
+	/**
+	 * the check 'require signed AuthnRequest' is based on signatureContext (not SecurityPolicies)
+	 * @return true if a signature is present and has been successfully validated
+	 */
+	public static MessageValidationResult validateAuthnRequest(AuthnRequest authnRequest, List<Credential> credentials,
+											AcWhitelist acWhiteList, TrustBrokerProperties properties, SecurityPolicies securityPolicies,
+											SignatureContext signatureContext, Qoa rpQoa) {
 		if (authnRequest == null) {
 			throw new RequestDeniedException("Missing authnRequest");
 		}
@@ -135,35 +157,45 @@ public class AssertionValidator {
 		validateAssertionConsumer(authnRequest.getAssertionConsumerServiceURL(), acWhiteList, properties, authnRequest);
 
 		// signature first (before we apply any business rules)
-		validateRequestSignature(authnRequest, credentials, properties, signatureContext);
+		var validationResult = validateRequestSignature(authnRequest, credentials, properties, signatureContext);
 
 		// message checks (stateless)
 		validateAuthnRequestId(authnRequest);
 		validateAuthnRequestIssuer(authnRequest);
 		validateAuthnRequestIssueInstant(authnRequest, now, properties);
-		validateAuthnRequestConditions(authnRequest, now, null, properties, securityPolicies);
+		validateAuthnRequestConditions(authnRequest, now, null, false, properties, securityPolicies);
 
-		var qoaConfig = new QoaConfig(qoa, authnRequest.getIssuer().getValue());
-		validateAuthnContextClassRefs(qoaConfig,
-			OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest, qoaConfig.isReplaceInbound(),
-														   QoaMappingUtil.getReplacementAcClasses(qoa)),
-				OpenSamlUtil.extractAuthnRequestComparison(authnRequest), properties.getQoaMap());
+		var issuer = authnRequest.getIssuer() != null ? authnRequest.getIssuer().getValue() : "NONE";
+		var qoaConfig = new QoaConfig(rpQoa, issuer);
+		var authnRequestContextClasses = OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest, qoaConfig.isReplaceInbound(),
+				QoaMappingUtil.getReplacementAcClasses(rpQoa));
+		var requestComparison = OpenSamlUtil.extractAuthnRequestComparison(authnRequest);
+		boolean enforceQoaIfMissing = properties.getSecurity().isEnforceQoaIfMissing();
+		validateAuthnContextClassRefs(qoaConfig, authnRequestContextClasses, requestComparison, properties.getQoaMap(), enforceQoaIfMissing);
 
 		// Audit facility does INFO logging
-		log.debug("AuthnRequest validation was successful for requestID={}", authnRequest.getID());
+		log.debug("AuthnRequest validation was successful for requestID={} validationResult={}",
+				authnRequest.getID(), validationResult);
+		return validationResult;
 	}
 
-	private static void validateAuthnContextClassRefs(QoaConfig qoaConfig, List<String> requestContextClasses,
-			AuthnContextComparisonTypeEnumeration comparison, Map<String, Integer> qoaMap) {
+	static void validateAuthnContextClassRefs(QoaConfig qoaConfig, List<String> requestContextClasses,
+													  AuthnContextComparisonTypeEnumeration comparison, Map<String, Integer> qoaMap,
+													  boolean enforceQoaIfMissing) {
 		if (requestContextClasses.isEmpty()) {
-			log.debug("Missing AuthnRequest contextClasses from request with ID={}", qoaConfig.issuerId());
+			var issuerId = qoaConfig.issuerId();
+			QoaMappingUtil.rejectRequestIfQoaConfMissing(qoaConfig.hasConfig() ? qoaConfig.config() : null, enforceQoaIfMissing, issuerId);
+			log.debug("Missing AuthnRequest contextClasses from request with ID={}", issuerId);
 			return;
 		}
 
 		QoaMappingUtil.validateRpContextClasses(qoaConfig, requestContextClasses, comparison, qoaMap);
 	}
 
-	public static void validateResponse(ResponseData<Response> responseData, List<Assertion> assertions,
+	/**
+	 * @return true if for the response and all assertions, a signature is present and has been successfully validated
+ 	 */
+	public static MessageValidationResult validateResponse(ResponseData<Response> responseData, List<Assertion> assertions,
 			List<Credential> credentials, TrustBrokerProperties properties, ClaimsParty claimsParty,
 			Qoa qoa, ExpectedAssertionValues expectedValues) {
 		if (responseData == null || responseData.getResponse() == null) {
@@ -176,7 +208,8 @@ public class AssertionValidator {
 
 		// signature first (before we apply any business rules)
 		var requireSignedResponse = requireSignedResponse(properties, claimsParty.getSecurityPolicies());
-		validateResponseSignature(response, credentials, requireSignedResponse); // response only, not assertion
+		// response only, not assertion
+		var validationResult = validateResponseSignature(response, credentials, requireSignedResponse);
 
 		// message checks (stateless)
 		// also check that status is not SUCCESS if failure is expected, else we would sign unvalidated assertions
@@ -191,15 +224,20 @@ public class AssertionValidator {
 			if (expectedValues.expectedRequestId == null) {
 				expectedValues.setExpectedRequestId(response.getInResponseTo());
 			}
-			validateResponseAssertions(assertions, response, credentials, properties, claimsParty, qoa, expectedValues);
+			var assertionValidationResult =
+					validateResponseAssertions(assertions, response, credentials, properties, claimsParty, qoa, expectedValues);
+			validationResult.signatureValidated &= assertionValidationResult.signatureValidated;
 		}
 		// else: no assertions
 
 		// Audit facility does INFO logging
-		log.debug("Response validation was successful for ID={} inResponseTo={}", response.getID(), response.getInResponseTo());
+		log.debug("Response validation was successful for ID={} inResponseTo={} validationResult={}",
+				response.getID(), response.getInResponseTo(), validationResult);
+		return validationResult;
 	}
 
-	static void validateResponseAssertions(List<Assertion> assertions, Response response, List<Credential> credentials,
+	// returns true if for all assertions a signature is present and has been successfully validated
+	static MessageValidationResult validateResponseAssertions(List<Assertion> assertions, Response response, List<Credential> credentials,
 			TrustBrokerProperties properties, ClaimsParty claimsParty, Qoa qoa, ExpectedAssertionValues expectedValues) {
 
 		if (assertions == null || assertions.isEmpty()) {
@@ -209,45 +247,80 @@ public class AssertionValidator {
 		if (assertions.size() != 1 && log.isWarnEnabled()) {
 			log.warn("Response contains more than 1 assertion: {}", OpenSamlUtil.samlObjectToString(response));
 		}
-		validateAssertions(assertions, credentials, properties, claimsParty, qoa, response, expectedValues);
+		return validateAssertions(assertions, credentials, properties, claimsParty, qoa, response, expectedValues);
 	}
 
-	static void validateAssertions(List<Assertion> assertions, List<Credential> credentials, TrustBrokerProperties properties,
-			ClaimsParty claimsParty, Qoa qoa, XMLObject xmlObject, ExpectedAssertionValues expectedValues) {
+	// returns true if for all assertions a signature is present and has been successfully validated
+	static MessageValidationResult validateAssertions(List<Assertion> assertions, List<Credential> credentials,
+			TrustBrokerProperties properties, ClaimsParty claimsParty, Qoa qoa, XMLObject xmlObject,
+			ExpectedAssertionValues expectedValues) {
 		if (assertions == null || assertions.isEmpty() || assertions.get(0) == null) {
 			throw new RequestDeniedException(String.format(
 					"Assertions missing: %s",
 					OpenSamlUtil.samlObjectToString(xmlObject)));
 		}
 		Instant now = Instant.now();
+		var assertionsValidated = MessageValidationResult.builder()
+														 .signatureValidated(true)
+														 .build();
 		for (Assertion assertion : assertions) {
-			validateAssertion(assertion, now, credentials, properties, claimsParty, qoa, expectedValues);
+			var assertionValidated = validateAssertion(assertion, now, credentials, properties, claimsParty, qoa, expectedValues);
+			assertionsValidated.signatureValidated &= assertionValidated.signatureValidated;
 		}
+		return assertionsValidated;
 	}
 
-	// RST case of WSTrust service: The assertion is already checked by wss4j
-	public static void validateRstAssertion(Assertion assertion, TrustBrokerProperties properties,
-			ClaimsParty claimsParty, SecurityPolicies securityPolicies) {
+	/**
+	 * RST case of WSTrust service: The header assertion is already checked by <code>wss4j</code>.
+	 * @param assertion
+	 * @param properties
+	 * @param claimsParty
+	 * @param securityPolicies
+	 * @param now current time if null
+	 * @param expectedValues default ExpectedAssertionValues if null
+	 * @param signatureValidationCredentials signature checked if present
+	 * @return true if a signature is present and has been successfully validated - only performed if credentials are provided
+	 */
+	public static MessageValidationResult validateRstAssertion(Assertion assertion, TrustBrokerProperties properties,
+			ClaimsParty claimsParty, SecurityPolicies securityPolicies, Instant now, ExpectedAssertionValues expectedValues,
+			Optional<List<Credential>> signatureValidationCredentials) {
 		if (assertion == null) {
 			throw new RequestDeniedException("Assertion missing");
 		}
+		if (expectedValues == null) {
+			expectedValues = ExpectedAssertionValues.builder().build();
+		}
 
-		Instant now = Instant.now();
+		if (now == null) {
+			now = Instant.now();
+		}
 		log.debug("Start Assertion validation ID={} now={} excluding signature check (wss4j case)", assertion.getID(), now);
 
 		// message checks (stateless)
 		validateAssertionId(assertion);
-		validateAssertionIssueInstant(assertion, now, properties);
-		validateAssertionIssuer(assertion, null, properties);
-		validateAssertionSubject(assertion, now, null, true, properties);
-		validateAssertionConditions(assertion, now, null, properties, securityPolicies);
-		validateAssertionAuthnStatements(assertion, now, claimsParty, new QoaConfig(null, null), properties, null, null);
+		validateAssertionIssueInstant(assertion, now, expectedValues.renew, properties, securityPolicies);
+		validateAssertionIssuer(assertion, expectedValues.expectedIssuer, properties);
+		validateAssertionSubject(assertion, now, expectedValues.expectedRequestId, true,
+				expectedValues.renew, expectedValues.expectedRecipient, properties);
+		validateAssertionConditions(assertion, now, expectedValues.expectedAudience, expectedValues.renew,
+				properties, securityPolicies);
+		validateAssertionAuthnStatements(assertion, now, claimsParty, new QoaConfig(null, null), properties,
+				expectedValues.expectedCpContextClasses, null, expectedValues.renew);
 		validateAssertionAttributeStatements(assertion);
+		var validationResult = MessageValidationResult.unvalidated();
+		if (signatureValidationCredentials.isPresent()) {
+			validationResult = validateAssertionSignature(assertion, signatureValidationCredentials.get(), properties);
+		}
 
-		log.debug("Assertion validation was successful for ID={}", assertion.getID());
+		log.debug("RST assertion validation was successful for ID={} validationResult={}",
+				assertion.getID(), validationResult);
+		return validationResult;
 	}
 
-	public static void validateAssertion(Assertion assertion, Instant now, List<Credential> credentials,
+	/**
+	 * @return true if a signature is present and has been successfully validated
+	 */
+	public static MessageValidationResult validateAssertion(Assertion assertion, Instant now, List<Credential> credentials,
 			TrustBrokerProperties properties, ClaimsParty claimsParty, Qoa qoa, ExpectedAssertionValues expectedValues) {
 		var securityPolicies = claimsParty != null ? claimsParty.getSecurityPolicies(): null;
 		if (assertion == null) {
@@ -257,24 +330,27 @@ public class AssertionValidator {
 		log.debug("Start Assertion validation ID={} now={} including signature check", assertion.getID(), now);
 
 		// signature first (before we apply any business rules)
-		validateAssertionSignature(assertion, credentials, properties);
+		var validationResult = validateAssertionSignature(assertion, credentials, properties);
 
 		// message checks (stateless)
 		validateAssertionId(assertion);
-		validateAssertionIssueInstant(assertion, now, properties);
+		validateAssertionIssueInstant(assertion, now, expectedValues.renew, properties, securityPolicies);
 		validateAssertionIssuer(assertion, expectedValues.expectedIssuer, properties);
-		validateAssertionSubject(assertion, now, expectedValues.expectedAssertionId, false, properties);
-		validateAssertionConditions(assertion, now, expectedValues.expectedAudience, properties, securityPolicies);
+		validateAssertionSubject(assertion, now, expectedValues.expectedAssertionId, false,
+				expectedValues.renew, expectedValues.expectedRecipient, properties);
+		validateAssertionConditions(assertion, now, expectedValues.expectedAudience, expectedValues.renew,
+				properties, securityPolicies);
 		var qoaConfig = new QoaConfig(qoa, expectedValues.getExpectedRpId());
 		validateAssertionAuthnStatements(assertion, now, claimsParty, qoaConfig, properties,
-				expectedValues.getExpectedContextClasses(), expectedValues.getExpectedComparison());
+				expectedValues.getExpectedCpContextClasses(), expectedValues.getExpectedCpComparison(), expectedValues.renew);
 		validateAssertionAttributeStatements(assertion);
 
-		log.debug("Assertion validation was successful for ID={}", assertion.getID());
+		log.debug("Assertion validation was successful for ID={} validationResult={}", assertion.getID(), validationResult);
+		return validationResult;
 	}
 
 	// As SAML message validation is stateful, we accept session checks in here (for now)
-	public static void validateRpSession(StateData state) {
+	static void validateRpSession(StateData state) {
 		if (state == null || !state.isValid()) {
 			// we leak sensitive information here so just leak the session ID and check what we report in Audit.audit
 			throw new RequestDeniedException(String.format("Invalid sessionId='%s'", state == null ? state : state.getId()));
@@ -359,7 +435,10 @@ public class AssertionValidator {
 		}
 	}
 
-	public static void validateRequestSignature(RequestAbstractType request, List<Credential> credentials,
+	/**
+	 * @return true if a signature is present and has been successfully validated
+	 */
+	public static MessageValidationResult validateRequestSignature(RequestAbstractType request, List<Credential> credentials,
 			TrustBrokerProperties properties, SignatureContext signatureContext) {
 		var signed = request.isSigned();
 		log.debug("{} id={} signed={}", request.getClass().getName(), request.getID(), signed);
@@ -373,12 +452,12 @@ public class AssertionValidator {
 			if (!properties.getSecurity().isRequireSignedAuthnRequest()) {
 				log.debug("trustbroker.config.security.requireSignedAuthnRequest=false: Accepted unsigned {}!!!",
 						request.getClass().getName());
-				return;
+				return MessageValidationResult.unvalidated();
 			}
 			if (!signatureContext.isRequireSignature()) {
 				log.debug("RP SecurityPolicies.requireSignedAuthnRequest=false: Accepted unsigned {}!!!",
 						request.getClass().getName());
-				return;
+				return MessageValidationResult.unvalidated();
 			}
 			else {
 				throw new RequestDeniedException(String.format(
@@ -386,24 +465,24 @@ public class AssertionValidator {
 						request.getClass().getName(), OpenSamlUtil.samlObjectToString(request)));
 			}
 		}
-		validateSignature(request.getSignature(), credentials, request, signatureContext);
+		return validateSignature(request.getSignature(), credentials, request, signatureContext);
 	}
 
-	static void validateResponseSignature(Response response, List<Credential> credentials, boolean requireSignedResponse) {
+	static MessageValidationResult validateResponseSignature(Response response, List<Credential> credentials, boolean requireSignedResponse) {
 		if (!response.isSigned()) {
 			if (requireSignedResponse) {
 				throw new RequestDeniedException(String.format(
 						"Response not signed: %s", OpenSamlUtil.samlObjectToString(response)));
 			}
 			log.debug("trustbroker.config.security.requireSignedResponse=false: Accepted unsigned response, rely on Assertion.");
-			return;
+			return MessageValidationResult.unvalidated();
 		}
 		var signatureContext = SignatureContext.forPostBinding();
 		signatureContext.setRequireSignature(requireSignedResponse);
-		validateSignature(response.getSignature(), credentials, response, signatureContext);
+		return validateSignature(response.getSignature(), credentials, response, signatureContext);
 	}
 
-	static void validateAssertionSignature(Assertion assertion,
+	static MessageValidationResult validateAssertionSignature(Assertion assertion,
 			List<Credential> credentials, TrustBrokerProperties properties) {
 		if (!assertion.isSigned()) {
 			if (properties.getSecurity().isRequireSignedAssertion()) {
@@ -414,11 +493,11 @@ public class AssertionValidator {
 				log.error("trustbroker.config.security.requireSignedAssertion=false: Accepted unsigned Assertion: {}",
 						OpenSamlUtil.samlObjectToString(assertion));
 			}
-			return;
+			return MessageValidationResult.unvalidated();
 		}
 		var signatureContext = SignatureContext.forPostBinding();
 		signatureContext.setRequireSignature(properties.getSecurity().isRequireSignedAssertion());
-		validateSignature(assertion.getSignature(), credentials, assertion, signatureContext);
+		return validateSignature(assertion.getSignature(), credentials, assertion, signatureContext);
 	}
 
 	static void validateRedirectBindingSignature(SignatureContext signatureContext,
@@ -491,7 +570,8 @@ public class AssertionValidator {
 		return signature != null && signatureAlgorithm != null;
 	}
 
-	static void validateSignature(Signature signature, List<Credential> credentials, XMLObject xmlObject,
+	// returns true if a signature is present and has been successfully validated
+	static MessageValidationResult validateSignature(Signature signature, List<Credential> credentials, XMLObject xmlObject,
 			SignatureContext signatureContext) {
 		try {
 			// accept SAML message because we do not have a credential
@@ -509,6 +589,7 @@ public class AssertionValidator {
 			else  {
 				validateSamlPostBindingSignature(signature, credentials, xmlObject);
 			}
+			return MessageValidationResult.builder().signatureValidated(true).build();
 		}
 		catch (TrustBrokerException ex) {
 			if (signatureContext.isRequireSignature()) {
@@ -522,6 +603,7 @@ public class AssertionValidator {
 				log.info("Signature verification failed for {}, but not required in config: {}",
 						xmlObject.getClass().getSimpleName(), ex.getInternalMessage());
 			}
+			return MessageValidationResult.unvalidated();
 		}
 	}
 
@@ -573,8 +655,8 @@ public class AssertionValidator {
 	}
 
 	static void validateAssertionAuthnStatements(Assertion assertion, Instant nowOffsetDateTime, ClaimsParty claimsParty,
-			QoaConfig rpQoaConf, TrustBrokerProperties properties,
-			List<String> expectedContextClasses, QoaComparison comparison) {
+												 QoaConfig rpQoaConf, TrustBrokerProperties properties,
+												 List<String> expectedContextClasses, QoaComparison comparison, boolean renew) {
 
 		var authnStatements = assertion.getAuthnStatements();
 		var cpQoaConf =  claimsParty != null ? claimsParty.getQoaConfig() : new QoaConfig(null, null);
@@ -593,23 +675,40 @@ public class AssertionValidator {
 				validateTimestampInRange("AuthnStatement.AuthnInstant",
 						authnStatement.getAuthnInstant(), nowOffsetDateTime,
 						properties.getSecurity().getNotBeforeToleranceSec(),
-						getNotOnOrAfterSeconds(properties, securityPolicies),
+						getNotOnOrAfterSeconds(properties, securityPolicies, renew),
 						assertion);
 			}
 
+			// Validate with CP Qoa requirement
 			var assertionContextClass = OpenSamlUtil.extractAuthnStatementContextClass(authnStatement);
-			QoaMappingUtil.validateCpContextClasses(
-					comparison, expectedContextClasses, cpQoaConf, // request to CP
-					assertionContextClass, cpQoaConf, // response from CP
-					rpQoaConf, globalMapping, false);
+			validateQoaRequirement(assertionContextClass, cpQoaConf, comparison, expectedContextClasses, globalMapping, rpQoaConf.issuerId());
 		}
 	}
 
-	private static Long getNotOnOrAfterSeconds(TrustBrokerProperties properties, SecurityPolicies securityPolicies) {
-		return PropertyUtil.evaluatePositiveNumberProperty(
+	public static void validateQoaRequirement(String contextClass, QoaConfig qoaConfig, QoaComparison comparison,
+											  List<String> expectedContextClasses,
+											  Map<String, Integer> globalMapping, String issuer) {
+		QoaMappingUtil.validateContextClass(
+				comparison, expectedContextClasses, qoaConfig,
+				contextClass, qoaConfig,
+				issuer, globalMapping, false);
+	}
+
+	private static Long getNotOnOrAfterSeconds(TrustBrokerProperties properties, SecurityPolicies securityPolicies, boolean renew) {
+		var result = PropertyUtil.evaluatePositiveNumberProperty(
 				securityPolicies, SecurityPolicies::getNotOnOrAfterSeconds,
 				() -> properties.getSecurity().getTokenLifetimeSec() // not null
 		).longValue();
+		if (renew) {
+			// RENEW allows expired assertions to be used after this tolerance - for issue times this is added to the lifetime
+			result += properties.getSecurity().getRenewNotOnOrAfterToleranceRenewSec();
+		}
+		return result;
+	}
+
+	private static long getNotOnOrAfterToleranceSec(boolean renew, TrustBrokerProperties properties) {
+		return renew ? properties.getSecurity().getRenewNotOnOrAfterToleranceRenewSec() :
+				properties.getSecurity().getNotOnOrAfterToleranceSec();
 	}
 
 	private static String extractIssuer(XMLObject xmlObject) {
@@ -667,10 +766,10 @@ public class AssertionValidator {
 		}
 	}
 
-	static void validateAuthnRequestConditions(AuthnRequest authnRequest, Instant now, String expectedAudience,
+	static void validateAuthnRequestConditions(AuthnRequest authnRequest, Instant now, String expectedAudience, boolean renew,
 			TrustBrokerProperties properties, SecurityPolicies securityPolicies) {
 		if (properties.getSecurity().isValidateRequestCondition()) {
-			validateConditions(authnRequest.getConditions(), now, expectedAudience, properties, securityPolicies, authnRequest);
+			validateConditions(authnRequest.getConditions(), now, expectedAudience, renew, properties, securityPolicies, authnRequest);
 		}
 		else {
 			log.warn("AuthnRequest.Conditions validation disabled");
@@ -678,12 +777,12 @@ public class AssertionValidator {
 
 	}
 
-	static void validateAssertionConditions(Assertion assertion, Instant now, String expectedAudience,
+	static void validateAssertionConditions(Assertion assertion, Instant now, String expectedAudience, boolean renew,
 			TrustBrokerProperties properties, SecurityPolicies securityPolicies) {
-		validateConditions(assertion.getConditions(), now, expectedAudience, properties, securityPolicies, assertion);
+		validateConditions(assertion.getConditions(), now, expectedAudience, renew, properties, securityPolicies, assertion);
 	}
 
-	static void validateConditions(Conditions conditions, Instant now, String expectedAudience,
+	static void validateConditions(Conditions conditions, Instant now, String expectedAudience, boolean renew,
 			TrustBrokerProperties properties, SecurityPolicies securityPolicies, XMLObject xmlObject) {
 		// conditions are optional as long as we do mot have any MUST policies
 		if (conditions == null) {
@@ -699,7 +798,7 @@ public class AssertionValidator {
 		validateNotBeforeAndNotAfter("Condition",
 				notBefore, notOnOrAfter, now,
 				properties.getSecurity().getNotBeforeToleranceSec(),
-				properties.getSecurity().getNotOnOrAfterToleranceSec(),
+				getNotOnOrAfterToleranceSec(renew, properties),
 				xmlObject);
 
 		// audience
@@ -739,7 +838,7 @@ public class AssertionValidator {
 			throw new RequestDeniedException("Issuer missing in service configuration");
 		}
 
-		var debugAudiences = Arrays.toString(acceptedAudiences.toArray());
+		var debugAudiences = CollectionUtil.toLogString(acceptedAudiences);
 
 		// check any
 		int acceptedAudiencesCount = acceptedAudiences.size();
@@ -760,7 +859,7 @@ public class AssertionValidator {
 		if (noAudienceMatched && (foundAudiencesCount > 0 || audienceRequired)) {
 			throw new RequestDeniedException(String.format(
 					"Audience missing or invalid, received='%s', accepted='%s': %s",
-					Arrays.toString(messageAudiences.toArray()), debugAudiences, OpenSamlUtil.samlObjectToString(xmlObject)));
+					CollectionUtil.toLogString(messageAudiences), debugAudiences, OpenSamlUtil.samlObjectToString(xmlObject)));
 		}
 	}
 
@@ -820,7 +919,7 @@ public class AssertionValidator {
 		}
 	}
 
-	public static void validateRelayState(String existingRelayState, String incomingRelayState,
+	static void validateRelayState(String existingRelayState, String incomingRelayState,
 			TrustBrokerProperties properties, XMLObject xmlObject) {
 		if (!properties.getSecurity().isValidateRelayState()) {
 			log.info("trustbroker.config.security.validateRelayState=false: RelaySate ignored!!!");
@@ -866,13 +965,13 @@ public class AssertionValidator {
 		}
 	}
 
-	static void validateAssertionIssueInstant(Assertion assertion, Instant nowOffsetDateTime,
-			TrustBrokerProperties properties) {
+	static void validateAssertionIssueInstant(Assertion assertion, Instant nowOffsetDateTime, boolean renew,
+			TrustBrokerProperties properties, SecurityPolicies securityPolicies) {
 		Instant incomingIssueInstant = assertion.getIssueInstant();
 		if (properties.getSecurity().isValidateAssertionIssueInstant()) {
 			checkIssueInstantTimeRange(assertion, nowOffsetDateTime,
 					properties.getSecurity().getNotBeforeToleranceSec(),
-					properties.getSecurity().getTokenLifetimeSec(),
+					getNotOnOrAfterSeconds(properties, securityPolicies, renew),
 					incomingIssueInstant);
 		}
 		else {
@@ -882,7 +981,7 @@ public class AssertionValidator {
 		}
 	}
 
-	public static void validateAssertionConsumer(String assertionConsumerServiceUrl, AcWhitelist acWhiteList,
+	static void validateAssertionConsumer(String assertionConsumerServiceUrl, AcWhitelist acWhiteList,
 			TrustBrokerProperties properties, XMLObject authRequest) {
 		if (!properties.getSecurity().isValidateAcs()) {
 			log.warn("trustbroker.config.security.validateAcs=false: All assertion consumers granted!!!");
@@ -914,7 +1013,7 @@ public class AssertionValidator {
 					return;
 				}
 			}
-			var acWhitelistForLog = Arrays.toString(acWhiteList.getAcUrls().toArray());
+			var acWhitelistForLog = CollectionUtil.toLogString(acWhiteList.getAcUrls());
 			throw new RequestDeniedException(String.format(
 					"Invalid url=%s not in ACWhitelist=%s required by %s",
 					accessedUrl, acWhitelistForLog, OpenSamlUtil.samlObjectToString(authRequest)));
@@ -926,8 +1025,9 @@ public class AssertionValidator {
 		}
 	}
 
-	public static void validateAssertionSubject(Assertion assertion, Instant nowOffsetDateTime,
-			String expectedRequestId, boolean subjectConfirmationRequired, TrustBrokerProperties properties) {
+	static void validateAssertionSubject(Assertion assertion, Instant nowOffsetDateTime,
+			String expectedRequestId, boolean subjectConfirmationRequired, boolean renew, String expectedRecipient,
+			TrustBrokerProperties properties) {
 
 		// Subject required
 		var subject = assertion.getSubject();
@@ -940,11 +1040,12 @@ public class AssertionValidator {
 					"NameId missing: %s", OpenSamlUtil.samlObjectToString(assertion)));
 		}
 		validateAssertionSubjectConfirmations(assertion, nowOffsetDateTime,
-				expectedRequestId, subjectConfirmationRequired, properties);
+				expectedRequestId, subjectConfirmationRequired, renew, expectedRecipient, properties);
 	}
 
-	public static void validateAssertionSubjectConfirmations(Assertion assertion, Instant nowOffsetDateTime,
-			String expectedRequestId, boolean subjectConfirmationRequired, TrustBrokerProperties properties) {
+	static void validateAssertionSubjectConfirmations(Assertion assertion, Instant nowOffsetDateTime,
+			String expectedRequestId, boolean subjectConfirmationRequired, boolean renew,
+			String expectedRecipient, TrustBrokerProperties properties) {
 		// SubjectConfirmation optional (for now)
 		List<SubjectConfirmation> subjectConfirmations = assertion.getSubject().getSubjectConfirmations();
 		if (subjectConfirmations == null || subjectConfirmations.isEmpty()) {
@@ -972,8 +1073,8 @@ public class AssertionValidator {
 			// Check the subject confirmation details
 			var subjectConfirmationData = subjectConfirmation.getSubjectConfirmationData();
 			if (subjectConfirmationData != null) {
-				validateSubjectConfirmationData(subjectConfirmationData, nowOffsetDateTime, expectedRequestId,
-						properties, assertion);
+				validateSubjectConfirmationData(subjectConfirmationData, nowOffsetDateTime, expectedRequestId, renew,
+						expectedRecipient, properties, assertion);
 			}
 			else if (log.isInfoEnabled()) {
 				log.info("SubjectConfirmationData missing: {}", OpenSamlUtil.samlObjectToString(assertion));
@@ -982,8 +1083,8 @@ public class AssertionValidator {
 	}
 
 	// Subject created in response to AuthnRequest? Setting inResponseTo is optional (it's usally empty)
-	public static void validateSubjectConfirmationData(SubjectConfirmationData subjectConfirmationData,
-			Instant nowOffsetDateTime, String expectedRequestId,
+	static void validateSubjectConfirmationData(SubjectConfirmationData subjectConfirmationData,
+			Instant nowOffsetDateTime, String expectedRequestId, boolean renew, String expectedRecipient,
 			TrustBrokerProperties properties, XMLObject xmlObject) {
 		// still valid?
 		if (properties.getSecurity().isValidateSubjectConfirmationTimestamp()) {
@@ -992,16 +1093,26 @@ public class AssertionValidator {
 					subjectConfirmationData.getNotOnOrAfter(),
 					nowOffsetDateTime,
 					properties.getSecurity().getNotBeforeToleranceSec(),
-					properties.getSecurity().getNotOnOrAfterToleranceSec(),
+					getNotOnOrAfterToleranceSec(renew, properties),
 					xmlObject);
 		}
 		else {
 			log.info("trustbroker.config.security.validateSubjectConfirmationTimestamp=false: Timestamps not checked!!!");
 		}
-
+		if (properties.getSecurity().isValidateSubjectConfirmationRecipient()) {
+			var subjectConfRecipient = subjectConfirmationData.getRecipient();
+			if (expectedRecipient != null && subjectConfRecipient != null && !expectedRecipient.equals(subjectConfRecipient)) {
+				throw new RequestDeniedException(String.format(
+						"Invalid SubjectConfirmation, expectedRecipient='%s' not matching recipient='%s' in: %s",
+						expectedRecipient, subjectConfirmationData.getRecipient(), OpenSamlUtil.samlObjectToString(xmlObject)));
+			}
+		}
+		else if (subjectConfirmationData.getRecipient() != null) {
+			log.debug("trustbroker.config.security.validateSubjectConfirmationRecipient=false: Recipient not checked.");
+		}
 		// Subject can be bound to assertion via ID
 		if (properties.getSecurity().isValidateSubjectConfirmationInResponseTo()) {
-			String subjectConfInRespTo = subjectConfirmationData.getInResponseTo();
+			var subjectConfInRespTo = subjectConfirmationData.getInResponseTo();
 			if (expectedRequestId != null && subjectConfInRespTo != null && !expectedRequestId.equals(subjectConfInRespTo)) {
 				throw new RequestDeniedException(String.format(
 						"Invalid SubjectConfirmation, requestId='%s' not matching subjectConfInRespTo='%s' in: %s",
@@ -1013,7 +1124,10 @@ public class AssertionValidator {
 		}
 	}
 
-	public static void validateArtifactResolve(ArtifactResolve artifactResolve, TrustBrokerProperties properties,
+	/**
+	 * @return true if a signature is present and has been successfully validated
+	 */
+	public static MessageValidationResult validateArtifactResolve(ArtifactResolve artifactResolve, TrustBrokerProperties properties,
 			List<Credential> trustCredentials) {
 		if (artifactResolve == null) {
 			throw new RequestDeniedException("Missing ArtifactResolve");
@@ -1041,7 +1155,7 @@ public class AssertionValidator {
 					artifactResolve.getDestination(), artifactResolve.getID(), arServiceUrl));
 		}
 		if (artifactResolve.isSigned()) {
-			validateSignature(artifactResolve.getSignature(), trustCredentials, artifactResolve,
+			return validateSignature(artifactResolve.getSignature(), trustCredentials, artifactResolve,
 					SignatureContext.forArtifactBinding());
 		}
 		else if (properties.getSecurity().isRequireSignedArtifactResolve()) {
@@ -1049,6 +1163,7 @@ public class AssertionValidator {
 		}
 		else {
 			log.debug("Accepting unsigned artifactResolve={}", artifactResolve.getID());
+			return MessageValidationResult.unvalidated();
 		}
 	}
 

@@ -43,6 +43,8 @@ trustbroker:
     arpUrl: ${trustbroker.samlmock.tbApplicationUrl}/api/v1/saml/arp
     testRpIssuer: urn:trustbroker.swiss:sp:DEMO-RP-1
     testCpIssuer: urn:trustbroker.swiss:idp:SAML-MOCK-1
+    validReturnUrls:
+      - ${tbApplicationUrl}
 
     #  (as we sign and do not have access to CP private key, use 'trust ourselves')
     idpSignerKeystore: token-signer/keystore.pem

@@ -195,7 +195,7 @@ public class OidcMetadataCacheService {
 	}
 
 	// cache miss or missing JWK, trigger a refresh
-	private OpenIdProviderConfiguration fetchProviderMetadata(OidcClient client, Certificates certificates) {
+	public OpenIdProviderConfiguration fetchProviderMetadata(OidcClient client, Certificates certificates) {
 		var configurationUrl = getConfigurationUrl(client);
 		try {
 			var metadataUri = WebUtil.getValidatedUri(configurationUrl);

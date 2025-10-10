@@ -33,6 +33,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import jakarta.servlet.http.Cookie;
@@ -280,8 +281,8 @@ class AssertionConsumerServiceTest {
 		assertion.setIssueInstant(Instant.now());
 		assertion.setIssuer(SamlFactory.createIssuer(TEST_CP));
 		var nameId = SamlFactory.createNameId("subject", NameID.X509_SUBJECT, null);
-		assertion.setSubject(SamlFactory.createSubject(nameId, RELAY_STATE, rpIssuerId, 100));
-		var conditions = SamlFactory.createConditions(rpIssuerId, 100);
+		assertion.setSubject(SamlFactory.createSubject(nameId, RELAY_STATE, rpIssuerId, 100, null));
+		var conditions = SamlFactory.createConditions(rpIssuerId, 100, null);
 		assertion.setConditions(conditions);
 		return assertion;
 	}
@@ -394,7 +395,7 @@ class AssertionConsumerServiceTest {
 				.id("TEST-ID")
 				.acWhitelist(new AcWhitelist(Arrays.asList(url1, url2, url3)))
 				.build();
-		// all singel permutations
+		// all single permutations
 		assertEquals(url1, assertionConsumerService.getAssertionConsumerServiceUrl(url1, null, null, relyingParty));
 		assertEquals(url2, assertionConsumerService.getAssertionConsumerServiceUrl(url2, null, null, relyingParty));
 		assertEquals(url3, assertionConsumerService.getAssertionConsumerServiceUrl(url3, null, null, relyingParty));
@@ -419,7 +420,22 @@ class AssertionConsumerServiceTest {
 				() -> assertionConsumerService.getAssertionConsumerServiceUrl(url2other, url2other, url2other, relyingParty));
 	}
 
-	@ParameterizedTest
+	@Test
+	void testGetAssertionConsumerServiceUrlDefault() {
+		doReturn(new SecurityChecks()).when(trustBrokerProperties).getSecurity();
+		var url1 = "https://server1/acsurl1";
+		var url2 = "https://server2/acsurl1";
+		var acWhitelist = new AcWhitelist(Arrays.asList(url1, url2));
+		acWhitelist.setUseDefault(true);
+		var relyingParty = RelyingParty.builder()
+									   .id("TEST-ID")
+									   .acWhitelist(acWhitelist)
+									   .build();
+
+		assertEquals(url1, assertionConsumerService.getAssertionConsumerServiceUrl(null, null, null, relyingParty));
+	}
+
+		@ParameterizedTest
 	@CsvSource(value = {
 			"false," + StatusCode.RESPONDER + ',' + StatusCode.UNKNOWN_PRINCIPAL + ",message," + StatusCode.RESPONDER + ',' +
 					StatusCode.UNKNOWN_PRINCIPAL + ",false",
@@ -457,6 +473,34 @@ class AssertionConsumerServiceTest {
 		assertThat(limitedBanners, is(List.of(banner3, banner2)));
 	}
 
+	@ParameterizedTest
+	@MethodSource
+	void filterDisplayedClaimsProviders(List<ClaimsProvider> claimsProviders, List<ClaimsProvider> expectedResult) {
+		var result = AssertionConsumerService.filterDisplayedClaimsProviders("requestId1", claimsProviders);
+		assertThat(result, is(expectedResult));
+	}
+
+	static Object[][] filterDisplayedClaimsProviders() {
+		var cp1 = givenClaimsProvider("cp1", 1);
+		var cp2 = givenClaimsProvider("cp2", 2);
+		var cpNull = givenClaimsProvider("cp2", null);
+		var cp0 = givenClaimsProvider("cp0", 0);
+		var cpMinus1 = givenClaimsProvider("cp-1", -1);
+		var cpMinus2 = givenClaimsProvider("cp-2", -2);
+
+		return new Object[][] {
+				{ Collections.emptyList(), Collections.emptyList() },
+				{ List.of(cp2, cpMinus2, cpNull, cp0, cp1, cpMinus1), List.of(cp2, cpNull, cp1) }, // all null/positive
+				// highest negative/zero
+				{ List.of(cpMinus2, cpMinus1), List.of(cpMinus1) },
+				{ List.of(cpMinus2, cp0, cpMinus1), List.of(cp0) },
+				// single CP
+				{ List.of(cp1), List.of(cp1) },
+				{ List.of(cpNull), List.of(cpNull) },
+				{ List.of(cpMinus2), List.of(cpMinus2) }
+		};
+	}
+
 	private static UiBanner givenBanner(String name, Integer order, Integer orderOverride, Boolean global) {
 		var bannerConfig = Banner.builder()
 								  .name(name)
@@ -476,6 +520,13 @@ class AssertionConsumerServiceTest {
 				.build();
 		doReturn(cp).when(relyingPartySetupService).getClaimsProviderSetupByIssuerId(cpId, null);
 		return cp;
+	}
+
+	private static ClaimsProvider givenClaimsProvider(String cpId, Integer order) {
+		return ClaimsProvider.builder()
+							 .id(cpId)
+							 .order(order)
+							 .build();
 	}
 
 	private StateData mockState(String relayState) {

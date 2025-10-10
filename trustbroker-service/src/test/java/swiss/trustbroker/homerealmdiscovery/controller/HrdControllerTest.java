@@ -158,7 +158,7 @@ class HrdControllerTest {
 	private MockMvc mockMvc;
 
 	@BeforeEach
-	public void setup() {
+	void setup() {
 		SamlInitializer.initSamlSubSystem();
 		this.mockMvc = MockMvcBuilders.webAppContextSetup(this.webApplicationContext).build();
 	}
@@ -303,7 +303,6 @@ class HrdControllerTest {
 		var ssoOperation = SsoService.SsoSessionOperation.IGNORE;
 		var cookies = buildCookies();
 		doReturn(ssoOperation).when(ssoService).prepareRedirectForDeviceInfoAfterHrd(cookies, stateByAuthnReq, CP_ISSUER_ID);
-		var redirectForDeviceInfo = apiSupport.getDeviceInfoUrl(CP_ISSUER_ID, RP_ISSUER_ID, AUTHN_REQUEST_ID);
 		this.mockMvc.perform(get(apiSupport.getHrdCpApi(CP_ISSUER_ID, AUTHN_REQUEST_ID)).cookie(cookies))
 				.andExpect(status().isOk())
 				.andExpect(header().doesNotExist(HttpHeaders.LOCATION));

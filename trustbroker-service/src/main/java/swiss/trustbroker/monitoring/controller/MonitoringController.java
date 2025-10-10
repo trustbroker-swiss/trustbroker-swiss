@@ -106,7 +106,7 @@ public class MonitoringController extends AbstractSamlController {
 		var acsUrl = request.getRequestURI();
 		log.debug("Using this request URL as ACS URL: '{}'", acsUrl);
 		authnRequest.setAssertionConsumerServiceURL(acsUrl);
-		var stateData = assertionConsumerService.saveState(authnRequest, request, relyingParty,
+		var stateData = assertionConsumerService.saveState(authnRequest, false, request, relyingParty,
 				Optional.empty(), SamlBinding.POST);
 		var rpRequest = assertionConsumerService.handleRpAuthnRequest(authnRequest, request, stateData);
 		var uiObjects = filterUiObjectsForCp(rpRequest.getUiObjects().getTiles(), cpId);

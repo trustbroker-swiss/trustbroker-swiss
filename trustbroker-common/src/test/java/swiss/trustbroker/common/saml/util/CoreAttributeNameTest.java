@@ -66,7 +66,7 @@ class CoreAttributeNameTest {
 					assertThat(AttributeRegistry.forName(oidcName), is(attribute));
 				}
 			}
-		};
+		}
 		assertEquals(ALL_FQ_NAMES_COUNT, arrCnt);
 		assertEquals(ALL_FQ_NAMES_COUNT, set.size());
 	}

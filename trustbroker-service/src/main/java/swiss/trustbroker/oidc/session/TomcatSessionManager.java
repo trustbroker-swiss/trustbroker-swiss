@@ -21,7 +21,6 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
@@ -36,12 +35,18 @@ import org.apache.catalina.session.ManagerBase;
 import org.apache.commons.lang3.SerializationUtils;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
+import org.springframework.security.oauth2.core.oidc.OidcIdToken;
+import org.springframework.security.oauth2.server.authorization.OAuth2Authorization;
+import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.tracing.TraceSupport;
+import swiss.trustbroker.common.util.CollectionUtil;
+import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.config.dto.TomcatSessionMode;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
+import swiss.trustbroker.oidc.CustomOAuth2AuthorizationService;
 import swiss.trustbroker.oidc.OidcExceptionHelper;
 import swiss.trustbroker.oidc.tx.OidcTxRequestWrapper;
 import swiss.trustbroker.sessioncache.dto.Lifecycle;
@@ -69,6 +74,8 @@ public class TomcatSessionManager extends ManagerBase {
 	private final TrustBrokerProperties trustBrokerProperties;
 
 	private final TomcatSessionMode mode; // mode is defined in application.yml
+
+	private final CustomOAuth2AuthorizationService customOAuth2AuthorizationService;
 
 	@Override
 	public void startInternal() throws LifecycleException {
@@ -205,7 +212,30 @@ public class TomcatSessionManager extends ManagerBase {
 			// Fetch from DB because request could run in another POD
 			// WARN: All the request.getSession(false) could trigger this, so we have a bit of a DB query overhead
 			// NOTE: Finding web session by token is deprecated as we use the oauth2_authorization table after login too.
-			Optional<StateData> stateData = stateCacheService.findOptionalResilient(sessionId, NAME);
+			Optional<StateData> stateData = Optional.empty();
+			if (sessionId != null) {
+				if (!OidcSessionSupport.isSessionIdOidcToken(sessionId)) {
+					stateData = stateCacheService.findOptionalResilient(sessionId, NAME);
+				}
+				else {
+					// find session by token
+					sessionId = OidcSessionSupport.extractTokenFromSessionId(sessionId);
+					var authorization = findAuthorizationByToken(sessionId);
+					if (authorization != null) {
+						OAuth2Authorization.Token<OidcIdToken> token = authorization.getToken(OidcIdToken.class);
+						if (token == null) {
+							log.error("Could not find OIDC token for sessionId={}", sessionId);
+							return null;
+						}
+						sessionId = token.getToken().getClaim(OidcUtil.OIDC_SID).toString();
+						stateData = stateCacheService.findOptionalResilient(sessionId, NAME);
+					}
+				}
+			}
+			else {
+				log.info("Missing state ID in call from actor={}", NAME);
+			}
+
 			if (stateData.isEmpty()) {
 				return null;
 			}
@@ -235,6 +265,19 @@ public class TomcatSessionManager extends ManagerBase {
 			log.error("Failed to load OIDC sessionId={} from DB: {}", sessionId, ex.getInternalMessage(), ex);
 		}
 		return null;
+	}
+
+	private OAuth2Authorization findAuthorizationByToken(String token) {
+		if (token == null || token.isEmpty()) {
+			log.debug("No authorization token found");
+			return null;
+		}
+		var authorization = customOAuth2AuthorizationService.findByToken(token, OAuth2TokenType.ACCESS_TOKEN);
+		if (authorization == null) {
+			// find session by IdToken (logout with encrypted IdToken hint)
+			authorization = customOAuth2AuthorizationService.findByToken(token, new OAuth2TokenType(OidcUtil.TOKEN_RESPONSE_ID_TOKEN));
+		}
+		return authorization;
 	}
 
 	@Override
@@ -297,8 +340,13 @@ public class TomcatSessionManager extends ManagerBase {
 	public void add(Session session) {
 		logSession(session, "add");
 		super.add(session);
+		// we always deal with TomcatSessions
+		if (!(session instanceof TomcatSession tomcatSession)) {
+			throw new TechnicalException(String.format("sessionId=%s has class=%s expected TomcatSession",
+					session.getId(), session.getClass().getName()));
+		}
 		// remember that we also need to save it
-		HttpExchangeSupport.getRunningHttpExchange().setOidcSession((TomcatSession) session);
+		HttpExchangeSupport.getRunningHttpExchange().setOidcSession(tomcatSession);
 	}
 
 	// called on changeSessionId (add/remove) with update=false
@@ -353,9 +401,10 @@ public class TomcatSessionManager extends ManagerBase {
 		}
 
 		// mark interchange as potentially stateful (optimization to not to session checking on /app and /api)
-		HttpExchangeSupport.getRunningHttpExchange().setOidcRequest(true);
+		var clientId = OidcSessionSupport.getOidcClientId(request, relyingPartyDefinitions, trustBrokerProperties.getNetwork());
+		HttpExchangeSupport.setRunningOidcClientId(clientId);
 
-		// /authorize code interchange
+		// authorize code interchange
 		var sessionId = OidcSessionSupport.getOidcSessionId(
 				request, relyingPartyDefinitions, trustBrokerProperties.getNetwork());
 		if (sessionId == null) {
@@ -446,7 +495,7 @@ public class TomcatSessionManager extends ManagerBase {
 		// proper IN_DB testing with a single process by clearing any leaking sessions
 		if (isClearSessionsInSingleUserTesting(sessionId)) {
 			log.error("Clearing sessions={} for incoming sessionId={} in single user DEV mode",
-					Arrays.toString(sessions.keySet().toArray()), sessionId);
+					CollectionUtil.toLogString(sessions.keySet()), sessionId);
 			sessions.clear();
 		}
 

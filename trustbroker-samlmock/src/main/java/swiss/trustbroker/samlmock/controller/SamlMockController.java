@@ -273,12 +273,24 @@ public class SamlMockController {
 						StringUtil.clean(application), StringUtil.clean(language), StringUtil.clean(cicd),
 						StringUtil.clean(returnUrl));
 			}
+			validateReturnUrl(returnUrl);
 			return UrlBasedViewResolver.REDIRECT_URL_PREFIX + returnUrl;
 		}
 		catch (TrustBrokerException e) {
 			log.error("Handling access request failed: {}", e.getInternalMessage());
 			throw e;
 		}
+	}
+
+	private void validateReturnUrl(String returnUrl) {
+		for (var validReturnUrl : properties.getValidReturnUrls()) {
+			if (returnUrl.startsWith(properties.getTbApplicationUrl())) {
+				log.debug("returnUrl={} starts with validReturnUrl={}", StringUtil.clean(returnUrl), validReturnUrl);
+				return;
+			}
+		}
+		throw new TechnicalException(String.format("returnUrl='%s' is not in validReturnUrls=%s",
+				StringUtil.clean(returnUrl), properties.getValidReturnUrls()));
 	}
 
 	private static String getMandatoryQueryParameter(HttpServletRequest request, String queryParam) {

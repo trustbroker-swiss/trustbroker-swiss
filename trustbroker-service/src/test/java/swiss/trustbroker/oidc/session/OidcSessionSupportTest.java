@@ -110,7 +110,7 @@ class OidcSessionSupportTest {
 	@Test
 	void testCookieBasedSessionId() {
 		var request = new MockHttpServletRequest();
-		HttpExchangeSupport.begin(request, null, true);
+		HttpExchangeSupport.begin(request, null);
 
 		// federated login on XTB, client_id in path
 		var clientId  = "XTB-test-client";
@@ -124,7 +124,7 @@ class OidcSessionSupportTest {
 	@Test
 	void testSamlExchangeClientId() {
 		var request = new MockHttpServletRequest();
-		HttpExchangeSupport.begin(request, null, true);
+		HttpExchangeSupport.begin(request, null);
 
 		var clientId = OidcSessionSupport.getOidcClientId(request, null, network);
 		assertThat(clientId, nullValue());
@@ -145,7 +145,7 @@ class OidcSessionSupportTest {
 	@Test
 	void testTokenAudience() throws JOSEException {
 		var request = new MockHttpServletRequest();
-		HttpExchangeSupport.begin(request, null, true);
+		HttpExchangeSupport.begin(request, null);
 
 		// POST access_token on /userinfo
 		var expected = "TEST-userinfo";
@@ -179,7 +179,7 @@ class OidcSessionSupportTest {
 	@Test
 	void testQueryClientId() {
 		var request = new MockHttpServletRequest();
-		HttpExchangeSupport.begin(request, null, true);
+		HttpExchangeSupport.begin(request, null);
 
 		// client_id in query
 		var expected = "TEST-query";
@@ -191,7 +191,7 @@ class OidcSessionSupportTest {
 	@Test
 	void testOidcClientIdFromHttpParams() {
 		var request = new MockHttpServletRequest();
-		HttpExchangeSupport.begin(request, null, true);
+		HttpExchangeSupport.begin(request, null);
 		var expected = "TEST-client";
 		var client = OidcClient.builder().id(expected).build();
 		var redirectUrl = "https://localhost/client";
@@ -208,7 +208,7 @@ class OidcSessionSupportTest {
 		var requestUri = "/realms/realm2/protocol/openid-connect/logout";
 		request.setRequestURI(requestUri);
 		request.setParameter(OidcUtil.LOGOUT_REDIRECT_URI, redirectUrl);
-		HttpExchangeSupport.begin(request, null, true);
+		HttpExchangeSupport.begin(request, null);
 
 		var client1 = OidcClient.builder()
 								.id("client1")
@@ -233,7 +233,7 @@ class OidcSessionSupportTest {
 													.oidcConfigurations(oidcClients)
 													.build();
 		var clientId = OidcSessionSupport.getOidcClientIdFromHttpParams(request, relyingParties, network);
-		assertThat(clientId, equalTo(client2.getId()));
+		assertThat(clientId, equalTo("client2"));
 	}
 
 	@ParameterizedTest
@@ -327,7 +327,7 @@ class OidcSessionSupportTest {
 		var stateData = givenSsoState(Collections.emptySet());
 		var request = new MockHttpServletRequest();
 		var response = new MockHttpServletResponse();
-		HttpExchangeSupport.begin(request, response, true);
+		HttpExchangeSupport.begin(request, response);
 		HttpExchangeSupport.getRunningHttpExchange().setSsoState(stateData);
 		var relyingParty = givenRelyingParty(null);
 

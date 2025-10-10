@@ -41,6 +41,8 @@ public class TraceSupport {
 
 	public static final String XTB_CLIENTIP = "clientIp";
 
+	public static final String XTB_GATEWAYIP = "gatewayIp";
+
 	public static final String HTTP_REQUEST_ID = "X-Request-Id"; // set by LB
 
 	public static final String W3C_TRACEPARENT = "traceparent";
@@ -201,6 +203,7 @@ public class TraceSupport {
 		var traceId = getOrCreateParentTraceId(request, httpHeaderTraceId);
 		setMdcTraceContext(traceId);
 		MDC.put(XTB_CLIENTIP, WebUtil.getClientIp(request));
+		MDC.put(XTB_GATEWAYIP, WebUtil.getGatewayIp(request, true));
 	}
 
 	// For testing
@@ -211,6 +214,7 @@ public class TraceSupport {
 
 	public static void clearMdcTraceContext() {
 		MDC.remove(XTB_CLIENTIP); // TCP tracing
+		MDC.remove(XTB_GATEWAYIP); // Infrastructure tracing
 		MDC.remove(W3C_TRACEPARENT); // HTTP request tracing
 		MDC.remove(XTB_TRACEID); // HTTP/SAML request or conversation tracing
 		MDC.remove(XTB_PARENTID); // Own spanId replacing traceparent spanId
@@ -261,6 +265,10 @@ public class TraceSupport {
 
 	public static String getClientIp() {
 		return MDC.get(XTB_CLIENTIP);
+	}
+
+	public static String getGatewayIp() {
+		return MDC.get(XTB_GATEWAYIP);
 	}
 
 	public static void switchToConversation(String messageId) {

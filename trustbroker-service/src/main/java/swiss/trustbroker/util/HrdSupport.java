@@ -66,14 +66,14 @@ public class HrdSupport {
 
 	// Claims provider hints are used to do autoLogin routing to a preferred IDP without displaying an HRD screen
 	public static String getClaimsProviderHint(HttpServletRequest request, TrustBrokerProperties properties) {
-		var reason = "default";
 		if (request == null) {
 			return null;
 		}
 
-		// Testing HRD hint: HTTP header or cookie signaling selected CP independent of network etc. required for automation
 		String cpSelection = null;
+		var reason = "default";
 
+		// Testing HRD hint: HTTP header or cookie signaling selected CP independent of network etc. required for automation
 		if (allowHrdHintTest(request, properties)) {
 			cpSelection = getHrdHintTestCookie(request, properties);
 			reason = updateReason(cpSelection, properties.getHrdHintTestParameter() + " cookie", reason);
@@ -98,17 +98,19 @@ public class HrdSupport {
 
 		// Mobile hint: Using mobile GW/CP requires direct dispatching except when we already bailed out autoLogin=FALSE
 		// In this case the mobile CP is displayed for testing purposes even though login is not possible.
-		if (cpSelection == null && properties.getNetwork() != null &&
-				StringUtils.isNotEmpty(properties.getNetwork().getMobileGatewayIpRegex())) {
-			var clientIps = WebUtil.getGatewayIps(request);
-			var gatewayIp = properties.getNetwork().getMobileGatewayIpRegex();
-			if (isGateWayIp(clientIps, gatewayIp)) {
-				cpSelection = properties.getMobileIdpId();
-				reason = updateReason(cpSelection, "gatewayIPAddress=" + gatewayIp, reason);
-			}
+		var clientIps = WebUtil.getGatewayIps(request);
+		var gatewayIp = properties.getNetwork() != null ? properties.getNetwork().getMobileGatewayIpRegex() : null;
+		if (cpSelection == null && StringUtils.isNotEmpty(gatewayIp) && isGateWayIp(clientIps, gatewayIp)) {
+			cpSelection = properties.getMobileIdpId();
+			reason = updateReason(cpSelection, "gatewayIPAddress=" + gatewayIp, reason);
 		}
 
-		log.debug("HRD routing step 1 lead to cpSelection={} with reason={}", cpSelection, reason);
+		// make network setup visible in context of HRD debugging
+		if (log.isDebugEnabled()) {
+			var clientNetwork = WebSupport.getClientNetwork(request, properties.getNetwork());
+			log.debug("HRD routing hints lead to cpSelection={} with reason={} from clientNetwork={} clientIp={} gatewayIp={}",
+					cpSelection, reason, clientNetwork, clientIps, gatewayIp);
+		}
 		return cpSelection;
 	}
 

@@ -222,6 +222,11 @@ public abstract class CounterParty implements PathReference, Serializable {
 				() -> defaultValue);
 	}
 
+	public boolean requireSignedAuthnRequestForSsoJoin() {
+		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getRequireSignedAuthnRequestForSsoJoin,
+				this::requireSignedAuthnRequest);
+	}
+
 	public int getSsoMinQoaLevel(int defaultValue) {
 		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getSsoMinQoaLevel, () -> defaultValue);
 	}

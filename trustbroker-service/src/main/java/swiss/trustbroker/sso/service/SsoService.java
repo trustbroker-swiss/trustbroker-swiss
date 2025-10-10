@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -96,6 +97,7 @@ public class SsoService {
 	@Data
 	@RequiredArgsConstructor(staticName = "of")
 	@AllArgsConstructor(staticName = "of")
+	@SuppressWarnings("java:S6548") // false positive - class has "named instance, not a singleton
 	public static class SsoCookieNameParams {
 
 		public static final String XTB_COOKIE_PREFIX = "XTB_";
@@ -187,7 +189,7 @@ public class SsoService {
 
 	private final AuditService auditService;
 
-	private final QoaMappingService qoaService;
+	private final QoaMappingService qoaMappingService;
 
 	private final StateCacheService stateCacheService;
 
@@ -267,25 +269,26 @@ public class SsoService {
 		return sameSite;
 	}
 
-	Optional<StateData> findValidStateFromCookies(SsoCookieNameParams nameParams, Cookie[] cookies) {
+	Optional<StateData> findValidStateFromCookiesAndRelyingParty(SsoCookieNameParams nameParams, Cookie[] cookies,
+																 Function<Map<String, StateData>, Optional<StateData>> filter) {
 		var stateCookies = findValidStateCookies(nameParams, cookies);
-		var validStates = findValidStatesFromStateCookies(stateCookies, true);
-		return extractOnlyStateFromMap(validStates);
+		var validStates = findValidStatesFromStateCookies(stateCookies, filter == null);
+		return extractOnlyStateFromMap(validStates, filter);
 	}
 
 	public Optional<StateData> findValidStateFromCookies(RelyingParty relyingParty, ClaimsParty claimsParty, Cookie[] cookies) {
 		var nameParams = getCookieSsoGroupName(relyingParty, claimsParty);
-		return findValidStateFromCookies(nameParams, cookies);
+		return findValidStateFromCookiesAndRelyingParty(nameParams, cookies, null);
 	}
 
 	// using implicit SSO group of RP
-	public Optional<StateData> findValidStateFromCookies(RelyingParty relyingParty, Cookie[] cookies) {
+	public Optional<StateData> findValidStateFromCookiesAndRelyingParty(RelyingParty relyingParty, Cookie[] cookies) {
 		var nameParams = getCookieImplicitSsoGroupName(relyingParty);
-		var result = findValidStateFromCookies(nameParams, cookies);
+		var result = findValidStateFromCookiesAndRelyingParty(nameParams, cookies, filterStates(relyingParty));
 		if (result.isEmpty()) {
 			log.debug("No session for implicit SSO group found for rpIssuerId={} - check regular SSO", relyingParty.getId());
 			nameParams = getCookieSsoGroupName(relyingParty);
-			result = findValidStateFromCookies(nameParams, cookies);
+			result = findValidStateFromCookiesAndRelyingParty(nameParams, cookies, filterStates(relyingParty));
 		}
 		return result;
 	}
@@ -293,7 +296,7 @@ public class SsoService {
 	public Optional<StateData> findValidStateFromCookies(RelyingParty relyingParty, ClaimsParty claimsParty,
 			String subjectNameId, Cookie[] cookies) {
 		var nameParams = getCookieSsoGroupName(relyingParty, claimsParty, subjectNameId);
-		return findValidStateFromCookies(nameParams, cookies);
+		return findValidStateFromCookiesAndRelyingParty(nameParams, cookies, null);
 	}
 
 	public Collection<StateData> findValidStatesFromCookies(RelyingParty relyingParty, Cookie[] cookies) {
@@ -302,10 +305,10 @@ public class SsoService {
 		return findValidStatesFromStateCookies(stateCookies, false).values();
 	}
 
-	public Optional<StateWithCookies> findValidStateAndCookiesToExpire(SsoCookieNameParams nameParams, Cookie[] cookies) {
+	public Optional<StateWithCookies> findValidStateAndCookiesToExpire(SsoCookieNameParams nameParams, Cookie[] cookies, RelyingParty relyingParty) {
 		var stateCookies = findValidStateCookies(nameParams, cookies);
-		var validStates = findValidStatesFromStateCookies(stateCookies, true);
-		var stateData = extractOnlyStateFromMap(validStates);
+		var validStates = findValidStatesFromStateCookies(stateCookies, false);
+		var stateData = extractOnlyStateFromMap(validStates, filterStates(relyingParty));
 		if (stateData.isEmpty()) {
 			log.info("No SSO session for ssoGroup={}", nameParams.getFullSsoGroupName());
 			return Optional.empty();
@@ -319,7 +322,11 @@ public class SsoService {
 		return Optional.of(StateWithCookies.of(stateData.get(), clearCookies));
 	}
 
-	private static Optional<StateData> extractOnlyStateFromMap(Map<String, StateData> validStates) {
+	private static Optional<StateData> extractOnlyStateFromMap(Map<String, StateData> validStates, Function<Map<String, StateData>,
+			Optional<StateData>> filter){
+		if (filter != null) {
+			return filter.apply(validStates);
+		}
 		return validStates.isEmpty() ? Optional.empty() : Optional.of(validStates.values().iterator().next());
 	}
 
@@ -404,9 +411,13 @@ public class SsoService {
 		return TraceSupport.getOwnTraceParentForSaml();
 	}
 
-	public boolean allowSso(StateData stateData) {
-		if (!Boolean.TRUE.equals(stateData.getSignedAuthnRequest())) {
-			log.info("No SSO as AuthnRequest not signed for session {}", stateData.getId());
+	public boolean isRelyingPartyOkForSso(RelyingParty relyingParty, StateData stateData) {
+		if (!relyingParty.isSsoEnabled()) {
+			log.debug("No SSO for rpIssuerId={} sessionId={}", relyingParty.getId(), stateData.getId());
+			return false;
+		}
+		if (!Boolean.TRUE.equals(stateData.getSignedAuthnRequest()) && relyingParty.requireSignedAuthnRequest()) {
+			log.info("No SSO as AuthnRequest not signed for rpIssuerId={} sessionId={}", relyingParty.getId(), stateData.getId());
 			return false;
 		}
 		return true;
@@ -463,8 +474,12 @@ public class SsoService {
 	private SsoSessionOperation validAuthnRequestForSso(ClaimsParty claimsParty, RelyingParty relyingParty, StateData ssoStateData,
 			StateData stateDataByAuthnReq, boolean authnRequestSigned, List<String> requestedContextClasses) {
 		if (!authnRequestSigned) {
-			log.info("AuthnRequest sessionId={} is not signed - cannot do SSO", stateDataByAuthnReq.getId());
-			return SsoSessionOperation.IGNORE;
+			var requireSignedAuthnRequest = relyingParty.requireSignedAuthnRequestForSsoJoin();
+			log.info("AuthnRequest sessionId={} is not signed - denySsoJoin={}",
+					stateDataByAuthnReq.getId(), requireSignedAuthnRequest);
+			if (requireSignedAuthnRequest) {
+				return SsoSessionOperation.IGNORE;
+			}
 		}
 		// ForceAuthn is satisfied when we have a CP response (device check)
 		if (Boolean.TRUE.equals(stateDataByAuthnReq.getForceAuthn()) && (stateDataByAuthnReq.getCpResponse() == null)) {
@@ -601,13 +616,13 @@ public class SsoService {
 		if (qoa == null && idpStateData.getCpResponse() != null) {
 			var authLevel = idpStateData.getCpResponse().getAuthLevel();
 			if (authLevel != null) {
-				qoa = qoaService.extractQoaLevelFromAuthLevel(authLevel, qoaConfig);
+				qoa = qoaMappingService.extractQoaLevelFromAuthLevel(authLevel, qoaConfig);
 				log.debug("QOA {} used from CP config", qoa);
 			}
 		}
 		// fallback to minimum QOA
 		if (qoa == null || qoa.isUnspecified()) {
-			qoa = qoaService.getDefaultLevel();
+			qoa = qoaMappingService.getDefaultLevel();
 			log.debug("QOA {} used as minimal fallback", qoa);
 		}
 		return qoa;
@@ -625,7 +640,7 @@ public class SsoService {
 	// valid QoA levels are all above unknown allowing SSO so if i.e. CP send Kerberos we treat it as 40
 	private Optional<CustomQoa> findHighestQoaFromContextClasses(Stream<String> contextClasses, QoaConfig qoaConfig) {
 		return contextClasses
-				.map(contextClass -> qoaService.extractQoaLevel(contextClass, qoaConfig))
+				.map(contextClass -> qoaMappingService.extractQoaLevel(contextClass, qoaConfig))
 				.filter(CustomQoa::isRegular)
 				.min(SsoService::sortHighestQoaFirst);
 	}
@@ -651,8 +666,8 @@ public class SsoService {
 		var qoaSufficient = true; // assume we can login with SSO per default
 
 		// request based decision (including DEBUG logging for request side)
-		List<CustomQoa> rpQoas = qoaService.extractQoaLevels(requestQoas, relyingParty.getQoaConfig());
-		var knowQoaLevel = qoaService.extractQoaLevel(knownQoa.orElse(null), claimsParty.getQoaConfig());
+		List<CustomQoa> rpQoas = qoaMappingService.extractQoaLevels(requestQoas, relyingParty.getQoaConfig());
+		var knowQoaLevel = qoaMappingService.extractQoaLevel(knownQoa.orElse(null), claimsParty.getQoaConfig());
 		if (!isQoaEnoughForSso(relyingParty, rpQoas, knowQoaLevel, knownQoa)) {
 			qoaSufficient = false;
 		}
@@ -686,7 +701,7 @@ public class SsoService {
 		for (var requestQoa : qoas) {
 			// consider strongest and unknown
 			if (!requestQoa.isRegular()) {
-				ssoPossible |= (qoaService.isStrongestPossible(requestQoa.getName()) &&
+				ssoPossible |= (qoaMappingService.isStrongestPossible(requestQoa.getName()) &&
 						(knownQoa.isEmpty() || knownQoaLevel.getOrder() >= ssoMinQoaLevel));
 			}
 			// consider real QoA
@@ -712,10 +727,10 @@ public class SsoService {
 
 	private boolean stateQoaSmaller(ClaimsParty claimsParty, String stateQoa, List<CustomQoa> requestQoas,
 			String sessionId) {
-		var stateQoaLevel = qoaService.extractQoaLevel(stateQoa, claimsParty.getQoaConfig());
+		var stateQoaLevel = qoaMappingService.extractQoaLevel(stateQoa, claimsParty.getQoaConfig());
 		for (CustomQoa requestQoALevel : requestQoas) {
 
-			if (qoaService.isStrongestPossible(requestQoALevel.getName())) {
+			if (qoaMappingService.isStrongestPossible(requestQoALevel.getName())) {
 				var cpAuthLevel = claimsParty.getStrongestPossibleAuthLevelWithFallback();
 				if (cpAuthLevel == null) {
 					log.error("Requested strongest possible Qoa, but cpIssuerId={} has no AuthLevel defined => no SSO on sessionId={}",
@@ -723,7 +738,7 @@ public class SsoService {
 					return true;
 				}
 
-				requestQoALevel = qoaService.extractQoaLevelFromAuthLevel(cpAuthLevel, claimsParty.getQoaConfig());
+				requestQoALevel = qoaMappingService.extractQoaLevelFromAuthLevel(cpAuthLevel, claimsParty.getQoaConfig());
 				log.debug("Requested strongest possible Qoa, cpIssuerId={} AuthLevel={} equals Qoa={} on sessionId={}",
 						claimsParty.getId(), cpAuthLevel, requestQoALevel, sessionId);
 			}
@@ -770,19 +785,23 @@ public class SsoService {
 	}
 
 	private List<String> extractValidQoasFromContextClasses(List<String> contextClasses, QoaConfig qoaConfig) {
-		if (contextClasses == null) {
-			return Collections.emptyList();
+		if (contextClasses == null || contextClasses.isEmpty()) {
+			if (qoaConfig == null) {
+				return Collections.emptyList();
+			}
+			contextClasses = qoaMappingService.computeDefaultQoaFromConf(qoaConfig);
 		}
+
 		return contextClasses.stream()
-				.filter(authnContextClassRef -> qoaService.extractQoaLevel(authnContextClassRef, qoaConfig).isRegular())
+				.filter(authnContextClassRef -> qoaMappingService.extractQoaLevel(authnContextClassRef, qoaConfig).isRegular())
 				.toList();
 	}
 
 	private Optional<String> findHighestQoaInState(List<String> contextClasses, QoaConfig qoaConfig) {
-		var max = qoaService.getUnspecifiedLevel().getOrder();
+		var max = qoaMappingService.getUnspecifiedLevel().getOrder();
 		Optional<String> maxlevel = Optional.empty();
 		for (String contextClass : contextClasses) {
-			var level = qoaService.extractQoaLevel(contextClass,qoaConfig).getOrder();
+			var level = qoaMappingService.extractQoaLevel(contextClass,qoaConfig).getOrder();
 			if (level > max) {
 				maxlevel = Optional.of(contextClass);
 				max = level;
@@ -935,7 +954,7 @@ public class SsoService {
 			log.debug("No SSO Group Name provided");
 			return SsoParticipants.UNDEFINED;
 		}
-		Optional<StateData> stateData = findValidStateFromCookies(ssoCookieNameParams, cookies);
+		Optional<StateData> stateData = findValidStateFromCookiesAndRelyingParty(ssoCookieNameParams, cookies, null);
 		if (stateData.isEmpty()) {
 			log.debug("No SSO state found");
 			return SsoParticipants.UNDEFINED;
@@ -1117,7 +1136,7 @@ public class SsoService {
 	boolean updateQoaInSession(RelyingParty relyingParty, ClaimsParty claimsParty, StateData ssoStateData) {
 		var ssoState = ssoStateData.initializedSsoState();
 		var cpQoa = getQoaLevelFromContextClassesOrAuthLevel(ssoStateData, claimsParty.getQoaConfig());
-		var ssoQoa = qoaService.extractQoaLevel(ssoState.getSsoQoa(), claimsParty.getQoaConfig());
+		var ssoQoa = qoaMappingService.extractQoaLevel(ssoState.getSsoQoa(), claimsParty.getQoaConfig());
 		int diff = compareQoaLevel(cpQoa, ssoQoa);
 		if (!isQoaEnoughForSso(relyingParty, List.of(cpQoa), ssoQoa, Optional.ofNullable(ssoState.getSsoQoa()))) {
 			log.info("Perform session SSO for rpIssuer={} with ssoMinQoa={} based on sessionQoa={} ignoring cpKnownQoa={} diff={}",
@@ -1166,9 +1185,7 @@ public class SsoService {
 	}
 
 	public SsoSessionOperation prepareRedirectForDeviceInfoAfterHrd(
-			Cookie[] cookies,
-			StateData stateDataByAuthnReq,
-			String claimUrn) {
+			Cookie[] cookies, StateData stateDataByAuthnReq, String claimUrn) {
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(
 				stateDataByAuthnReq.getRpIssuer(), stateDataByAuthnReq.getRpReferer());
 		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(claimUrn, stateDataByAuthnReq.getReferer());
@@ -1178,6 +1195,53 @@ public class SsoService {
 		}
 		var ssoStateData = ssoState.get();
 		return skipCpAuthentication(claimsParty, relyingParty, stateDataByAuthnReq, ssoStateData);
+	}
+
+	Function<Map<String, StateData>, Optional<StateData>> filterStates(RelyingParty relyingParty) {
+		return map -> {
+			if (map.isEmpty()) {
+				return Optional.empty();
+			}
+			Map<String, StateData> validStates = new HashMap<>();
+			Map<String, String> sessionRpPair = new HashMap<>();
+			for (Map.Entry<String, StateData> entry : map.entrySet()) {
+				var stateData = entry.getValue();
+				var key = entry.getKey();
+				var sessionRpId = stateData.getRpIssuer();
+				sessionRpPair.put(key, sessionRpId);
+				if (relyingParty.getId().equals(sessionRpId)) {
+					log.debug("rpIssuerId={} matching sessionId={} RP issuer ID", sessionRpId, stateData.getId());
+					validStates.put(key, stateData);
+				} else if (isRpSessionParticipant(stateData, relyingParty)) {
+					log.debug("rpIssuerId={} is an SSO participant of sessionId={}", sessionRpId, stateData.getId());
+					validStates.put(key, stateData);
+				} else if (relyingParty.getCpMappingForAlias(sessionRpId).isPresent()) {
+					log.debug("rpIssuerId={} is an alias for sessionId={} RP issuer ID", sessionRpId, stateData.getId());
+					validStates.put(key, stateData);
+				}
+			}
+			if (validStates.size() > 1) {
+				throw new RequestDeniedException(
+						String.format("Ambiguous session for rpIssuerId=%s in session=%s", relyingParty.getId(), sessionRpPair));
+			}
+			return validStates.isEmpty() ? Optional.empty() : Optional.of(validStates.values().iterator().next());
+		};
+	}
+
+	// RP ID or unaliased RP ID
+	private boolean isRpSessionParticipant(StateData stateData, RelyingParty relyingParty) {
+		if (stateData.hasSsoState() && stateData.getSsoState().isRpParticipatingInSession(relyingParty.getId())) {
+			return true;
+		}
+		if (relyingParty.getUnaliasedId() == null) {
+			return false;
+		}
+		var unaliasedRp = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(relyingParty.getUnaliasedId(), null);
+		if (stateData.hasSsoState() && stateData.getSsoState().isRpParticipatingInSession(unaliasedRp.getId())) {
+			log.debug("RP unaliasedId={} is SSO session participant", unaliasedRp.getId());
+			return true;
+		}
+		return false;
 	}
 
 	void copyToSsoStateAndInvalidateAuthnRequestState(StateData stateDataByAuthnReq, StateData ssoStateData) {
@@ -1293,7 +1357,7 @@ public class SsoService {
 		if (relyingParty.isSsoEnabled()) {
 			// identify the cookie(s) that address a state
 			var cookieParams = SsoService.SsoCookieNameParams.of(relyingParty.getSso().getGroupName());
-			var result = findValidStateAndCookiesToExpire(cookieParams, cookies);
+			var result = findValidStateAndCookiesToExpire(cookieParams, cookies, relyingParty);
 			if (result.isPresent()) {
 				var stateWithCookies = result.get();
 				var stateData = stateWithCookies.getStateData();

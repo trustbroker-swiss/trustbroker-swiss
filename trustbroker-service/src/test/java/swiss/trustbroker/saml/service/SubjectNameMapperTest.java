@@ -44,12 +44,13 @@ class SubjectNameMapperTest {
 			"IDM:query,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,from-config-0,idmAttributeValue",
 			"null,source-without-value,from-idp,initial",
 			"CP,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,from-config-0,cpAttributeValue",
-			"CP:cpIssuer1,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,from-config-0,cpAttributeValue",
+			"CP:idp:cpIssuer1:01,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,from-config-0,cpAttributeValue",
+			"CP:idp:cpIssuer1:02,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,from-idp,initial",
 			"PROPS,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,from-config-0,propertyAttribute",
 	}, nullValues = "null")
 	void adjustSubjectNameId(String source, String claim, String format, String expectedNameId) {
 		var expectedSubjectNameIdClaim = CoreAttributeName.EMAIL.getNamespaceUri();
-		var cpIssuer = "cpIssuer1";
+		var cpIssuer = "idp:cpIssuer1:01";
 		var subjectNameMappings =
 				SubjectNameMappings.builder()
 								   .preserve(true)

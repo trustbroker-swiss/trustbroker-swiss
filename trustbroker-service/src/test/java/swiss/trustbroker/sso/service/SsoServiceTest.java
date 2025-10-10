@@ -106,6 +106,7 @@ import swiss.trustbroker.federation.xmlconfig.AcClass;
 import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
+import swiss.trustbroker.federation.xmlconfig.ClaimsProviderMappings;
 import swiss.trustbroker.federation.xmlconfig.FingerprintCheck;
 import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
@@ -367,7 +368,7 @@ class SsoServiceTest {
 	void findValidStateFromCookiesWithGroupNoStateData() {
 		doReturn(Optional.empty()).when(stateCacheService).findValidState(SESSION_ID, SsoService.class.getSimpleName());
 		var cookies = new Cookie[] { new Cookie(PREFIXED_SSO_GROUP, SESSION_ID) };
-		var state = ssoService.findValidStateFromCookies(SSO_GROUP_PARAMS, cookies);
+		var state = ssoService.findValidStateFromCookiesAndRelyingParty(SSO_GROUP_PARAMS, cookies, null);
 		assertThat(state.isPresent(), is(false));
 	}
 
@@ -376,7 +377,7 @@ class SsoServiceTest {
 		var stateData = StateData.builder().id(SESSION_ID).build();
 		doReturn(Optional.of(stateData)).when(stateCacheService).findValidState(SESSION_ID, SsoService.class.getSimpleName());
 		var cookies = new Cookie[] { new Cookie(PREFIXED_SSO_GROUP, SESSION_ID) };
-		var state = ssoService.findValidStateFromCookies(SSO_GROUP_PARAMS, cookies);
+		var state = ssoService.findValidStateFromCookiesAndRelyingParty(SSO_GROUP_PARAMS, cookies, null);
 		assertThat(state.isPresent(), is(false));
 	}
 
@@ -388,7 +389,7 @@ class SsoServiceTest {
 				new Cookie(COOKIE_NAME, SESSION_ID),
 				new Cookie("foo", "bar")
 		};
-		var state = ssoService.findValidStateFromCookies(SSO_GROUP_PARAMS, cookies);
+		var state = ssoService.findValidStateFromCookiesAndRelyingParty(SSO_GROUP_PARAMS, cookies, null);
 		assertThat(state.isPresent(), is(true));
 		assertThat(state.get().getId(), is(SESSION_ID));
 	}
@@ -401,7 +402,7 @@ class SsoServiceTest {
 				new Cookie(COOKIE_NAME, SESSION_ID),
 				new Cookie("foo", "bar")
 		};
-		var state = ssoService.findValidStateFromCookies(SsoService.SsoCookieNameParams.ANY, cookies);
+		var state = ssoService.findValidStateFromCookiesAndRelyingParty(SsoService.SsoCookieNameParams.ANY, cookies, null);
 		assertThat(state.isPresent(), is(true));
 		assertThat(state.get().getId(), is(SESSION_ID));
 	}
@@ -416,7 +417,7 @@ class SsoServiceTest {
 		var cookieName = ssoService.generateCookieName(cookieParams, false);
 		assertThat(cookieName, matchesPattern("[^:/]*[.][^:/]*")); // character replacement
 		var cookies = new Cookie[] { new Cookie(cookieName, SESSION_ID) };
-		var state = ssoService.findValidStateFromCookies(rp, cookies);
+		var state = ssoService.findValidStateFromCookiesAndRelyingParty(rp, cookies);
 		assertThat(state.isPresent(), is(true));
 	}
 
@@ -430,7 +431,7 @@ class SsoServiceTest {
 		var cookieParams = ssoService.getCookieSsoGroupName(rp, cp);
 		var cookieName = ssoService.generateCookieName(cookieParams, false);
 		var cookies = new Cookie[] { new Cookie(cookieName, SESSION_ID) };
-		var state = ssoService.findValidStateFromCookies(rp, cookies);
+		var state = ssoService.findValidStateFromCookiesAndRelyingParty(rp, cookies);
 		assertThat(state.isPresent(), is(true));
 	}
 
@@ -456,7 +457,7 @@ class SsoServiceTest {
 				new Cookie(COOKIE_NAME, SESSION_ID),
 				new Cookie("something", "else")
 		};
-		var state = ssoService.findValidStateFromCookies(buildCookieParams(), cookies);
+		var state = ssoService.findValidStateFromCookiesAndRelyingParty(buildCookieParams(), cookies, null);
 		assertThat(state.isPresent(), is(true));
 		assertThat(state.get().getId(), is(SESSION_ID));
 	}
@@ -502,14 +503,14 @@ class SsoServiceTest {
 				new Cookie(SsoService.SsoCookieNameParams.XTB_COOKIE_PREFIX + groupNameToBeEncoded, "invalid"),
 				new Cookie(SsoService.SsoCookieNameParams.XTB_COOKIE_PREFIX + "SSO_Group", SESSION_ID)
 		};
-		var state = ssoService.findValidStateFromCookies(SsoService.SsoCookieNameParams.of(groupNameToBeEncoded), cookies);
+		var state = ssoService.findValidStateFromCookiesAndRelyingParty(SsoService.SsoCookieNameParams.of(groupNameToBeEncoded), cookies, null);
 		assertThat(state.isPresent(), is(true));
 		assertThat(state.get().getId(), is(SESSION_ID));
 	}
 
 	@Test
 	void findValidStateNoCookies() {
-		var state = ssoService.findValidStateFromCookies(SsoService.SsoCookieNameParams.of(SSO_GROUP, null, null), null);
+		var state = ssoService.findValidStateFromCookiesAndRelyingParty(SsoService.SsoCookieNameParams.of(SSO_GROUP, null, null), null, null);
 		assertThat(state.isPresent(), is(false));
 	}
 
@@ -534,6 +535,31 @@ class SsoServiceTest {
 	void findAllValidStatesNoCookies() {
 		var state = ssoService.findAllValidStatesFromCookies(null);
 		assertThat(state.size(), is(0));
+	}
+
+	@Test
+	void filterStatesTest() {
+		var stateData = buildStateWithSpState(SESSION_ID);
+		var relyingParty = buildRelyingParty(true);
+		var rpId = relyingParty.getId();
+
+		assertTrue(ssoService.filterStates(relyingParty).apply(Collections.emptyMap()).isEmpty());
+
+		stateData.getSpStateData().setIssuer(rpId);
+		assertTrue(ssoService.filterStates(relyingParty).apply(Map.of("any", stateData)).isPresent());
+
+		stateData.getSpStateData().setIssuer(rpId + "x");
+		stateData.setSsoState(SsoState.builder().ssoParticipants(Set.of(SsoSessionParticipant.builder().rpIssuerId(rpId).build())).build());
+		assertTrue(ssoService.filterStates(relyingParty).apply(Map.of("any", stateData)).isPresent());
+
+		stateData = buildStateWithSpState(SESSION_ID);
+		stateData.getSpStateData().setIssuer(rpId + "x");
+		assertTrue(ssoService.filterStates(relyingParty).apply(Map.of("any", stateData)).isEmpty());
+
+		var claimsProvider = ClaimsProvider.builder().relyingPartyAlias(rpId + "x").build();
+		var claimsProviderMappings = ClaimsProviderMappings.builder().claimsProviderList(List.of(claimsProvider)).build();
+		relyingParty.setClaimsProviderMappings(claimsProviderMappings);
+		assertTrue(ssoService.filterStates(relyingParty).apply(Map.of("any", stateData)).isPresent());
 	}
 
 	private static SsoService.SsoCookieNameParams buildCookieParams() {
@@ -597,10 +623,9 @@ class SsoServiceTest {
 	}
 
 	private static Set<SsoSessionParticipant> buildSsoParticipants(Set<String> ssoRps) {
-		var ssoParticipants = ssoRps.stream()
-				.map(relyingPartyId -> buildSsoSessionParticipant(relyingPartyId))
+		return ssoRps.stream()
+				.map(SsoServiceTest::buildSsoSessionParticipant)
 				.collect(Collectors.toSet());
-		return ssoParticipants;
 	}
 
 	private static SsoSessionParticipant buildSsoSessionParticipant(String relyingPartyId) {
@@ -618,10 +643,9 @@ class SsoServiceTest {
 	}
 
 	private static Set<SsoSessionParticipant> buildSsoParticipantsByAcUrls(Set<String> acUrls) {
-		var ssoParticipants = acUrls.stream()
+		return acUrls.stream()
 				.map(acUrl -> new SsoSessionParticipant(RELYING_PARTY_ID, CP_ISSUER_ID, acUrl, null, null))
 				.collect(Collectors.toSet());
-		return ssoParticipants;
 	}
 
 	private static SsoState buildSsoStateByAcUrls(String ssoGroupName, Set<String> acUrls) {
@@ -639,15 +663,14 @@ class SsoServiceTest {
 				.lastConversationId(AUTHN_REQUEST_ID)
 				.assertionConsumerServiceUrl(ACS + RELYING_PARTY_ID)
 				.build();
-		var stateData = StateData.builder()
+		return StateData.builder()
 				.id(SESSION_ID)
 				.issuer(CP_ISSUER_ID)
 				.spStateData(spStateData)
 				.build();
-		return stateData;
 	}
 
-	private ClaimsProvider buildClaimsProvider(String issuerId) {
+	private ClaimsProvider mockClaimsProvider(String issuerId) {
 		var claimsParty =
 				ClaimsProvider.builder().id(issuerId).img(CP_IMG).shortcut(CP_SHORTCUT).color(CP_COLOR).build();
 		doReturn(claimsParty).when(relyingPartySetupService).getClaimsProviderById(any(), eq(CP_ISSUER_ID));
@@ -894,7 +917,7 @@ class SsoServiceTest {
 		};
 		var result = ssoService.logoutSsoParticipantById(SSO_GROUP_PARAMS, cookies, DEVICE_ID, RELYING_PARTY_ID);
 		assertThat(result.size(), is(2));
-		var cookieNames = result.stream().map(Cookie::getName).collect(Collectors.toList());
+		var cookieNames = result.stream().map(Cookie::getName).toList();
 		assertThat(cookieNames, containsInAnyOrder(PREFIXED_SSO_GROUP, COOKIE_NAME));
 		for (var cookie : result) {
 			assertThat(cookie.getValue(), is(""));
@@ -915,7 +938,7 @@ class SsoServiceTest {
 		};
 		var result = ssoService.logoutSsoParticipantById(SSO_GROUP_PARAMS, cookies, DEVICE_ID, RELYING_PARTY_ID);
 		assertThat(result.size(), is(2));
-		var cookieNames = result.stream().map(Cookie::getName).collect(Collectors.toList());
+		var cookieNames = result.stream().map(Cookie::getName).toList();
 		assertThat(cookieNames, containsInAnyOrder(PREFIXED_SSO_GROUP, COOKIE_NAME));
 		for (var cookie : result) {
 			assertThat(cookie.getValue(), is(""));
@@ -1044,7 +1067,6 @@ class SsoServiceTest {
 
 	@Test
 	void logoutSsoParticipantForLogoutRequest() {
-		var nameId = SamlFactory.createNameId(CP_ISSUER_ID, NameIDType.UNSPECIFIED, null);
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(CP_ISSUER_ID, OTHER_RELYING_PARTY_ID));
 		var sso = Sso.builder().enabled(true).logoutNotifications(true).build();
 		var relyingParty = RelyingParty.builder().sso(sso).build();
@@ -1059,13 +1081,13 @@ class SsoServiceTest {
 	@Test
 	void getSsoParticipants() {
 		var participants = Set.of(RELYING_PARTY_ID);
-		buildClaimsProvider(CP_ISSUER_ID);
+		mockClaimsProvider(CP_ISSUER_ID);
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, participants);
 		var startTime = Timestamp.from(START_INSTANT);
 		var expirationTime = Timestamp.from(EXPIRATION_INSTANT_SSO);
 		ssoStateData.getLifecycle().setSsoEstablishedTime(startTime);
 		ssoStateData.getLifecycle().setExpirationTime(expirationTime);
-		buildClaimsProvider(CP_ISSUER_ID);
+		mockClaimsProvider(CP_ISSUER_ID);
 		var cookies = new Cookie[] { new Cookie(PREFIXED_SSO_GROUP, SESSION_ID) };
 		var result = ssoService.getSsoParticipants(SSO_GROUP_PARAMS, cookies, DEVICE_ID);
 		assertThat(result.getSsoGroupName(), is(SSO_GROUP));
@@ -1079,7 +1101,7 @@ class SsoServiceTest {
 	@Test
 	void getSsoParticipantsFingerprintMismatch() {
 		buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
-		buildClaimsProvider(CP_ISSUER_ID);
+		mockClaimsProvider(CP_ISSUER_ID);
 		var cookies = new Cookie[] { new Cookie(PREFIXED_SSO_GROUP, SESSION_ID) };
 		var result = ssoService.getSsoParticipants(SSO_GROUP_PARAMS, cookies, "otherDeviceId");
 		assertThat(result, is(SsoParticipants.UNDEFINED));
@@ -1102,7 +1124,7 @@ class SsoServiceTest {
 				new Cookie(COOKIE_NAME, sessionId1), new Cookie(PREFIXED_SSO_GROUP, sessionId2),
 				new Cookie(PREFIXED_SSO_GROUP + "another", sessionId3)
 		};
-		buildClaimsProvider(CP_ISSUER_ID);
+		mockClaimsProvider(CP_ISSUER_ID);
 		var result = ssoService.getAllSsoParticipants(cookies, DEVICE_ID);
 		assertThat(result.size(), is(2));
 		assertThat(result.stream().map(SsoParticipants::getSsoSubject).toList(), containsInAnyOrder(subject1, subject2));
@@ -1138,6 +1160,9 @@ class SsoServiceTest {
 		var relyingParty = buildRelyingParty(true);
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(relyingParty.getId()));
+		ssoStateData.getSsoState().setSsoQoa(SamlTestBase.Qoa.KERBEROS.getName());
+		doReturn(new CustomQoa(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(), 10)).when(qoaService).extractQoaLevel(any(),any());
+		doReturn(List.of(new CustomQoa(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(), 10))).when(qoaService).extractQoaLevels(any(),any());
 		var stateDataByAuthnReq = buildStateDataByAuthnReq();
 		assertThat(ssoService.ssoStateValidForDeviceInfo(claimsParty, relyingParty, ssoStateData, stateDataByAuthnReq, DEVICE_ID,
 				CP_ISSUER_ID), is(true));
@@ -1212,10 +1237,13 @@ class SsoServiceTest {
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(relyingParty.getId()));
 		ssoStateData.addCompletedAuthnRequest(AUTHN_REQUEST_ID);
+		ssoStateData.getSsoState().setSsoQoa(SamlTestBase.Qoa.KERBEROS.getName());
 		var stateDataByAuthnReq = buildStateDataByAuthnReq();
 		// replay attack scenario: already completed AuthnRequest validated again
 		assertThat(ssoService.ssoStateValidForDeviceInfo(claimsParty, relyingParty, ssoStateData, stateDataByAuthnReq, DEVICE_ID,
 				CP_ISSUER_ID), is(false));
+		doReturn(new CustomQoa(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(), 10)).when(qoaService).extractQoaLevel(any(),any());
+		doReturn(List.of(new CustomQoa(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(), 10))).when(qoaService).extractQoaLevels(any(),any());
 		// normal scenario: second AuthnRequest differs
 		var otherRequest = "otherRequestId";
 		stateDataByAuthnReq.getSpStateData().setId(otherRequest);
@@ -1242,6 +1270,9 @@ class SsoServiceTest {
 		var claimsParty = buildClaimsParty(cpIssuer);
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(relyingParty.getId()));
 		var stateDataByAuthnReq = buildStateDataByAuthnReq();
+		ssoStateData.getSsoState().setSsoQoa(SamlTestBase.Qoa.KERBEROS.getName());
+		doReturn(new CustomQoa(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(), 10)).when(qoaService).extractQoaLevel(any(),any());
+		doReturn(List.of(new CustomQoa(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(), 10))).when(qoaService).extractQoaLevels(any(),any());
 		// simulate case where CP ID in input is not equal to what the CP returns
 		ssoStateData.setIssuer(cpIssuer);
 		assertThat(ssoService.ssoStateValidForDeviceInfo(claimsParty, relyingParty, ssoStateData, stateDataByAuthnReq, DEVICE_ID,
@@ -1255,6 +1286,9 @@ class SsoServiceTest {
 		var claimsParty = buildClaimsParty(cpIssuer);
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(relyingParty.getId()));
 		var stateDataByAuthnReq = buildStateDataByAuthnReq();
+		ssoStateData.getSsoState().setSsoQoa(SamlTestBase.Qoa.KERBEROS.getName());
+		doReturn(new CustomQoa(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(), 10)).when(qoaService).extractQoaLevel(any(),any());
+		doReturn(List.of(new CustomQoa(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(), 10))).when(qoaService).extractQoaLevels(any(),any());
 		// simulate case where CP ID in input is not equal to what the CP returns
 		ssoStateData.getCpResponse().setIssuer(cpIssuer);
 		assertThat(ssoService.ssoStateValidForDeviceInfo(claimsParty, relyingParty, ssoStateData, stateDataByAuthnReq, DEVICE_ID,
@@ -1393,6 +1427,7 @@ class SsoServiceTest {
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(relyingParty.getId()));
 		ssoStateData.setLifecycle(Lifecycle.builder().lifecycleState(LifecycleState.EXPIRED).build());
 		var stateDataByAuthnReq = buildStateDataByAuthnReq();
+		doReturn(new CustomQoa(SamlTestBase.Qoa.KERBEROS.getName(), 40)).when(qoaService).extractQoaLevel(any(),any());
 		assertThat(ssoService.ssoStateValidForDeviceInfo(claimsParty, relyingParty, ssoStateData, stateDataByAuthnReq, DEVICE_ID,
 				CP_ISSUER_ID), is(false));
 	}
@@ -1401,7 +1436,8 @@ class SsoServiceTest {
 	void findValidStateAndCookiesToExpire() {
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
 		var cookies = new Cookie[] { new Cookie(PREFIXED_SSO_GROUP, SESSION_ID) };
-		var result = ssoService.findValidStateAndCookiesToExpire(SsoService.SsoCookieNameParams.of(SSO_GROUP), cookies);
+		var result = ssoService.findValidStateAndCookiesToExpire(SsoService.SsoCookieNameParams.of(SSO_GROUP), cookies,
+				RelyingParty.builder().id(RELYING_PARTY_ID).build());
 		assertThat(result.isPresent(), is(true));
 		assertThat(result.get().getCookiesToExpire().size(), is(1));
 		assertThat(result.get().getCookiesToExpire().get(0).getName(), is(PREFIXED_SSO_GROUP));
@@ -1413,7 +1449,7 @@ class SsoServiceTest {
 	@Test
 	void findValidStateAndCookiesToExpireMissingSession() {
 		var cookies = new Cookie[] { new Cookie(PREFIXED_SSO_GROUP, SESSION_ID) };
-		var result = ssoService.findValidStateAndCookiesToExpire(SsoService.SsoCookieNameParams.of("otherGroup"), cookies);
+		var result = ssoService.findValidStateAndCookiesToExpire(SsoService.SsoCookieNameParams.of("otherGroup"), cookies, null);
 		assertThat(result.isPresent(), is(false));
 	}
 
@@ -1421,7 +1457,8 @@ class SsoServiceTest {
 	void findValidStateAndCookiesToExpireNoSso() {
 		buildStateWithSpState(SESSION_ID);
 		var cookies = new Cookie[] { new Cookie(PREFIXED_SSO_GROUP, SESSION_ID) };
-		var result = ssoService.findValidStateAndCookiesToExpire(SsoService.SsoCookieNameParams.of(SSO_GROUP), cookies);
+		var result = ssoService.findValidStateAndCookiesToExpire(SsoService.SsoCookieNameParams.of(SSO_GROUP), cookies,
+				RelyingParty.builder().id("RpId").build());
 		assertThat(result.isPresent(), is(false));
 	}
 
@@ -1454,17 +1491,40 @@ class SsoServiceTest {
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
 		var stateDataByAuthnReq = buildStateDataByAuthnReq();
 		stateDataByAuthnReq.setForceAuthn(true);
+		stateDataByAuthnReq.setSignedAuthnRequest(true);
 		var result = ssoService.skipCpAuthentication(null, null, stateDataByAuthnReq, ssoStateData);
 		assertThat(result, is(SsoService.SsoSessionOperation.IGNORE));
 	}
 
 	@Test
-	void skipCpAuthenticationNoDeviceInfo() {
+	void allowSsoJoinForUnsignedRequest() {
+		var relyingParty = buildRelyingParty(true);
+		relyingParty.setSecurityPolicies(SecurityPolicies.builder().requireSignedAuthnRequestForSsoJoin(false).build());
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
-		ssoStateData.getLifecycle().setLifecycleState(LifecycleState.ESTABLISHED);
-		ssoStateData.getLifecycle().setSsoEstablishedTime(Timestamp.from(START_INSTANT));
-		ssoStateData.setDeviceId(null);
-		var result = ssoService.skipCpAuthentication(null, null, null, ssoStateData);
+		var stateDataByAuthnReq = buildStateDataByAuthnReq();
+		stateDataByAuthnReq.setSignedAuthnRequest(false);
+		var result = ssoService.skipCpAuthentication(null, relyingParty, stateDataByAuthnReq, ssoStateData);
+		assertThat(result, is(SsoService.SsoSessionOperation.JOIN));
+	}
+
+	@Test
+	void allowSsoJoinForUnsignedRequestFallback() {
+		var relyingParty = buildRelyingParty(true);
+		relyingParty.setSecurityPolicies(SecurityPolicies.builder().requireSignedAuthnRequest(false).build());
+		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
+		var stateDataByAuthnReq = buildStateDataByAuthnReq();
+		stateDataByAuthnReq.setSignedAuthnRequest(false);
+		var result = ssoService.skipCpAuthentication(null, relyingParty, stateDataByAuthnReq, ssoStateData);
+		assertThat(result, is(SsoService.SsoSessionOperation.JOIN));
+	}
+
+	@Test
+	void skipCpAuthenticationForUnsignedRequest() {
+		var relyingParty = buildRelyingParty(true);
+		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
+		var stateDataByAuthnReq = buildStateDataByAuthnReq();
+		stateDataByAuthnReq.setSignedAuthnRequest(false);
+		var result = ssoService.skipCpAuthentication(null, relyingParty, stateDataByAuthnReq, ssoStateData);
 		assertThat(result, is(SsoService.SsoSessionOperation.IGNORE));
 	}
 
@@ -1481,11 +1541,12 @@ class SsoServiceTest {
 
 	@Test
 	void skipCpAuthenticationUnsignedAuthn() {
+		var relyingParty = buildRelyingParty(true);
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
 		ssoStateData.getLifecycle().setSsoEstablishedTime(Timestamp.from(START_INSTANT));
 		var authnRequest = buildAuthnRequest(CP_ISSUER_ID, AUTHN_REQUEST_ID, false);
 		var stateDataByAuthnReq = buildStateForAuthnRequest(authnRequest);
-		var result = ssoService.skipCpAuthentication(null, null, stateDataByAuthnReq, ssoStateData);
+		var result = ssoService.skipCpAuthentication(null, relyingParty, stateDataByAuthnReq, ssoStateData);
 		assertThat(result, is(SsoService.SsoSessionOperation.IGNORE));
 	}
 
@@ -1494,9 +1555,8 @@ class SsoServiceTest {
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
 		var authnRequest = buildAuthnRequest(CP_ISSUER_ID, ssoStateData.getSpStateData().getId(), true);
 		var stateDataByAuthnReq = buildStateForAuthnRequest(authnRequest);
-		Qoa qoa = mockQoaConfig();
 		RelyingParty relyingParty = buildRelyingParty(false);
-		relyingParty.setQoa(qoa);
+		relyingParty.setQoa(null);
 		mockQoaService(relyingParty, null,null, null);
 		// MaxCachingTimeSecs is 0 in state
 		doReturn(90).when(trustBrokerProperties).getSsoSessionLifetimeSec();
@@ -1528,6 +1588,7 @@ class SsoServiceTest {
 		ssoStateData.getSsoState().setMaxCachingTimeSecs(120);
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(false);
+		relyingParty.setQoa(null);
 		mockQoaService(relyingParty, claimsParty, null, null);
 		var result = ssoService.skipCpAuthentication(null, relyingParty, stateDataByAuthnReq, ssoStateData);
 		assertThat(result, is(SsoService.SsoSessionOperation.valueOf(expected)));
@@ -1558,6 +1619,7 @@ class SsoServiceTest {
 		var stateDataByAuthnReq = buildStateForAuthnRequest(authnRequest);
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(true);
+		relyingParty.setQoa(null);
 		mockQoaService(relyingParty, claimsParty, null, null);
 		var result = ssoService.skipCpAuthentication(claimsParty, relyingParty, stateDataByAuthnReq, ssoStateData);
 		assertThat(result, is(SsoService.SsoSessionOperation.valueOf(expected)));
@@ -1673,7 +1735,7 @@ class SsoServiceTest {
 		var assuredQoa = getQoa(sessionQoa);
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(true);
-		mockDefaultProperties(relyingParty, claimsParty);
+		mockDefaultProperties();
 		List<String> requestQoas = expectedQoa != null ? List.of(expectedQoa) : Collections.emptyList();
 		mockQoaService(relyingParty, claimsParty, null, requestQoas);
 		var resultSufficient = ssoService.isQoaLevelSufficient(
@@ -1706,7 +1768,6 @@ class SsoServiceTest {
 	@MethodSource
 	void isSessionQoaEnoughForSsoOnStepUp(String sessionQoa, int sessionQoaLevel, boolean expectedResult) {
 		var relyingParty = buildRelyingParty(true);
-		var requestQoa = getQoa(10); // irrelevant
 		CustomQoa qoaCustom = getQoaCustom(10);
 		CustomQoa qoaKnownCustom = getQoaCustom(sessionQoaLevel);
 		var minQoa = 30; // global default, we test the ROP override here
@@ -1772,7 +1833,7 @@ class SsoServiceTest {
 				SamlContextClass.MOBILE_TWO_FACTOR_CONTACT, SamlContextClass.SMART_CARD_PKI);
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(true);
-		mockDefaultProperties(relyingParty, claimsParty);
+		mockDefaultProperties();
 		mockQoaService(relyingParty, claimsParty, null, expectedQuoas);
 		var resultSufficient = ssoService.isQoaLevelSufficient(claimsParty, relyingParty, expectedQuoas,
 				Optional.of(getQoa(30)), // mapped to SOFTWARE_TIME_SYNC_TOKEN - contained in expectedQuoas
@@ -1787,7 +1848,7 @@ class SsoServiceTest {
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(true);
 		mockQoaService(relyingParty, claimsParty, null, expectedQuoas);
-		mockDefaultProperties(relyingParty, claimsParty);
+		mockDefaultProperties();
 		var resultSufficient = ssoService.isQoaLevelSufficient(claimsParty, relyingParty, expectedQuoas,
 				Optional.of(getQoa(50)), // mapped to SOFTWARE_PKI - not contained in expectedQoas
 				"SSO-4");
@@ -1800,7 +1861,7 @@ class SsoServiceTest {
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		claimsParty.setAuthLevel(MockQoa.AUTH_LEVEL_NORMAL.getName());
 		var relyingParty = buildRelyingParty(true);
-		mockDefaultProperties(relyingParty, claimsParty);
+		mockDefaultProperties();
 		mockQoaService(relyingParty, claimsParty, null, expectedQuoas);
 		var resultSufficient = ssoService.isQoaLevelSufficient(claimsParty, relyingParty, expectedQuoas,
 				Optional.of(getQoa(20)), "SSO-5");
@@ -1817,7 +1878,7 @@ class SsoServiceTest {
 		claimsParty.setAuthLevel(MockQoa.AUTH_LEVEL_NORMAL.getName());
 		claimsParty.setStrongestPossibleAuthLevel(MockQoa.AUTH_LEVEL_STRONG.getName());
 		var relyingParty = buildRelyingParty(true);
-		mockDefaultProperties(relyingParty, claimsParty);
+		mockDefaultProperties();
 		mockQoaService(relyingParty, claimsParty, null, expectedQuoas);
 		var resultSufficient = ssoService.isQoaLevelSufficient(claimsParty, relyingParty, expectedQuoas,
 				Optional.of(getQoa(40)), "SSO-6");
@@ -1832,7 +1893,7 @@ class SsoServiceTest {
 		var expectedQuoas = List.of(MockQoa.STRONGEST_POSSIBLE.getName());
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var relyingParty = buildRelyingParty(true);
-		mockDefaultProperties(relyingParty, claimsParty);
+		mockDefaultProperties();
 		mockQoaService(relyingParty, claimsParty, null, expectedQuoas);
 		var resultSufficient = ssoService.isQoaLevelSufficient(claimsParty, relyingParty, expectedQuoas,
 				Optional.of(getQoa(10)), "SSO-6");
@@ -1927,19 +1988,29 @@ class SsoServiceTest {
 
 	@Test
 	void allowSsoForSignedAuthnRequest() {
+		var relyingParty = buildRelyingParty(true);
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
-		var result = ssoService.allowSso(ssoStateData);
+		var result = ssoService.isRelyingPartyOkForSso(relyingParty, ssoStateData);
 		assertThat(result, is(true));
 	}
 
 	@Test
+	void noSsoIfDisabledForRp() {
+		var relyingParty = buildRelyingParty(false);
+		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
+		var result = ssoService.isRelyingPartyOkForSso(relyingParty, ssoStateData);
+		assertThat(result, is(false));
+	}
+
+	@Test
 	void noSsoForUnsignedAuthnRequest() {
+		var relyingParty = buildRelyingParty(true);
 		var stateData = buildStateWithSpState(SESSION_ID);
 		stateData.setSignedAuthnRequest(null);
-		var result = ssoService.allowSso(stateData);
+		var result = ssoService.isRelyingPartyOkForSso(relyingParty, stateData);
 		assertThat(result, is(false));
 		stateData.setSignedAuthnRequest(Boolean.FALSE);
-		result = ssoService.allowSso(stateData);
+		result = ssoService.isRelyingPartyOkForSso(relyingParty, stateData);
 		assertThat(result, is(false));
 	}
 
@@ -2023,7 +2094,7 @@ class SsoServiceTest {
 		var cp = buildClaimsParty(CP_ISSUER_ID);
 		var stateData = buildStateWithSpState(SESSION_ID);
 		stateData.setCpResponse(buildCpResponseWithContextClasses(List.of(getQoa(10))));
-		mockDefaultProperties(rp, null);
+		mockDefaultProperties();
 		mockQoaService(rp, cp, null, null);
 		setNameId(stateData.getCpResponse(), SUBJECT_NAME_ID, SUBJECT_NAME_ID);
 
@@ -2050,7 +2121,7 @@ class SsoServiceTest {
 		var rp = buildRelyingParty(true);
 		var cp = buildClaimsParty(CP_ISSUER_ID);
 		var ssoGroup = buildSsoGroup();
-		mockDefaultProperties(rp, null);
+		mockDefaultProperties();
 		mockQoaService(rp, cp, null, null);
 
 		// SSO session with sufficient QOA
@@ -2080,7 +2151,7 @@ class SsoServiceTest {
 		var rp = buildRelyingParty(true);
 		var cp = buildClaimsParty(CP_ISSUER_ID);
 		var ssoGroup = buildSsoGroup();
-		mockDefaultProperties(rp, null);
+		mockDefaultProperties();
 
 		// SSO session with sufficient QOA
 		var stateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
@@ -2136,7 +2207,7 @@ class SsoServiceTest {
 		var referer1 = "https://referer1";
 		request.addHeader(HttpHeaders.REFERER, referer1);
 
-		var authState = assertionConsumerService.saveState(authnRequest, request, relyingParty, Optional.empty(),
+		var authState = assertionConsumerService.saveState(authnRequest, false, request, relyingParty, Optional.empty(),
 				SamlBinding.POST);
 		// CpResponse with name ID is required for establishing SSO and copying
 		authState.setCpResponse(CpResponse.builder().build());
@@ -2771,7 +2842,7 @@ class SsoServiceTest {
 		cpResponse.setAttribute(CoreAttributeName.NAME_ID.getNamespaceUri(), nameId);
 	}
 
-	private void mockDefaultProperties(RelyingParty relyingParty, ClaimsParty claimsParty) {
+	private void mockDefaultProperties() {
 		doReturn(20).when(trustBrokerProperties).getSsoMinQoaLevel();
 		QualityOfAuthenticationConfig qualityOfAuthenticationConfig = new QualityOfAuthenticationConfig();
 		doReturn(qualityOfAuthenticationConfig).when(trustBrokerProperties).getQoa();

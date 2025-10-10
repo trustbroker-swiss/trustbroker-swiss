@@ -28,15 +28,15 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import org.apache.velocity.app.VelocityEngine;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -60,8 +60,8 @@ import swiss.trustbroker.common.saml.service.ArtifactCacheService;
 import swiss.trustbroker.common.saml.util.SamlContextClass;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.config.TrustBrokerProperties;
-import swiss.trustbroker.config.dto.QualityOfAuthenticationConfig;
 import swiss.trustbroker.config.dto.SamlProperties;
+import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBindingMode;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
@@ -84,28 +84,28 @@ import swiss.trustbroker.test.saml.util.SamlTestBase;
 class ClaimsProviderServiceTest {
 
 	@Autowired
-	ClaimsProviderService claimsProviderService;
+	private ClaimsProviderService claimsProviderService;
 
 	@MockitoBean
-	StateCacheService stateCacheService;
+	private StateCacheService stateCacheService;
 
 	@MockitoBean
-	TrustBrokerProperties trustBrokerProperties;
+	private TrustBrokerProperties trustBrokerProperties;
 
 	@MockitoBean
 	ArtifactCacheService artifactCacheService;
 
 	@MockitoBean
-	RelyingPartySetupService relyingPartySetupService;
+	private RelyingPartySetupService relyingPartySetupService;
 
 	@MockitoBean
-	ScriptService scriptService;
+	private ScriptService scriptService;
 
 	@MockitoBean
-	VelocityEngine velocityEngine;
+	private VelocityEngine velocityEngine;
 
 	@MockitoBean
-	AuditService auditService;
+	private AuditService auditService;
 
 	@MockitoBean
 	private QoaMappingService qoaMappingService;
@@ -121,7 +121,12 @@ class ClaimsProviderServiceTest {
 		SamlInitializer.initSamlSubSystem();
 	}
 
-	@Test
+	@BeforeEach
+	void setUp() {
+		var securityChecks = new SecurityChecks();
+		when(trustBrokerProperties.getSecurity()).thenReturn(securityChecks);
+	}
+
 	void createAuthnContextTest() {
 		var stateData = givenStateWithQoa();
 
@@ -298,21 +303,6 @@ class ClaimsProviderServiceTest {
 	private StateData givenState() {
 		var spStateData = StateData.builder().id("spSessionId").build();
 		return StateData.builder().id("sessionId").spStateData(spStateData).build();
-	}
-
-	private QualityOfAuthenticationConfig givenQoaConfig() {
-		Map<String, Integer> qoaMap = givenQoaMap();
-		var qoa = new QualityOfAuthenticationConfig();
-		qoa.setMapping(qoaMap);
-		return qoa;
-	}
-
-	private static Map<String, Integer> givenQoaMap() {
-		Map<String, Integer> qoaMap = new HashMap<>();
-		qoaMap.put("urn:qoa:names:tc:ac:classes:10", 10);
-		qoaMap.put("urn:qoa:names:tc:ac:classes:20", 20);
-		qoaMap.put("urn:qoa:names:tc:ac:classes:30", 30);
-		return qoaMap;
 	}
 
 }

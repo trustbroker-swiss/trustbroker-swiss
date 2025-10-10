@@ -159,9 +159,9 @@ public class RelyingPartyDefinitions {
 			var accessRequest = relyingParty.getAccessRequest();
 			if (accessRequest != null && accessRequest.isEnabled() &&
 					accessRequest.getAuthorizedApplications() != null &&
-					accessRequest.getAuthorizedApplications().getAuthorizedApplicationLists() != null) {
+					accessRequest.getAuthorizedApplications().getAuthorizedApplicationList() != null) {
 
-				accessRequest.getAuthorizedApplications().getAuthorizedApplicationLists()
+				accessRequest.getAuthorizedApplications().getAuthorizedApplicationList()
 						.forEach(application -> addAuthorizedApplication(newConfigurations, application, relyingParty));
 			}
 		}

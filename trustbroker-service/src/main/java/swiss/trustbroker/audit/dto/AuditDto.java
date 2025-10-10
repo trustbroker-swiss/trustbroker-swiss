@@ -128,6 +128,8 @@ public class AuditDto {
 
 	private String deviceIdAccepted; // XTB device ID in session
 
+	private String gatewayIP; // X-Forwarded-For list where 2nd element identifies the entry hop
+
 	private String url; // accessed service endpoint (drop when we start putting REST data into the URL may be)
 
 	private String referrer; // HTTP Referer header for debugging and config addressing

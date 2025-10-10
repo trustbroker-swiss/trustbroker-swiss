@@ -34,17 +34,17 @@ public class ClaimSourceUtil {
 		return source.name() + SEPARATOR + secondarySource.name();
 	}
 
-	public static Optional<String> getSecondarySource(String source) {
-		String[] sources = source.split(SEPARATOR);
-		if (sources.length > 1) {
-			return Optional.of(sources[1]);
+	public static Optional<String> getSecondarySource(String source, String sourceName) {
+		var prefix = sourceName + SEPARATOR;
+		if (source.startsWith(prefix)) {
+			return Optional.of(source.substring((prefix).length()));
 		}
 		return Optional.empty();
 	}
 
 	public static boolean isCpSource(String cpIssuer, String nameIdSource) {
 		if (nameIdSource != null && nameIdSource.startsWith(ClaimSource.CP.name())) {
-			Optional<String> secondarySource = ClaimSourceUtil.getSecondarySource(nameIdSource);
+			Optional<String> secondarySource = ClaimSourceUtil.getSecondarySource(nameIdSource, ClaimSource.CP.name());
 			return secondarySource.map(s -> s.equals(cpIssuer)).orElse(true);
 		}
 		return false;

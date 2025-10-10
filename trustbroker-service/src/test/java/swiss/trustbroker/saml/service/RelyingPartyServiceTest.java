@@ -23,6 +23,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -50,6 +51,7 @@ import java.util.UUID;
 
 import jakarta.servlet.http.Cookie;
 import org.apache.xml.security.utils.EncryptionConstants;
+import org.hamcrest.CoreMatchers;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -109,6 +111,7 @@ import swiss.trustbroker.config.dto.NetworkConfig;
 import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.config.dto.SamlProperties;
 import swiss.trustbroker.config.dto.SecurityChecks;
+import swiss.trustbroker.federation.xmlconfig.AcClass;
 import swiss.trustbroker.federation.xmlconfig.AccessRequest;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBindingMode;
@@ -122,6 +125,7 @@ import swiss.trustbroker.federation.xmlconfig.HomeName;
 import swiss.trustbroker.federation.xmlconfig.IdmLookup;
 import swiss.trustbroker.federation.xmlconfig.ProvisioningMode;
 import swiss.trustbroker.federation.xmlconfig.Qoa;
+import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.Saml;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
@@ -130,6 +134,7 @@ import swiss.trustbroker.federation.xmlconfig.Sso;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.homerealmdiscovery.util.DefaultIdmStatusPolicyCallback;
 import swiss.trustbroker.mapping.dto.CustomQoa;
+import swiss.trustbroker.mapping.dto.QoaConfig;
 import swiss.trustbroker.mapping.service.ClaimsMapperService;
 import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.saml.dto.CpResponse;
@@ -700,8 +705,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 			"true,true,false,false,false"
 	})
 	void sendAuthnResponseToRpFromState(boolean useArtifactBinding, boolean sameRp, boolean ssoEnabled, boolean forceIdmFetch,
-			boolean expectIdmRefresh)
-			throws Exception {
+			boolean expectIdmRefresh) throws Exception {
 		var relyingParty = givenMockedRelyingParty(useArtifactBinding);
 		relyingParty.setSso(Sso.builder().enabled(ssoEnabled).forceIdmRefresh(forceIdmFetch).build());
 		givenMockedOidcProperties(PERIMETER_URL);
@@ -918,6 +922,69 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		assertTrue(relyingPartyService.assertionEncryptionReq(SamlTestBase.dummyCredential(), true, rpid));
 	}
 
+	@Test
+	void validateRpQoaRequirementTest() {
+		var cpResponse = givenCpResponse();
+		var state = givenStateDataWithCpResponse();
+
+		Map<String, Integer> globalMapping = Map.of(
+				"qoa:10", 10,
+				"qoa:20", 20,
+				"qoa:password", 20,
+				"qoa:30", 30,
+				"qoa:50", 50
+		);
+		var rpQoa = Qoa.builder().enforce(true).comparison(QoaComparison.EXACT).mapOutbound(true).classes(
+				List.of(AcClass.builder().contextClass("qoa:20").build(),
+						AcClass.builder().contextClass("qoa:30").build(),
+						AcClass.builder().contextClass("qoa:50").build())
+
+		).build();
+		var relyingParty = RelyingParty.builder()
+									   .id(RP_ISSUER_ID)
+									   .qoa(rpQoa)
+									   .build();
+		var cpQoaConf = Qoa.builder().enforce(true).comparison(QoaComparison.MINIMUM).mapOutbound(true).classes(
+				List.of(AcClass.builder().contextClass("qoa:30").build(),
+						AcClass.builder().contextClass("qoa:password").order(40).downgradeToMaximumRequested(true).build(),
+						AcClass.builder().contextClass("qoa:400").order(41).downgradeToMaximumRequested(true).build(),
+						AcClass.builder().contextClass("qoa:50").build())
+
+		).build();
+		var claimsParty = ClaimsParty.builder()
+									 .id(CP_ISSUER_ID)
+									 .qoa(cpQoaConf)
+									 .build();
+
+		doReturn(globalMapping).when(trustBrokerProperties).getQoaMap();
+		doReturn(relyingParty).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(RP_ISSUER_ID, null);
+		doReturn(Optional.of(claimsParty)).when(relyingPartySetupService).getClaimsProviderSetupByIssuerId(CP_ISSUER_ID);
+		doReturn(new QoaConfig(rpQoa, "rpIssuerId"))
+				.when(relyingPartySetupService).getQoaConfiguration(state.getSpStateData(), relyingParty, trustBrokerProperties);
+
+		// Rp request Qoas
+		state.getSpStateData().setComparisonType(QoaComparison.EXACT);
+		state.getSpStateData().setContextClasses(List.of("qoa:20", "qoa:30", "qoa:50"));
+
+		cpResponse.setContextClasses(List.of("qoa:30"));
+		doReturn(List.of("qoa:30")).when(qoaService).mapResponseQoasToOutbound(any(), any(), any(), any(), any());
+		assertDoesNotThrow(() -> relyingPartyService.validateRpQoaRequirement(state, cpResponse));
+
+		cpResponse.setContextClasses(List.of("qoa:password"));
+		doReturn(List.of("qoa:20")).when(qoaService).mapResponseQoasToOutbound(any(), any(), any(), any(), any());
+		assertDoesNotThrow(() -> relyingPartyService.validateRpQoaRequirement(state, cpResponse));
+
+		cpResponse.setContextClasses(List.of("qoa:400"));
+		doReturn(List.of("qoa:20")).when(qoaService).mapResponseQoasToOutbound(any(), any(), any(), any(), any());
+		assertDoesNotThrow(() -> relyingPartyService.validateRpQoaRequirement(state, cpResponse));
+
+		cpResponse.setContextClasses(List.of("qoa:10"));
+		doReturn(List.of("qoa:10")).when(qoaService).mapResponseQoasToOutbound(any(), any(), any(), any(), any());
+		var ex = assertThrows(RequestDeniedException.class, () -> relyingPartyService.validateRpQoaRequirement(state, cpResponse));
+		assertThat(ex.getInternalMessage(), CoreMatchers.containsString(CP_ISSUER_ID));
+		assertThat(ex.getInternalMessage(), CoreMatchers.containsString(RP_ISSUER_ID));
+	}
+
 	private CpResponse givenCpResponse() {
 		var cpResponse = givenCpResponse(CP_ISSUER_ID, CLIENT_EXT_ID, HOME_NAME, USER_NAME_ID, false);
 		cpResponse.setRpDestination(DESTINATION_URL);
@@ -970,7 +1037,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 				.encryption(encryption)
 				.build();
 		return RelyingParty.builder()
-				.rpEncryptionCredential(SamlTestBase.dummyCredential())
+				.rpEncryptionTrustCredential(SamlTestBase.dummyCredential())
 				.id("Testid")
 				.saml(saml)
 				.build();
@@ -992,7 +1059,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 
 	private static RelyingParty givenRelyingPartyWithEncryptionCred() {
 		return RelyingParty.builder()
-				.rpEncryptionCredential(SamlTestBase.dummyCredential())
+				.rpEncryptionTrustCredential(SamlTestBase.dummyCredential())
 				.id(RP_ISSUER_ID)
 				.build();
 	}
@@ -1119,7 +1186,6 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		var cookie = new Cookie(COOKIE_NAME, "value");
 		var expCookie = new Cookie(COOKIE_NAME, "");
 		var cookie2 = new Cookie(COOKIE_NAME2, "value");
-		var expCookie2 = new Cookie(COOKIE_NAME2, "");
 		doAnswer(invocation -> {
 			setCookiesToExpire(invocation.getArguments(), List.of(expCookie));
 			return Optional.ofNullable(stateData);

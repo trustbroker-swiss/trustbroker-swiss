@@ -182,7 +182,7 @@ public class AuthorizedApplication implements Serializable {
 	}
 
 	public boolean isDefaultApplication() {
-		return !checkUrl() && !checkQoa() && (clientId == null);
+		return !checkUrl() && !checkQoa() && (clientId == null) && (name == null);
 	}
 
 	/**

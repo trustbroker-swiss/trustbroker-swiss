@@ -15,7 +15,15 @@
 
 package swiss.trustbroker.util;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import lombok.extern.slf4j.Slf4j;
+import org.opensaml.security.credential.Credential;
 import swiss.trustbroker.common.config.KeystoreProperties;
+import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.saml.util.CredentialReader;
+import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.federation.xmlconfig.SignerKeystore;
 import swiss.trustbroker.federation.xmlconfig.SignerStore;
 import swiss.trustbroker.federation.xmlconfig.SignerTruststore;
@@ -25,6 +33,7 @@ import swiss.trustbroker.federation.xmlconfig.SignerTruststore;
  *
  * @see swiss.trustbroker.common.saml.util.CredentialReader
  */
+@Slf4j
 public class CertificateUtil {
 
 	private CertificateUtil() {}
@@ -59,5 +68,27 @@ public class CertificateUtil {
 							   .alias(keystoreProperties.getKeyEntryId())
 							   .keyPath(keystoreProperties.getSignerKey())
 							   .build();
+	}
+
+	/**
+	 * @return XTB signer and optional rollover signer credentials
+	 */
+	public static List<Credential> getXtbSignerCredentials(TrustBrokerProperties trustBrokerProperties) {
+		List<Credential> signerCerts = new ArrayList<>();
+		if (trustBrokerProperties.getSigner() != null) { // should be present, except in tests, must exist
+			signerCerts.add(CredentialReader.createCredential(trustBrokerProperties.getSigner()));
+			log.debug("trustbroker.config.signer={} loaded", trustBrokerProperties.getSigner().getSignerCert());
+		}
+		if (trustBrokerProperties.getRolloverSigner() != null) { // optional, might not exist
+			try {
+				signerCerts.add(CredentialReader.createCredential(trustBrokerProperties.getRolloverSigner()));
+				log.debug("trustbroker.config.rolloverSigner={} loaded", trustBrokerProperties.getSigner().getSignerCert());
+			}
+			catch (TechnicalException ex) {
+				log.info("trustbroker.config.rolloverSigner={} could not be loaded - ignoring: ex={}",
+						trustBrokerProperties.getRolloverSigner().getSignerCert(), ex.getInternalMessage());
+			}
+		}
+		return signerCerts;
 	}
 }

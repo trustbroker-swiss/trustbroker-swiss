@@ -22,6 +22,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import java.util.function.BiPredicate;
 
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -32,7 +34,7 @@ class AcWhitelistTest {
 	@MethodSource
 	void calculateDerivedUrls(List<String> acUrls, List<String> expectedNetAcUrls,
 			List<String> expectedOrigins, List<String> expectedRedirectUrls) {
-		AcWhitelist acWhitelist = new AcWhitelist(acUrls);
+		var acWhitelist = new AcWhitelist(acUrls);
 		acWhitelist.calculateDerivedUrls();
 		assertThat(acWhitelist.getAcNetUrls(), is(expectedNetAcUrls));
 		assertThat(acWhitelist.getOrigins(), is(expectedOrigins));
@@ -57,4 +59,67 @@ class AcWhitelistTest {
 		};
 	}
 
+	@ParameterizedTest
+	@MethodSource
+	void getDefault(List<String> acUrls, Boolean useDefault, Optional<String> expectedResult) {
+		var acWhitelist = new AcWhitelist(acUrls);
+		acWhitelist.setUseDefault(useDefault);
+		assertThat(acWhitelist.getDefault(), is(expectedResult));
+	}
+
+	static Object[][] getDefault() {
+		return new Object[][] {
+				{ null, Boolean.TRUE, Optional.empty() },
+				{ Collections.emptyList(), Boolean.TRUE, Optional.empty() },
+				{ List.of("ignored"), null, Optional.empty() },
+				{ List.of("ignored"), Boolean.FALSE, Optional.empty() },
+				{ List.of("defaultAcs", "ignored"), Boolean.TRUE, Optional.of("defaultAcs") }
+		};
+	}
+
+
+	@ParameterizedTest
+	@MethodSource
+	void findFirst(List<String> acUrls, String checkUrl,
+			BiPredicate<String, String> matcher, Optional<String> expectedResult) {
+		var acWhitelist = new AcWhitelist(acUrls);
+		assertThat(acWhitelist.findFirst(matcher, checkUrl), is(expectedResult));
+	}
+
+	static Object[][] findFirst() {
+		BiPredicate<String, String> contains = String::contains;
+		BiPredicate<String, String> equals = String::equals;
+		BiPredicate<String, String> startsWith = String::startsWith;
+		var baseUrl = "https://example.trustbroker.swiss";
+		var acUrl = baseUrl + "/path";
+		var acUrlExtended = acUrl + "/ext";
+		return new Object[][] {
+				{ null, "test", contains, Optional.empty() },
+				{ Collections.emptyList(), "test", startsWith,  Optional.empty() },
+				{
+						List.of("mismatch", acUrl, acUrlExtended),
+						baseUrl,
+						startsWith,
+						Optional.of(acUrl)
+				},
+				{
+						List.of("mismatch", acUrl, acUrlExtended),
+						acUrlExtended,
+						equals,
+						Optional.of(acUrlExtended)
+				},
+				{
+						List.of("mismatch", acUrl, acUrlExtended),
+						"path",
+						contains,
+						Optional.of(acUrl)
+				},
+				{
+						List.of("mismatch", acUrl, acUrlExtended),
+						"path",
+						startsWith,
+						Optional.empty()
+				},
+		};
+	}
 }

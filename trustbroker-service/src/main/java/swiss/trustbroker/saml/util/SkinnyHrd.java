@@ -17,9 +17,11 @@ package swiss.trustbroker.saml.util;
 
 import java.util.List;
 
+import lombok.extern.slf4j.Slf4j;
 import swiss.trustbroker.saml.dto.UiObject;
 import swiss.trustbroker.util.ApiSupport;
 
+@Slf4j
 public class SkinnyHrd {
 
 	public static final String SKINNY_HRD_HTML = "/skinnyHRD.html";
@@ -47,7 +49,10 @@ public class SkinnyHrd {
 			var urn = ApiSupport.encodeUrlParameter(uiObject.getUrn() != null ? uiObject.getUrn() : DEFAULT_CPURN);
 			pageContent.append(urn).append(ATTRIBUTE_SEPARATOR);
 			// visibility attributes
-			var longTitle = uiObject.getDescription().replace(" ", "_");
+			if (uiObject.getDescription() == null) {
+				log.warn("Missing description in uiObject={}", uiObject);
+			}
+			var longTitle = uiObject.getDescription() != null ? uiObject.getDescription().replace(" ", "_") : "";
 			pageContent.append(longTitle).append(ATTRIBUTE_SEPARATOR);
 			var shortTitle = uiObject.getShortcut() != null ? uiObject.getShortcut() : longTitle.substring(0, 2);
 			pageContent.append(shortTitle);
@@ -69,7 +74,10 @@ public class SkinnyHrd {
 			shortColor = shortColor.replace("#", ""); // skinnyUI re-appends it, only HEX color codes please
 		}
 		pageContent.append(shortColor).append(ATTRIBUTE_SEPARATOR);
-		var cpName = uiObject.getName().replaceAll(" .*", "");
+		if (uiObject.getName() == null) {
+			log.warn("Missing name in uiObject={}", uiObject);
+		}
+		var cpName = uiObject.getName() != null ? uiObject.getName().replaceAll(" .*", "") : "";
 		pageContent.append(cpName).append(ATTRIBUTE_SEPARATOR);
 		var cpImage = uiObject.getImage() != null ? uiObject.getImage() : "";
 		pageContent.append(cpImage);

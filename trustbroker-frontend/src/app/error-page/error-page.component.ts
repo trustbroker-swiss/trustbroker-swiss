@@ -42,6 +42,8 @@ export class ErrorPageComponent implements OnInit {
 	supportInfoText: string;
 	supportContactText: string;
 	theme: Theme;
+	additionalInfoTitleKey: string;
+	additionalInfoTextKey: string;
 
 	constructor(
 		private readonly route: ActivatedRoute,
@@ -61,19 +63,22 @@ export class ErrorPageComponent implements OnInit {
 	ngOnInit(): void {
 		this.route.params.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params: Params) => {
 			let textKey = params['textKey'];
-			if (!textKey) {
-				textKey = 'default';
-			}
 			if (
-				this.parameterInvalid(textKey, '^[0-9A-Za-z]*$') ||
-				this.parameterInvalid(params['reference'], '^[0-9A-Za-z.-]*$') ||
-				this.parameterInvalid(params['sessionId'], '^[0-9A-Za-z_-]*$')
+				!textKey ||
+				this.parameterInvalid('textKey', textKey, '^[0-9A-Za-z]*$') ||
+				this.parameterInvalid('reference', params['reference'], '^[0-9A-Za-z.-]*$') ||
+				this.parameterInvalid('sessionId', params['sessionId'], '^[0-9A-Za-z_-]*$')
 			) {
+				textKey = 'default';
 				return;
 			}
 			this.errorCode = textKey;
 			this.titleKey = `trustbroker.error.main.title.${this.errorCode}`;
 			this.infoKey = `trustbroker.error.main.info.${this.errorCode}`;
+
+			this.additionalInfoTitleKey = `trustbroker.error.additional.title.${this.errorCode}`;
+			this.additionalInfoTextKey = `trustbroker.error.additional.text.${this.errorCode}`;
+
 			// default can be overridden via params:
 			this.textKey = `trustbroker.error.main.text.${this.errorCode}`;
 			this.supportContactUrl = `trustbroker.error.main.support.link.${this.errorCode}`;
@@ -94,9 +99,9 @@ export class ErrorPageComponent implements OnInit {
 		return this.apiService.getImageUrl(this.theme, image);
 	}
 
-	private parameterInvalid(value: string, pattern: string): boolean {
+	private parameterInvalid(key: string, value: string, pattern: string): boolean {
 		if (!!value && !value.match(pattern)) {
-			console.error('Invalid parameter ', value);
+			console.error('Invalid parameter:', key);
 			return true;
 		}
 		return false;

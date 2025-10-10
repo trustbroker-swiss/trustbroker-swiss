@@ -50,7 +50,7 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
 			throws IOException, ServletException {
 
 		// OIDC pre-conditions
-		var clientId = OidcSessionSupport.getOidcClientId(request);
+		var clientId = OidcSessionSupport.getOidcClientId(request, relyingPartyDefinitions);
 		checkClientKnown(clientId, request); // we have an Oidc.Client
 		checkRelyingPartyKnown(clientId, request); // we have an enabled RelyingParty
 

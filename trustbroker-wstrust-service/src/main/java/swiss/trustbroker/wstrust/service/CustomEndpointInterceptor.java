@@ -40,6 +40,7 @@ import org.opensaml.soap.wsaddressing.ReplyTo;
 import org.opensaml.soap.wsaddressing.To;
 import org.opensaml.soap.wsaddressing.WSAddressingConstants;
 import org.opensaml.soap.wsaddressing.impl.ActionImpl;
+import org.opensaml.soap.wssecurity.BinarySecurityToken;
 import org.opensaml.soap.wssecurity.Security;
 import org.opensaml.soap.wssecurity.Timestamp;
 import org.opensaml.soap.wssecurity.WSSecurityConstants;
@@ -60,13 +61,13 @@ import swiss.trustbroker.common.saml.util.SamlTracer;
 import swiss.trustbroker.common.saml.util.SoapUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
-import swiss.trustbroker.wstrust.util.WsHeaderValidator;
+import swiss.trustbroker.wstrust.validator.WsTrustHeaderValidator;
 
 
 /**
  * Interceptor handles the SOAP header and extracts the SAML assertion from it to treat it the SAML POST way.
  * We translate the DOM element into an opensaml representation here which asserts that the DOM stack is consistent i.e.
- * we do nt get a mess with these implementation variants:
+ * we do not get a mess with these implementation variants:
  * - com.sun.xml.messaging.saaj.soap.impl.ElementImpl
  * - com.sun.org.apache.xerces.internal.dom.ElementNSImpl
  */
@@ -112,7 +113,7 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 		SoapMessageHeader requestHeader = getRequestHeaderElements(headerNode);
 		RequestLocalContextHolder.setRequestContext(requestHeader);
 
-		WsHeaderValidator.validateHeaderElements(requestHeader, trustBrokerProperties.getIssuer());
+		WsTrustHeaderValidator.validateHeaderElements(requestHeader, trustBrokerProperties.getIssuer());
 
 		return true;
 	}
@@ -158,32 +159,44 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 		log.info("Incoming Security header with namespace uri={}", securityHeader.getElementQName());
 
 		List<XMLObject> orderedChildren = securityHeader.getOrderedChildren();
-		if (orderedChildren != null) {
-			for (XMLObject xmlObject : orderedChildren) {
-				if (xmlObject == null) {
-					continue;
+		if (orderedChildren == null) {
+			return;
+		}
+		for (XMLObject xmlObject : orderedChildren) {
+			if (xmlObject instanceof Assertion assertion) {
+				log.debug("Assertion id={}", assertion.getID());
+				if (requestHeader.getAssertion() != null) {
+					log.error("SOAP header contains multiple Assertion objects");
 				}
-				if (xmlObject instanceof Assertion assertion) {
-					log.debug("Assertion id={}", assertion.getID());
-					requestHeader.setAssertion(assertion);
-				}
-				else if (xmlObject instanceof Timestamp timestamp) {
-					log.debug("Timestamp created on={}", timestamp.getCreated().getValue());
-					requestHeader.setRequestTimestamp(timestamp);
-				}
-				else if (xmlObject instanceof Security) {
-					//Security header is handle by springws
-					log.debug("Security header is present in the request");
-				}
-				else if (xmlObject instanceof Signature) {
-					//Signature header is handle by springws
-					log.debug("Signature header is present in the request");
-				}
-				else if (log.isErrorEnabled()) {
-					log.error("Unknown security header xml object with namespace={}: {}",
-							xmlObject.getElementQName(), OpenSamlUtil.samlObjectToString(securityHeader));
-				}
+				requestHeader.setAssertion(assertion);
 			}
+			else if (xmlObject instanceof Timestamp timestamp) {
+				log.debug("Timestamp created on={}", timestamp.getCreated() != null ? timestamp.getCreated().getValue() : null);
+				requestHeader.setRequestTimestamp(timestamp);
+			}
+			else if (xmlObject instanceof Security security) {
+				// The Security header is handled by SpringWS - but for RENEW we need to check it too
+				log.debug("Security header is present in the request");
+				extractBinarySecurityToken(requestHeader, security);
+			}
+			else if (xmlObject instanceof Signature) {
+				// The Signature header is handled by SpringWS
+				log.debug("Signature header is present in the request");
+			}
+			else if (xmlObject != null) {
+				log.error("Unknown security header xml object with namespace={}: {}",
+						xmlObject.getElementQName(), OpenSamlUtil.samlObjectToString(securityHeader));
+			}
+		}
+	}
+
+	private static void extractBinarySecurityToken(SoapMessageHeader requestHeader, Security security) {
+		List<XMLObject> tokens = security.getUnknownXMLObjects().stream().filter(BinarySecurityToken.class::isInstance).toList();
+		if (tokens.size() > 1 || requestHeader.getSecurityToken() != null) {
+			log.error("SOAP header contains multiple Security.BinarySecurityToken objects");
+		}
+		if (!tokens.isEmpty()) {
+			requestHeader.setSecurityToken((BinarySecurityToken) tokens.get(0));
 		}
 	}
 
@@ -195,8 +208,8 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 			return null;
 		}
 
-		// White-list <wsse:Security> header containing SAML assertion or UsernameToken or whatever...
-		// We can only handle SAML assertions in the <wsse:Security> at the time being.
+		// Allowlist <wsse:Security> header containing SAML assertion or UsernameToken or whatever...
+		// We can only handle SAML assertions in the <wsse:Security> for the time being.
 		if (trustBrokerProperties.getWstrust() != null && trustBrokerProperties.getWstrust().getSoapHeadersToConsider() != null
 				&& !trustBrokerProperties.getWstrust().getSoapHeadersToConsider().contains(nodeLocalName)) {
 			log.debug("Incoming SOAP element node={} ignored", nodeLocalName);
@@ -229,25 +242,28 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 
 	@Override
 	public boolean handleResponse(MessageContext messageContext, Object endpoint) throws Exception {
-		var webServiceMessageRequest = messageContext.getResponse();
-		var soapMessage = (SoapMessage) webServiceMessageRequest;
-		var header = soapMessage.getSoapHeader();
+		try {
+			var webServiceMessageRequest = messageContext.getResponse();
+			var soapMessage = (SoapMessage) webServiceMessageRequest;
+			var header = soapMessage.getSoapHeader();
 
-		var marshallerFactory = XMLObjectProviderRegistrySupport.getMarshallerFactory();
+			var marshallerFactory = XMLObjectProviderRegistrySupport.getMarshallerFactory();
 
-		//Action header
-		StringSource actionHeaderSource = getHeaderSourceString(marshallerFactory, ADDRESSING_HEADER,
-				Action.ELEMENT_LOCAL_NAME, createActionHeader(), true);
+			//Action header
+			StringSource actionHeaderSource = getHeaderSourceString(marshallerFactory, ADDRESSING_HEADER,
+					Action.ELEMENT_LOCAL_NAME, createActionHeader(), true);
 
-		//ReplyTo header
-		StringSource relatesToHeaderSource = getHeaderSourceString(marshallerFactory, ADDRESSING_HEADER,
-				RelatesTo.ELEMENT_LOCAL_NAME, createEnvRelatesToHeader(), false);
+			//ReplyTo header
+			StringSource relatesToHeaderSource = getHeaderSourceString(marshallerFactory, ADDRESSING_HEADER,
+					RelatesTo.ELEMENT_LOCAL_NAME, createEnvRelatesToHeader(), false);
 
-		transformer.transform(actionHeaderSource, header.getResult());
-		transformer.transform(relatesToHeaderSource, header.getResult());
+			transformer.transform(actionHeaderSource, header.getResult());
+			transformer.transform(relatesToHeaderSource, header.getResult());
 
-		RequestLocalContextHolder.destroyRequestContext();
-
+		}
+		finally {
+			RequestLocalContextHolder.destroyRequestContext();
+		}
 		return false;
 	}
 

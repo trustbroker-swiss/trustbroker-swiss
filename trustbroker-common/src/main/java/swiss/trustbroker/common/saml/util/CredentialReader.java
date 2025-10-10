@@ -18,7 +18,6 @@ package swiss.trustbroker.common.saml.util;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -26,7 +25,6 @@ import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.Security;
 import java.security.cert.Certificate;
-import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
@@ -197,6 +195,11 @@ public class CredentialReader {
 		return credential;
 	}
 
+	public static Credential getPemCredential(InputStream inputStream, String source) {
+		var certificate = readPemCertificate(inputStream, source);
+		return new BasicX509Credential((X509Certificate) certificate);
+	}
+
 	public static PrivateKey readPemPrivateKey(String signerKey, String password) {
 		return readPemPrivateKey(signerKey, password, false);
 	}
@@ -307,10 +310,22 @@ public class CredentialReader {
 	}
 
 	public static Certificate readPemCertificate(String keystorePath) {
+		try (var inputStream = readFromFileOrClasspath(keystorePath, "PEM keystore")) {
+			return readPemCertificate(inputStream, keystorePath);
+		}
+		catch (TechnicalException e) {
+			throw e;
+		}
+		catch (Exception e) {
+			throw new TechnicalException(String.format("Reading PEM keystore from keystorePath=%s failed: %s",
+					keystorePath, e.getMessage()), e);
+		}
+	}
+
+	public static Certificate readPemCertificate(InputStream inputStream, String source) {
 		try {
 			var certificateFactory = CertificateFactory.getInstance("X509");
-			try (var inputStream = readFromFileOrClasspath(keystorePath, "PEM keystore");
-					var streamReader = new InputStreamReader(inputStream);
+			try (var streamReader = new InputStreamReader(inputStream);
 					var reader = new PemReader(streamReader)) {
 				final var byteArrayInput = new ByteArrayInputStream(reader.readPemObject().getContent());
 				return certificateFactory.generateCertificate(byteArrayInput);
@@ -320,8 +335,8 @@ public class CredentialReader {
 			throw e;
 		}
 		catch (Exception e) {
-			throw new TechnicalException(String.format("Reading PEM keystore from keystorePath=%s failed: %s",
-					keystorePath, e.getMessage()), e);
+			throw new TechnicalException(String.format("Reading PEM keystore from source=%s failed: %s",
+					source, e.getMessage()), e);
 		}
 	}
 
@@ -458,23 +473,6 @@ public class CredentialReader {
 							+ "%s",
 					signerCertPath, signerKeyPath, e.getMessage()), e);
 		}
-	}
-
-	public static X509Certificate getX509Certificate(String certPath) {
-		try (InputStream pub = readFromFileOrClasspath(certPath, "x509Certificate")) {
-			return (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(pub);
-		}
-		catch (FileNotFoundException e) {
-			throw new TechnicalException(String.format("File not found=%s", certPath));
-
-		}
-		catch (IOException e) {
-			throw new TechnicalException(String.format("Error initializing stream for file=%s", certPath));
-		}
-		catch (CertificateException e) {
-			throw new TechnicalException(String.format("Cannot get generate x509Certificate from=%s", certPath), e);
-		}
-
 	}
 
 }

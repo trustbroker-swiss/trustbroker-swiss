@@ -26,6 +26,7 @@
 package swiss.trustbroker.oidc;
 
 import java.time.Instant;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.UUID;
 
@@ -33,6 +34,8 @@ import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.keygen.Base64StringKeyGenerator;
+import org.springframework.security.crypto.keygen.StringKeyGenerator;
 import org.springframework.security.oauth2.core.OAuth2RefreshToken;
 import org.springframework.security.oauth2.core.oidc.endpoint.OidcParameterNames;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
@@ -41,24 +44,56 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
+import org.springframework.security.oauth2.server.authorization.token.OAuth2RefreshTokenGenerator;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import swiss.trustbroker.common.oidc.JwkUtil;
 import swiss.trustbroker.common.util.OidcUtil;
+import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 
 @AllArgsConstructor
 @Slf4j
 public final class CustomRefreshTokenGenerator implements OAuth2TokenGenerator<OAuth2RefreshToken> {
 
+	private final StringKeyGenerator refreshTokenGenerator = new Base64StringKeyGenerator(
+			Base64.getUrlEncoder().withoutPadding(), 96);
+
 	private final JwtEncoder jwtEncoder;
 
 	private final JWKSource<SecurityContext> jwkSource;
 
+	private final TrustBrokerProperties properties;
+
+	private final RelyingPartyDefinitions relyingPartyDefinitions;
+
 	@Override
 	public OAuth2RefreshToken generate(OAuth2TokenContext context) {
+		var opaqueRefreshTokenEnabled = properties.getOidc().isOpaqueRefreshTokenEnabled();
+		var refreshTokenForPKCEEnabled = properties.getOidc().isRefreshTokenForPKCEEnabled();
+
 		if (context == null || !OAuth2TokenType.REFRESH_TOKEN.equals(context.getTokenType())) {
 			return null;
+		}
+
+		var clientId = context.getRegisteredClient().getClientId();
+		var clientConf = relyingPartyDefinitions.getOidcClientConfigById(clientId, properties);
+		if (clientConf.isPresent()) {
+			var requireOpaqueRefreshToken = Boolean.TRUE.equals(
+					clientConf.get().getOidcSecurityPolicies().getRequireOpaqueRefreshToken());
+			opaqueRefreshTokenEnabled = requireOpaqueRefreshToken ? requireOpaqueRefreshToken : opaqueRefreshTokenEnabled;
+		}
+
+		if (opaqueRefreshTokenEnabled) {
+			// Opaque Refresh token is not recommended for Public clients
+			if (!refreshTokenForPKCEEnabled) {
+				return new OAuth2RefreshTokenGenerator().generate(context);
+			}
+			Instant issuedAt = Instant.now();
+			Instant expiresAt = issuedAt.plus(context.getRegisteredClient().getTokenSettings().getRefreshTokenTimeToLive());
+			return new OAuth2RefreshToken(this.refreshTokenGenerator.generateKey(), issuedAt, expiresAt);
 		}
 
 		// track via session that was established during the federation
@@ -145,7 +180,7 @@ public final class CustomRefreshTokenGenerator implements OAuth2TokenGenerator<O
 		}
 		log.debug("Expiration of refresh_token for clientId={} issuedAt={} expiresAt={} from source={}",
 				client.getClientId(), issuedAt, expiresAt, source);
-		if (issuedAt.isAfter(expiresAt)) {
+		if (expiresAt != null && issuedAt.isAfter(expiresAt)) {
 			expiresAt = issuedAt;
 		}
 		return expiresAt;

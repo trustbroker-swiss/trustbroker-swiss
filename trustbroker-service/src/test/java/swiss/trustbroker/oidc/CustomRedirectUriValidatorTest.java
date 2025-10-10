@@ -161,10 +161,9 @@ class CustomRedirectUriValidatorTest {
 		List<GrantedAuthority> grantedAuthorities = List.of(new SimpleGrantedAuthority("role1"));
 		var principal = new DefaultOAuth2AuthenticatedPrincipal(Map.of("name", "dummy"),
 				grantedAuthorities);
-		var token = new OAuth2AuthorizationCodeRequestAuthenticationToken("https://localhost/authorize",
+		return new OAuth2AuthorizationCodeRequestAuthenticationToken("https://localhost/authorize",
 				registeredClient.getClientId(), new AnonymousAuthenticationToken("key", principal, grantedAuthorities),
 				null, null, Collections.emptySet(), Collections.emptyMap());
-		return token;
 	}
 
 }

@@ -39,13 +39,12 @@ import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.OAuth2Token;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.oauth2.server.authorization.token.DelegatingOAuth2TokenGenerator;
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.JwtGenerator;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2AccessTokenGenerator;
-import org.springframework.security.oauth2.server.authorization.token.OAuth2RefreshTokenGenerator;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator;
 import org.springframework.security.saml2.core.Saml2ResponseValidatorResult;
@@ -222,15 +221,12 @@ public class OidcSecurityConfiguration {
 	 * @return
 	 */
 	@Bean
-	OAuth2TokenGenerator<OAuth2Token> tokenGenerator(JWKSource<SecurityContext> jwkSource,
-			TrustBrokerProperties trustBrokerProperties) {
-		var jwtEncoder = new NimbusJwtEncoder(jwkSource);
+	OAuth2TokenGenerator<OAuth2Token> tokenGenerator(JWKSource<SecurityContext> jwkSource, OidcEncryptionKeystoreService oidcEncryptionKeystoreService) {
+		JwtEncoder jwtEncoder = new CustomJwtEncoder(properties, relyingPartyDefinitions, jwkSource, oidcEncryptionKeystoreService);
 		var jwtGenerator = new JwtGenerator(jwtEncoder);
 		jwtGenerator.setJwtCustomizer(tokenCustomizer(jwkSource));
 		var accessTokenGenerator = new OAuth2AccessTokenGenerator();
-		var refreshTokenGenerator = trustBrokerProperties.getOidc().isOpaqueRefreshTokenEnabled() ?
-				new OAuth2RefreshTokenGenerator() :
-				new CustomRefreshTokenGenerator(jwtEncoder, jwkSource);
+		var refreshTokenGenerator = new CustomRefreshTokenGenerator(jwtEncoder, jwkSource, properties, relyingPartyDefinitions);
 		return new DelegatingOAuth2TokenGenerator(jwtGenerator, accessTokenGenerator, refreshTokenGenerator);
 	}
 

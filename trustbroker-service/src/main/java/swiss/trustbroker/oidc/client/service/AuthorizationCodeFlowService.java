@@ -29,6 +29,7 @@ import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.WebUtil;
+import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.OidcClaimsSource;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
@@ -62,10 +63,12 @@ public class AuthorizationCodeFlowService {
 
 	private final OidcClaimValidatorService oidcClaimValidatorService;
 
+	private final TrustBrokerProperties trustBrokerProperties;
+
 	/**
 	 * Create Authorization Code Flow request URL with its parameters for auditing.
 	 */
-	public AuthorizationCodeFlowRequest createAuthnRequest(ClaimsParty claimsParty, StateData stateData, QoaSpec qoaSpec) {
+	public AuthorizationCodeFlowRequest createAuthnRequest(ClaimsParty claimsParty, StateData stateData, QoaSpec qoaSpec, String queryParam) {
 		var client = claimsParty.getSingleOidcClient();
 		var scopes = client.hasScopes() ?
 				client.getScopes().getScopeList() :
@@ -73,7 +76,7 @@ public class AuthorizationCodeFlowService {
 		var redirectUri = apiSupport.getOidcResponseApi(client.getRealm());
 		var configuration = oidcMetadataCacheService.getOidcConfiguration(claimsParty);
 		var result = buildCodeFlowAuthorizationRequest(client, claimsParty, configuration, stateData, qoaSpec, scopes,
-				redirectUri);
+				redirectUri, queryParam);
 		log.info("OIDC authorization code flow for cpIssuerId={} clientId={} sessionId={} "
 						+ "redirecting to requestUri=\"{}\"",
 				claimsParty.getId(), result.clientId(), stateData.getId(), result.requestUri());
@@ -115,7 +118,8 @@ public class AuthorizationCodeFlowService {
 					String.format("Did not receive OIDC %s from client=%s tokenEndpoint=%s",
 							OidcUtil.TOKEN_RESPONSE_ID_TOKEN, client.getId(), configuration.getTokenEndpoint()));
 		}
-		var claims = OidcUtil.verifyJwtToken(idTokenString, keySupplier, client.getId());
+		var cpDecryptionCredential = client.getClientEncryptionCredential();
+		var claims = OidcUtil.decryptAndVerifyToken(idTokenString, keySupplier, cpDecryptionCredential, client.getId());
 		log.debug("OIDC {} client={} tokenEndpoint={} claims={}", OidcUtil.TOKEN_RESPONSE_ID_TOKEN, client.getId(),
 				configuration.getTokenEndpoint(), claims);
 		oidcClaimValidatorService.validateClaims(claims, claimsParty, client, configuration.getIssuerId(),
@@ -187,8 +191,8 @@ public class AuthorizationCodeFlowService {
 	}
 
 	private AuthorizationCodeFlowRequest buildCodeFlowAuthorizationRequest(OidcClient client, ClaimsParty claimsParty,
-			OpenIdProviderConfiguration providerConfiguration, StateData stateData, QoaSpec qoaSpec, List<String> scopes,
-			String redirectUri) {
+																		   OpenIdProviderConfiguration providerConfiguration, StateData stateData, QoaSpec qoaSpec, List<String> scopes,
+																		   String redirectUri, String queryParam) {
 		var endpointUri = providerConfiguration.getAuthorizationEndpoint();
 		var scopeString = String.join(" ", scopes);
 		var qoaString = String.join(" ", qoaSpec.contextClasses());
@@ -205,14 +209,22 @@ public class AuthorizationCodeFlowService {
 				.append("&scope=")
 				.append(WebUtil.urlEncodeValue(scopeString))
 				.append("&nonce=")
-				.append(WebUtil.urlEncodeValue(stateData.getSpStateData().getOidcNonce()))
-				.append("&acr_values=")
-				.append(WebUtil.urlEncodeValue(qoaString))
+					.append(WebUtil.urlEncodeValue(stateData.getSpStateData().getOidcNonce()))
 				.append("&redirect_uri=")
 				.append(WebUtil.urlEncodeValue(redirectUri));
-		var forceAuthn = stateData.forceAuthn() || claimsParty.forceAuthn(true);
-		if (forceAuthn) {
+		var forceAuthn = stateData.forceAuthn()
+				|| claimsParty.forceAuthn(trustBrokerProperties.getSecurity().isForceCpAuthentication());
+		// Do not add prompt=login if the query param is manipulated in a Groovy script
+		if (forceAuthn && queryParam == null) {
 			queryString.append("&prompt=login");
+		}
+		// Do not add acr_values if the query param is manipulated in a Groovy script
+		if (queryParam == null) {
+			queryString.append("&acr_values=")
+					   .append(WebUtil.urlEncodeValue(qoaString));
+		}
+		else {
+			queryString.append("&").append(queryParam);
 		}
 		// concat as URI::resolve cuts the last part of path without trailing slash, e.g. trailing /authorize is lost
 		var uri = WebUtil.getValidatedUri(queryString.toString());
@@ -230,5 +242,4 @@ public class AuthorizationCodeFlowService {
 										   .requestUri(request)
 										   .build();
 	}
-
 }

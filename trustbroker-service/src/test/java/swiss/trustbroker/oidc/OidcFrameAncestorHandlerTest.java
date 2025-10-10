@@ -109,7 +109,7 @@ class OidcFrameAncestorHandlerTest {
 	}
 
 	private void mockClientIdInRequest() {
-		HttpExchangeSupport.begin(request, response, true);
+		HttpExchangeSupport.begin(request, response);
 		request.setParameter(OidcUtil.OIDC_CLIENT_ID, CLIENT_ID);
 	}
 

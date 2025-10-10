@@ -17,19 +17,19 @@ package swiss.trustbroker.wstrust.service;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -77,10 +78,15 @@ import swiss.trustbroker.mapping.service.ClaimsMapperService;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.service.RelyingPartyService;
 import swiss.trustbroker.script.service.ScriptService;
+import swiss.trustbroker.sessioncache.service.StateCacheService;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
+import swiss.trustbroker.wstrust.dto.WsTrustValidationResult;
+import swiss.trustbroker.wstrust.validator.WsTrustIssueValidator;
+import swiss.trustbroker.wstrust.validator.WsTrustRenewValidator;
 
+// LATER: separate validator tests, at least WsTrustRenewValidator
 @SpringBootTest
-@ContextConfiguration(classes = WsTrustService.class)
+@ContextConfiguration(classes = { WsTrustService.class, WsTrustIssueValidator.class, WsTrustRenewValidator.class })
 class WsTrustServiceTest {
 
 	private static final String SAMPLE_RST_REQUEST_XMLSOAP_ADDRESSING = """
@@ -110,31 +116,43 @@ class WsTrustServiceTest {
 			""";
 
 	@Autowired
-	WsTrustService wsTrustService;
+	private WsTrustService wsTrustService;
+
+	@Autowired
+	private WsTrustIssueValidator wsTrustIssueValidator;
+
+	@Autowired
+	private WsTrustRenewValidator wsTrustRenewValidator;
 
 	@MockitoBean
-	CredentialReader credentialReader;
+	private CredentialReader credentialReader;
 
 	@MockitoBean
-	TrustBrokerProperties trustBrokerProperties;
+	private TrustBrokerProperties trustBrokerProperties;
 
 	@MockitoBean
-	RelyingPartySetupService relyingPartySetupService;
+	private RelyingPartySetupService relyingPartySetupService;
 
 	@MockitoBean
-	ScriptService scriptService;
+	private ScriptService scriptService;
 
 	@MockitoBean
-	IdmQueryService idmQueryService;
+	private IdmQueryService idmQueryService;
 
 	@MockitoBean
-	RelyingPartyService relyingPartyService;
+	private RelyingPartyService relyingPartyService;
 
 	@MockitoBean
-	AuditService auditService;
+	private AuditService auditService;
 
 	@MockitoBean
-	ClaimsMapperService claimsMapperService;
+	private ClaimsMapperService claimsMapperService;
+
+	@MockitoBean
+	private StateCacheService stateCacheService;
+
+	@MockitoBean
+	private Clock clock;
 
 	@Test
 	void smokeTest() {
@@ -142,78 +160,96 @@ class WsTrustServiceTest {
 	}
 
 	@BeforeAll
-	static void setup() {
+	static void setupAll() {
 		SamlInitializer.initSamlSubSystem();
+	}
+
+	@BeforeEach
+	void setup() {
+		when(clock.instant()).thenReturn(Instant.now());
 	}
 
 	@Test
 	void processSecurityTokenNullTest() {
 		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(null, "assertionId");
+			wsTrustService.processSecurityToken(null, null, null);
 		});
 	}
 
 	@Test
 	void processSecurityTokenKeyTypeNullTest() {
-		RequestSecurityToken requestSecTokenType = givenRequestSecToken(null, null, null);
+		var requestSecTokenType = givenRequestSecToken(null, null, null);
 		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, "assertionId");
+			wsTrustService.processSecurityToken(requestSecTokenType, null, null);
 		});
 	}
 
 	@Test
 	void processSecurityTokenKeyTypeInvalidTest() {
-		RequestSecurityToken requestSecTokenType = givenRequestSecToken(givenKeyType("InvalidKeyType"),
+		var requestSecTokenType = givenRequestSecToken(givenKeyType("InvalidKeyType"),
 				givenTokenType("invalidType"), null);
 		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, "assertionId");
+			wsTrustService.processSecurityToken(requestSecTokenType, null, null);
 		});
 	}
 
 	@Test
 	void processSecurityTokenRequestTypeNullTest() {
-		RequestSecurityToken requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER),
+		var requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER),
 				givenTokenType(WSSConstants.WSS_SAML2_TOKEN_TYPE), null);
 		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, "assertionId");
+			wsTrustService.processSecurityToken(requestSecTokenType, null, null);
 		});
 	}
 
 	@Test
 	void processSecurityTokenRequestTypeInvalidTest() {
-		RequestSecurityToken requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER),
+		var requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER),
 				givenTokenType(WSSConstants.WSS_SAML2_TOKEN_TYPE), givenInvalidRequestType("InvalidRequestType"));
 		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, "assertionId");
+			wsTrustService.processSecurityToken(requestSecTokenType, null, null);
 		});
 	}
 
 	@Test
 	void processSecurityTokenTokenTypeNullTest() {
-		RequestSecurityToken requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER), null,
+		var requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER), null,
 				givenInvalidRequestType(RequestType.ISSUE));
+		when(trustBrokerProperties.getSecurity())
+				.thenReturn(SecurityChecks.builder()
+										  .validateSubjectConfirmationInResponseTo(true)
+										  .build());
 		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, "assertionId");
+			wsTrustService.processSecurityToken(requestSecTokenType, null, null);
 		});
 	}
 
 	@Test
 	void processSecurityTokenTokenTypeInvalidTest() {
-		RequestSecurityToken requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER),
+		var requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER),
 				givenTokenType("invalidType"), givenInvalidRequestType(RequestType.ISSUE));
+		when(trustBrokerProperties.getSecurity())
+				.thenReturn(SecurityChecks.builder()
+										  .validateSubjectConfirmationInResponseTo(true)
+										  .build());
 		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, "assertionId");
+			wsTrustService.processSecurityToken(requestSecTokenType, null, null);
 		});
 	}
 
-
 	@Test
 	void processSecurityTokenValidTest() {
-		RequestSecurityToken requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER),
+		var requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER),
 				givenTokenType(WSSConstants.WSS_SAML2_TOKEN_TYPE), givenInvalidRequestType(RequestType.ISSUE));
-		assertDoesNotThrow(() -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, "assertionId");
+		when(trustBrokerProperties.getSecurity())
+				.thenReturn(SecurityChecks.builder()
+										  .validateSubjectConfirmationInResponseTo(false)
+										  .build());
+		var assertion = OpenSamlUtil.buildAssertionObject(null);
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			wsTrustService.processSecurityToken(requestSecTokenType, assertion, null);
 		});
+		assertThat(ex.getInternalMessage(), containsString("Assertion.ID missing"));
 	}
 
 	@ParameterizedTest
@@ -224,9 +260,9 @@ class WsTrustServiceTest {
 		RequestSecurityToken requestSecurityToken = SoapUtil.unmarshallDomElement(requestSecurityTokenType);
 		assertThat(requestSecurityToken.getDOM(), is(not(nullValue())));
 		var elements = requestSecurityToken.getUnknownXMLObjects()
-				.stream()
-				.map(xmlobj -> xmlobj.getElementQName().getLocalPart())
-				.toList();
+										   .stream()
+										   .map(xmlobj -> xmlobj.getElementQName().getLocalPart())
+										   .toList();
 		assertThat(elements, containsInAnyOrder("AppliesTo", "KeyType", "RequestType", "TokenType"));
 		// verify the CompatEndPointReferenceUnmarshaller workaround
 		for (var childElement : requestSecurityToken.getUnknownXMLObjects()) {
@@ -247,12 +283,13 @@ class WsTrustServiceTest {
 		String addressFromRequest = "addressFromRequest";
 		when(relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, null))
 				.thenReturn(givenRp());
-		doReturn(SecurityChecks.builder()
-							   .doSignAssertions(true)
-							   .build()).when(trustBrokerProperties)
-										.getSecurity();
-		var assertion = wsTrustService.createAssertion(cpAttributes, cpResponse, "anyId",
-				requestHeaderAssertion, addressFromRequest);
+		when(trustBrokerProperties.getSecurity())
+				.thenReturn(
+						SecurityChecks.builder()
+									  .doSignAssertions(true)
+									  .build());
+		var validationResult = new WsTrustValidationResult(requestHeaderAssertion, true, null);
+		var assertion = wsTrustService.createAssertion(cpAttributes, cpResponse, "anyId", validationResult, addressFromRequest);
 		var attributeStatements = assertion.getAttributeStatements();
 		assertTrue(attributeStatements.get(0).getAttributes().size() < initialUserDetailsSize + cpAttributes.size());
 		assertEquals(requestHeaderAssertion.getSubject().getNameID().getValue(), assertion.getSubject().getNameID().getValue());
@@ -265,10 +302,10 @@ class WsTrustServiceTest {
 						   .id("rpIssuerId")
 						   .rpSigner(SamlTestBase.dummyCredential())
 						   .securityPolicies(
-									 SecurityPolicies.builder()
-													 .delegateOrigin(false)
-													 .build()
-							 ).build();
+								   SecurityPolicies.builder()
+												   .delegateOrigin(false)
+												   .build()
+						   ).build();
 	}
 
 	private Assertion givenRequestAssertion() {
@@ -278,9 +315,8 @@ class WsTrustServiceTest {
 		assertion.setIssuer(OpenSamlUtil.buildSamlObject(Issuer.class));
 		assertion.getIssuer().setValue("TEST_AUDIENCE");
 		var nameId = SamlFactory.createNameId("name1@localhost", NameIDType.EMAIL, null);
-		assertion.setSubject(SamlFactory.createSubject(nameId, "RELAY_STATE", "rpIssuerId", 100));
+		assertion.setSubject(SamlFactory.createSubject(nameId, "RELAY_STATE", "rpIssuerId", 100, null));
 		return assertion;
-
 	}
 
 	private List<Attribute> givenCpAttributesWithDuplicates() {

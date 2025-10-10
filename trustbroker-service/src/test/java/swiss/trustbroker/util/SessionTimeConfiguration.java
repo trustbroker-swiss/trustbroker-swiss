@@ -35,13 +35,13 @@ public class SessionTimeConfiguration {
 
 	public static final int ARTIFACT_REAP_INTERVAL_SECS = 300;
 
-	public static Instant START_INSTANT = Instant.ofEpochMilli(1000000l);
+	public static final Instant START_INSTANT = Instant.ofEpochMilli(1000000l);
 
-	public static Instant PAST_INSTANT = START_INSTANT.minusMillis(1);
+	public static final Instant PAST_INSTANT = START_INSTANT.minusMillis(1);
 
-	public static Instant EXPIRATION_INSTANT = START_INSTANT.plusMillis(TimeUnit.SECONDS.toMillis(SESSION_LIFETIME_SECS));
+	public static final Instant EXPIRATION_INSTANT = START_INSTANT.plusMillis(TimeUnit.SECONDS.toMillis(SESSION_LIFETIME_SECS));
 
-	public static Instant EXPIRATION_INSTANT_SSO =
+	public static final Instant EXPIRATION_INSTANT_SSO =
 			START_INSTANT.plusMillis(TimeUnit.SECONDS.toMillis(SESSION_LIFETIME_SECS_SSO));
 
 	@Bean

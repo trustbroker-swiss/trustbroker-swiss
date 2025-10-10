@@ -37,7 +37,6 @@ public class CredentialUtil {
 	}
 
 	/**
-	 *
 	 * @param optionalPassword password or null
 	 * @return password characters or null
 	 */
@@ -55,8 +54,7 @@ public class CredentialUtil {
 			KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
 			keyPairGenerator.initialize(2048);
 			keyPair = keyPairGenerator.generateKeyPair();
-		}
-		catch (Exception ex) {
+		} catch (Exception ex) {
 			throw new IllegalStateException(ex);
 		}
 		return keyPair;

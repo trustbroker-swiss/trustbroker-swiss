@@ -43,20 +43,20 @@ public class HttpExchangeSupport {
 	// per default, we do all the OIDC session checking only on our well known sub-paths
 	private boolean oidcRequest;
 
+	// detected in HTTP request
+	private String oidcClientId;
+
+	// load from session DB
 	private TomcatSession oidcSession;
 
 	// currently only used to retain a handle to the SSO across the OIDC logout for the later handling
 	private StateData ssoState;
 
+	// prevent multiple logs
 	private boolean authContextHandled;
 
 	public static HttpExchangeSupport begin(HttpServletRequest request, HttpServletResponse response) {
-		return begin(request, response, false);
-	}
-
-	public static HttpExchangeSupport begin(HttpServletRequest request, HttpServletResponse response, boolean oidc) {
-		var exchange = new HttpExchangeSupport(request, response, false, null, null, false);
-		exchange.setOidcRequest(oidc);
+		var exchange = new HttpExchangeSupport(request, response, false, null, null, null, false);
 		runningHttpExchange.set(exchange);
 		return runningHttpExchange.get();
 	}
@@ -108,6 +108,17 @@ public class HttpExchangeSupport {
 			return entry.oidcRequest;
 		}
 		return false;
+	}
+
+	public static void setRunningOidcClientId(String clientId) {
+		var entry = getRunningHttpExchange();
+		entry.oidcRequest = true;
+		entry.oidcClientId = clientId;
+	}
+
+	public static String getRunningOidcClientId() {
+		var entry = getRunningHttpExchange();
+		return entry != null ? entry.oidcClientId : null;
 	}
 
 	public static boolean isRunningUserInfoExchange() {

@@ -87,7 +87,7 @@ class XmlConfigUtilTest {
 	}
 
 	@Test
-	void loadConfigFromFileInvalidFileCheckMessage() throws ClassNotFoundException {
+	void loadConfigFromFileInvalidFileCheckMessage() {
 		var file = LATEST_INVALID_DEFINITION_PATH + "SetupRPInvalidElement.xml";
 		var def = SamlTestBase.fileFromClassPath(file);
 		var ex = assertThrows(TechnicalException.class,

@@ -46,6 +46,36 @@ class DefinitionTest {
 	}
 
 	@Test
+	void testKeyConstructors() {
+		// via AttributeName
+		var nameAttr = CoreAttributeName.NAME;
+		var nameShort = new Definition(nameAttr.getName());
+		var nameShortSrc = new Definition(nameAttr.getName());
+		nameShortSrc.setSource("nameSource1");
+		var nameLong = new Definition(nameAttr.getName(), nameAttr.getNamespaceUri());
+		var nameFull = new Definition(nameAttr.getName(), nameAttr.getNamespaceUri());
+		nameFull.setSource("nameSource2");
+		assertThat(Definition.ofName(nameAttr), is(nameShort));
+		assertThat(Definition.ofNameAndSource(nameAttr, "nameSource1"), is(nameShortSrc));
+		assertThat(Definition.ofNames(nameAttr), is(nameLong));
+		assertThat(Definition.ofNamesAndSource(nameAttr, "nameSource2"), is(nameFull));
+
+		// via string API
+		nameFull.setSource("nameSource");
+		var short1 = new Definition("shortname1");
+		var short2 = new Definition("shortname2");
+		short2.setSource("source2");
+		var long3 = new Definition("shortname3", "longname3");
+		var full4 = new Definition("shortname4", "longname4");
+		full4.setSource("source4");
+
+		assertThat(Definition.ofName("shortname1"), is(short1));
+		assertThat(Definition.ofNameAndSource("shortname2", "source2"), is(short2));
+		assertThat(Definition.ofNames("shortname3", "longname3"), is(long3));
+		assertThat(Definition.ofNamesAndSource("shortname4", "longname4", "source4"), is(full4));
+	}
+
+	@Test
 	void testUniqueKey() {
 		var o1 = Definition.builder().name("N1").namespaceUri("FQN1").value("V1").build();
 		var o2 = Definition.builder().name("N1").namespaceUri("FQN1").value("V2").build();

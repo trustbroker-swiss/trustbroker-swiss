@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import swiss.trustbroker.api.sessioncache.dto.AttributeName;
@@ -36,6 +37,7 @@ import swiss.trustbroker.federation.xmlconfig.MultiResultPolicy;
 import swiss.trustbroker.saml.dto.ClaimSource;
 import swiss.trustbroker.saml.util.ClaimSourceUtil;
 
+@Slf4j
 public class AttributeFilterUtil {
 
 	private AttributeFilterUtil(){}
@@ -68,8 +70,14 @@ public class AttributeFilterUtil {
 			var attributeDefinition = entry.getKey();
 			var values = new ArrayList<>(entry.getValue());
 			var source = attributeDefinition.getSource();
+
 			// Groovy scripts should not manipulate user details, but we did not prevent that by design, accept it here
+			// NOTE: Such claims leak into further processing aan can even be exposed to relying parties
 			if (source == null || source.endsWith(AuditDto.AttributeSource.SCRIPT.name())) {
+				if (source == null) {
+					// All claims need a source of origin so precise picking with Definition.source="PRECISE:SOURCE" is possible
+					log.info("Missing source leads to outbound claim leaks for attributeDefinition='{}'", attributeDefinition);
+				}
 				responseAttrs.put(new Definition(attributeDefinition.getName(), attributeDefinition.getNamespaceUri()), values);
 			}
 		}

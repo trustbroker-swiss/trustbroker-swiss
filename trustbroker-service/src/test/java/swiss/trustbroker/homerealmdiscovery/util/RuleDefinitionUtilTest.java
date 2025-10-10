@@ -44,7 +44,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -105,16 +104,36 @@ class RuleDefinitionUtilTest {
 	}
 
 
-	private final static String IDENTITY_QUERY = "IDENTITY";
+	private static final String IDENTITY_QUERY = "IDENTITY";
 
-	private final static String TENANT_QUERY = "TENANT";
+	private static final String TENANT_QUERY = "TENANT";
 
-	private final static String GLOBAL_QUERY = "GLOBAL";
+	private static final String GLOBAL_QUERY = "GLOBAL";
 
 	private final IdmQueryService idmQueryService = new SortingIdmService();
 
 	@MockitoBean
 	private ScriptService scriptService;
+
+	@Test
+	void joinAndDistinctDefinitionsEmptyTest() {
+		List<Definition> attributeList = null;
+		List<Definition> baseAttribute = null;
+		List<Definition> result = RelyingPartySetupUtil.joinAndDistinctDefinitions(attributeList, baseAttribute);
+
+		assertTrue(result.isEmpty());
+
+		baseAttribute = givenAttributeLists();
+		result = RelyingPartySetupUtil.joinAndDistinctDefinitions(attributeList, baseAttribute);
+
+		assertEquals(result, baseAttribute);
+
+		attributeList = givenAttributeLists();
+		baseAttribute = Collections.emptyList();
+		result = RelyingPartySetupUtil.joinAndDistinctDefinitions(attributeList, baseAttribute);
+
+		assertEquals(result, attributeList);
+	}
 
 	@Test
 	void joinAndDistinctDefinitionsNoBaseTest() {
@@ -137,7 +156,7 @@ class RuleDefinitionUtilTest {
 		List<Definition> baseAttribute = givenBaseAttributeList();
 
 		List<Definition> result = RelyingPartySetupUtil.joinAndDistinctDefinitions(attributeList, baseAttribute);
-		List<Definition> firstNames = result.stream().filter(s -> s.getName().equals("FirstName")).collect(Collectors.toList());
+		List<Definition> firstNames = result.stream().filter(s -> s.getName().equals("FirstName")).toList();
 
 		assertEquals(attributeListSize + baseAttribute.size() - 1, result.size());
 		assertEquals(1, firstNames.size());
@@ -150,7 +169,7 @@ class RuleDefinitionUtilTest {
 		List<String> baseAcWhiteList = givenBaseAcWhiteListList();
 
 		List<String> result = RelyingPartySetupUtil.joinAndDistinctLists(acWhiteListDuplicates, baseAcWhiteList);
-		List<String> acList = result.stream().filter(s -> s.equals("http://test.sp1.trustbroker.swiss")).collect(Collectors.toList());
+		List<String> acList = result.stream().filter(s -> s.equals("http://test.sp1.trustbroker.swiss")).toList();
 
 		assertEquals(attributeListSize + baseAcWhiteList.size() - 1, result.size());
 		assertEquals(1, acList.size());
@@ -478,7 +497,7 @@ class RuleDefinitionUtilTest {
 
 	@Test
 	void loadBaseClaimBaseDoesNotExistTest() {
-		Collection<RelyingParty> claimRules = givenClaimRulesWithBaseNotFound();
+		Collection<RelyingParty> claimRules = givenClaimRulesWithBase();
 		var claimsProviderSetup = ClaimsProviderSetup.builder().build();
 		assertDoesNotThrow(() -> RelyingPartySetupUtil.loadRelyingParty(claimRules, RelyingPartySetupUtil.DEFINITION_PATH,
 				CACHE_DEFINITION_PATH, null, List.of(idmQueryService), scriptService, claimsProviderSetup, null));
@@ -761,11 +780,6 @@ class RuleDefinitionUtilTest {
 	}
 
 	private List<RelyingParty> givenClaimRulesWithBase() {
-		RelyingParty claimRule = givenRelyingParty();
-		return Collections.singletonList(claimRule);
-	}
-
-	private Collection<RelyingParty> givenClaimRulesWithBaseNotFound() {
 		RelyingParty claimRule = givenRelyingParty();
 		return Collections.singletonList(claimRule);
 	}

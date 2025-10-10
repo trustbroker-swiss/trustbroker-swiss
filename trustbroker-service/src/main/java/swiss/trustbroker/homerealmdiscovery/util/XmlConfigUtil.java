@@ -22,7 +22,6 @@ import java.io.InputStream;
 import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -44,6 +43,7 @@ import org.xml.sax.SAXException;
 import org.xml.sax.SAXNotRecognizedException;
 import org.xml.sax.SAXNotSupportedException;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.util.CollectionUtil;
 import swiss.trustbroker.common.util.DirectoryUtil;
 import swiss.trustbroker.exception.GlobalExceptionHandler;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProviderDefinitions;
@@ -219,7 +219,7 @@ public class XmlConfigUtil {
 			T result = (T) jaxbUnmarshaller.unmarshal(file);
 			if (vec.hasEvents()) {
 				throw new TechnicalException(String.format("Invalid configFile='%s' loading configType='%s': %s",
-						configFile.getAbsolutePath(), configType.getSimpleName(), Arrays.toString(vec.getEvents())));
+						configFile.getAbsolutePath(), configType.getSimpleName(), CollectionUtil.toLogString(vec.getEvents())));
 			}
 			return result;
 		}

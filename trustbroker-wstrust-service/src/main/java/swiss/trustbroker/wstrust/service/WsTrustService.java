@@ -33,6 +33,7 @@ import org.opensaml.saml.saml2.core.Attribute;
 import org.opensaml.saml.saml2.core.AttributeStatement;
 import org.opensaml.saml.saml2.core.NameID;
 import org.opensaml.saml.saml2.core.Subject;
+import org.opensaml.soap.wssecurity.BinarySecurityToken;
 import org.opensaml.soap.wstrust.KeyType;
 import org.opensaml.soap.wstrust.RequestSecurityToken;
 import org.opensaml.soap.wstrust.RequestSecurityTokenResponse;
@@ -65,10 +66,11 @@ import swiss.trustbroker.mapping.util.AttributeFilterUtil;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.dto.ResponseParameters;
 import swiss.trustbroker.saml.service.RelyingPartyService;
-import swiss.trustbroker.saml.util.AssertionValidator;
 import swiss.trustbroker.saml.util.ResponseFactory;
 import swiss.trustbroker.script.service.ScriptService;
+import swiss.trustbroker.wstrust.dto.WsTrustValidationResult;
 import swiss.trustbroker.wstrust.util.WsTrustUtil;
+import swiss.trustbroker.wstrust.validator.WsTrustValidator;
 
 @Service
 @AllArgsConstructor
@@ -89,20 +91,22 @@ public class WsTrustService {
 
 	private final ClaimsMapperService claimsMapperService;
 
+	private final List<WsTrustValidator> wsTrustValidators;
+
 	private RequestSecurityTokenResponseCollection createResponse(List<Attribute> cpAttributes, CpResponse cpResponse,
-			Assertion requestHeaderAssertion, String addressFromRequest) {
+			WsTrustValidationResult validationResult, String addressFromRequest) {
 
 		RequestSecurityTokenResponseCollection responseCollection = (RequestSecurityTokenResponseCollection) XMLObjectSupport
 				.buildXMLObject(RequestSecurityTokenResponseCollection.ELEMENT_NAME);
 
 		responseCollection.getRequestSecurityTokenResponses().add(createSecurityTokenResponse(cpAttributes,
-				cpResponse, requestHeaderAssertion, addressFromRequest));
+				cpResponse, validationResult, addressFromRequest));
 
 		return responseCollection;
 	}
 
 	private RequestSecurityTokenResponse createSecurityTokenResponse(List<Attribute> cpAttributes,
-			CpResponse cpResponse, Assertion requestHeaderAssertion, String addressFromRequest) {
+			CpResponse cpResponse, WsTrustValidationResult validationResult, String addressFromRequest) {
 		var requestSecurityTokenResponse =
 				(RequestSecurityTokenResponse) XMLObjectSupport.buildXMLObject(RequestSecurityTokenResponse.ELEMENT_NAME);
 
@@ -116,7 +120,7 @@ public class WsTrustService {
 		var assertionId = OpenSamlUtil.generateSecureRandomId();
 
 		var requestedSecurityToken = createRequestedSecurityToken(cpAttributes, cpResponse,
-				assertionId, requestHeaderAssertion, addressFromRequest);
+				assertionId, validationResult, addressFromRequest);
 		requestSecurityTokenResponse.getUnknownXMLObjects().add(requestedSecurityToken);
 
 		var requestedAttachedReference = WsTrustUtil.createRequestedAttachedRef(assertionId);
@@ -137,12 +141,12 @@ public class WsTrustService {
 		return requestSecurityTokenResponse;
 	}
 
-	private RequestedSecurityToken createRequestedSecurityToken(List<Attribute> cpAttributes,
-			CpResponse cpResponse, String assertionId, Assertion requestHeaderAssertion, String addressFromRequest) {
+	private RequestedSecurityToken createRequestedSecurityToken(List<Attribute> cpAttributes, CpResponse cpResponse,
+			String assertionId, WsTrustValidationResult validationResult, String addressFromRequest) {
 		var requestedSecurityToken =
 				(RequestedSecurityToken) XMLObjectSupport.buildXMLObject(RequestedSecurityToken.ELEMENT_NAME);
 
-		var assertion = createAssertion(cpAttributes, cpResponse, assertionId, requestHeaderAssertion, addressFromRequest);
+		var assertion = createAssertion(cpAttributes, cpResponse, assertionId, validationResult, addressFromRequest);
 
 		requestedSecurityToken.setUnknownXMLObject(assertion);
 
@@ -155,15 +159,15 @@ public class WsTrustService {
 		return requestedSecurityToken;
 	}
 
-	Assertion createAssertion(List<Attribute> cpAttributes,
-			CpResponse cpResponse, String assertionId, Assertion requestHeaderAssertion, String addressFromRequest) {
+	Assertion createAssertion(List<Attribute> cpAttributes, CpResponse cpResponse, String assertionId,
+			WsTrustValidationResult validationResult, String addressFromRequest) {
 
-		var params = buildResponseParams(assertionId, requestHeaderAssertion, addressFromRequest);
+		var params = buildResponseParams(assertionId, validationResult, addressFromRequest);
 
 		var rp = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(params.getIssuerId(), null);
 		var constAttr = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, null)
 												.getConstAttributes();
-		List<String> contextClasses = getAuthnContextClasses(requestHeaderAssertion);
+		List<String> contextClasses = getAuthnContextClasses(validationResult.validatedAssertion());
 
 		var userDetails = AttributeFilterUtil.filteredUserDetails(cpResponse.getUserDetails(), cpResponse.getIdmLookup(),
 				rp.getClaimsSelection());
@@ -182,21 +186,24 @@ public class WsTrustService {
 		return assertion;
 	}
 
-	private ResponseParameters buildResponseParams(String assertionId, Assertion requestHeaderAssertion,
+	private ResponseParameters buildResponseParams(String assertionId, WsTrustValidationResult validationResult,
 			String addressFromRequest) {
-		var requestNameId = getNameID(requestHeaderAssertion);
-		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, null);
+		// depending on the request type, we use the address or the recipient/audience from the assertion
+		var recipientId = validationResult.recipientIssuerId();
+		var issuerId = recipientId != null ? recipientId : addressFromRequest;
+		var requestNameId = getNameID(validationResult.validatedAssertion());
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(issuerId, null);
 		var tokenLifetime = relyingPartySetupService.getTokenLifetime(relyingParty);
 		return ResponseParameters.builder()
 								 .conversationId(assertionId)
 								 .issuerInstant(Instant.now())
-								 .issuerId(addressFromRequest)
+								 .issuerId(issuerId)
 								 .federationServiceIssuerId(trustBrokerProperties.getIssuer())
 								 .nameId(requestNameId.getValue())
 								 .nameIdFormat(requestNameId.getFormat())
 								 .nameIdQualifier(requestNameId.getNameQualifier())
 								 .rpAuthnRequestId(null)
-								 .recipientId(null)
+								 .recipientId(recipientId)
 								 .authnStatementInstant(Instant.now())
 								 .subjectValiditySeconds(tokenLifetime)
 								 .audienceValiditySeconds(tokenLifetime)
@@ -221,7 +228,7 @@ public class WsTrustService {
 			return contextClasses;
 		}
 		var authnContext = requestHeaderAssertion.getAuthnStatements().get(0).getAuthnContext();
-		if(authnContext != null && authnContext.getAuthnContextClassRef() != null &&
+		if (authnContext != null && authnContext.getAuthnContextClassRef() != null &&
 				authnContext.getAuthnContextClassRef().getURI() != null) {
 			var authnContextClassRef = authnContext.getAuthnContextClassRef().getURI();
 			contextClasses = List.of(authnContextClassRef);
@@ -230,58 +237,69 @@ public class WsTrustService {
 	}
 
 	public RequestSecurityTokenResponseCollection processSecurityTokenRequest(
-			RequestSecurityToken requestSecurityToken, Assertion headerAssertion) {
-
-		// Validate the assertion on XTB level only per default. The wss4j layer doing the same is deprecated and can be dropped.
-		if (trustBrokerProperties.getSecurity().isValidateSecurityTokenRequestAssertion()) {
-			AssertionValidator.validateRstAssertion(headerAssertion, trustBrokerProperties, null, null);
-		}
-		else {
-			log.warn("trustbroker.config.security.validateSecurityTokenRequestAssertion=false, XTB validation disabled!!!");
-		}
+			RequestSecurityToken requestSecurityToken, Assertion headerAssertion, BinarySecurityToken securityToken) {
 
 		// trace
-		SamlTracer.logSamlObject(">>>>> Incoming RST", headerAssertion);
+		if (headerAssertion != null) {
+			SamlTracer.logSamlObject(">>>>> Incoming RST", headerAssertion);
+		}
 
 		// accept request
-		processSecurityToken(requestSecurityToken, headerAssertion.getID());
-		String addressFromRequest = getAddressFromRequest(requestSecurityToken);
+		var validationResult = processSecurityToken(requestSecurityToken, headerAssertion, securityToken);
+		var requestAssertion = validationResult.validatedAssertion();
+
+		// trace assertion extracted from body
+		if (headerAssertion != requestAssertion) {
+			SamlTracer.logSamlObject(">>>>> Incoming RST assertion", requestAssertion);
+		}
+
+		var addressFromRequest = getAddressFromRequest(requestSecurityToken);
 		log.debug("Incoming RST accepted -> send RSTR");
 
 		// audit
-		auditRstRequestFromClient(headerAssertion, addressFromRequest);
+		auditRstRequestFromClient(requestAssertion, addressFromRequest);
 
 		// processing
-		var cpResponse = createCpResponseDto(headerAssertion, addressFromRequest);
+		var cpResponse = createCpResponseDto(validationResult, addressFromRequest);
 
-		scriptService.processCpBeforeIdm(cpResponse, null, cpResponse.getIssuer(), "");
+		List<AttributeStatement> requestAttributeStatements = requestAssertion.getAttributeStatements();
+		List<Attribute> cpAttributes;
+		if (!validationResult.recomputeAttributes()) {
+			cpAttributes = createCpAttributes(cpResponse.getAttributes(), null, requestAttributeStatements, requestAssertion);
+		}
+		else {
+			scriptService.processCpBeforeIdm(cpResponse, null, cpResponse.getIssuer(), "");
 
-		// Filter by CP config AttributeSelection
-		filterCpAttributes(cpResponse);
+			// Filter by CP config AttributeSelection
+			filterCpAttributes(cpResponse);
 
-		scriptService.processRpBeforeIdm(cpResponse, null, addressFromRequest, "");
+			scriptService.processRpBeforeIdm(cpResponse, null, addressFromRequest, "");
 
-		getResponseQueryElements(headerAssertion, addressFromRequest, cpResponse);
+			getResponseQueryElements(requestAssertion, addressFromRequest, cpResponse);
 
-		// Filter by RP config AttributeSelection
-		List<Definition> rpConfigAttributesDefinition =
-				relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, null)
-										.getAttributesDefinitions();
-		filterCpAttributesByRpConfig(rpConfigAttributesDefinition, cpResponse);
+			// Filter by RP config AttributeSelection
+			List<Definition> rpConfigAttributesDefinition =
+					relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, null)
+											.getAttributesDefinitions();
+			filterCpAttributesByRpConfig(rpConfigAttributesDefinition, cpResponse);
 
-		relyingPartyService.setProperties(cpResponse);
+			relyingPartyService.setProperties(cpResponse);
 
-		scriptService.processRpAfterIdm(cpResponse, null, addressFromRequest, "");
+			scriptService.processCpAfterIdm(cpResponse, null, cpResponse.getIssuer(), "");
+			scriptService.processRpAfterIdm(cpResponse, null, addressFromRequest, "");
 
-		relyingPartyService.filterPropertiesSelection(cpResponse, addressFromRequest, "");
+			relyingPartyService.filterPropertiesSelection(cpResponse, addressFromRequest, "");
 
-		List<AttributeStatement> requestAttributeStatements = headerAssertion.getAttributeStatements();
-		List<Attribute> cpAttributes = createCpAttributes(cpResponse.getAttributes(), rpConfigAttributesDefinition,
-				requestAttributeStatements, headerAssertion);
-
+			cpAttributes = createCpAttributes(cpResponse.getAttributes(), rpConfigAttributesDefinition,
+					requestAttributeStatements, requestAssertion);
+		}
 		cpResponse.setAttributes(null);
 
-		return createResponse(cpAttributes, cpResponse, headerAssertion, addressFromRequest);
+		var response = createResponse(cpAttributes, cpResponse, validationResult, addressFromRequest);
+
+		scriptService.processWsTrustOnResponse(cpResponse, response, addressFromRequest, "");
+
+		return response;
 	}
 
 	private void filterCpAttributesByRpConfig(List<Definition> rpConfigAttributesDefinition, CpResponse cpResponse) {
@@ -295,40 +313,40 @@ public class WsTrustService {
 		ResponseFactory.filterCpAttributes(cpResponse, cpAttributeDefinitions, trustBrokerProperties.getSaml());
 	}
 
-	void processSecurityToken(RequestSecurityToken requestSecurityToken, String assertionId) {
+	WsTrustValidationResult processSecurityToken(RequestSecurityToken requestSecurityToken, Assertion headerAssertion,
+							  BinarySecurityToken securityToken) {
+		var assertionId = headerAssertion != null ? headerAssertion.getID() : null;
 		if (requestSecurityToken == null) {
-			throw new RequestDeniedException("Missing WS-Trust RequestSecurityToken in request");
-		}
-		var childrenObjects = requestSecurityToken.getUnknownXMLObjects();
-
-		var keyTypeQname = new QName(WSTrustConstants.WST_NS, KeyType.ELEMENT_LOCAL_NAME);
-		var keyType = (KeyType) findChildObjectByQname(childrenObjects, keyTypeQname);
-		isRequired(keyType, false, requestSecurityToken);
-
-		if (keyType == null) {
 			throw new RequestDeniedException(String.format(
-					"Missing KeyType in RSTR with assertionID='%s'", assertionId));
+					"Missing WS-Trust RequestSecurityToken RSTR with assertionID='%s'", assertionId));
 		}
-		if (!KeyType.BEARER.equals(keyType.getURI())) {
-			throw new RequestDeniedException(String.format(
-					"Wrong KeyType in RSTR with assertionID='%s' keyType='%s' expectedKeyType='%s'",
-					assertionId, keyType.getURI(), KeyType.BEARER));
-		}
+		var childObjects = requestSecurityToken.getUnknownXMLObjects();
 
 		var requestTypeQname = new QName(WSTrustConstants.WST_NS, RequestType.ELEMENT_LOCAL_NAME);
-		var requestType = (RequestType) findChildObjectByQname(childrenObjects, requestTypeQname);
+		RequestType requestType = OpenSamlUtil.findChildObjectByQname(childObjects, requestTypeQname);
 		if (requestType == null) {
 			throw new RequestDeniedException(String.format(
 					"Missing RequestType in RSTR with assertionID='%s'", assertionId));
 		}
-		if (!RequestType.ISSUE.equals(requestType.getURI())) {
+		var validator = selectValidator(requestType, assertionId);
+		var validationResult = validator.validate(requestSecurityToken, headerAssertion, securityToken);
+
+		var keyTypeQname = new QName(WSTrustConstants.WST_NS, KeyType.ELEMENT_LOCAL_NAME);
+		KeyType keyType = OpenSamlUtil.findChildObjectByQname(childObjects, keyTypeQname);
+		isRequired(keyType, false, requestSecurityToken);
+
+		if (keyType == null) {
 			throw new RequestDeniedException(String.format(
-					"Wrong RequestType in RSTR with assertionID='%s' requestType='%s' but expectedRequestType=%s",
-					assertionId, requestType.getURI(), RequestType.ISSUE));
+					"Missing KeyType in RSTR with assertionID='%s'", validationResult.validatedAssertion().getID()));
+		}
+		if (!KeyType.BEARER.equals(keyType.getURI())) {
+			throw new RequestDeniedException(String.format(
+					"Wrong KeyType in RSTR with assertionID='%s' keyType='%s' expectedKeyType='%s'",
+					validationResult.validatedAssertion().getID(), keyType.getURI(), KeyType.BEARER));
 		}
 
 		var tokenTypeQname = new QName(WSTrustConstants.WST_NS, TokenType.ELEMENT_LOCAL_NAME);
-		var tokenType = (TokenType) findChildObjectByQname(childrenObjects, tokenTypeQname);
+		TokenType tokenType = OpenSamlUtil.findChildObjectByQname(childObjects, tokenTypeQname);
 		isRequired(tokenType, false, requestSecurityToken);
 
 		if (tokenType == null) {
@@ -340,15 +358,18 @@ public class WsTrustService {
 					"Wrong TokenType in RSTR with assertionID='%s' tokenType='%s' but expectedTokenType='%s'",
 					assertionId, tokenType.getURI(), WSSConstants.WSS_SAML2_TOKEN_TYPE));
 		}
+		return validationResult;
 	}
 
-	private static XMLObject findChildObjectByQname(List<XMLObject> childrenObjects, QName qName) {
-		for (XMLObject xmlObject : childrenObjects) {
-			if (xmlObject.getElementQName().equals(qName)) {
-				return xmlObject;
+	private WsTrustValidator selectValidator(RequestType requestType, String assertionId) {
+		for (var validator : wsTrustValidators) {
+			if (validator.applies(requestType)) {
+				return validator;
 			}
 		}
-		return null;
+		throw new RequestDeniedException(String.format(
+				"Wrong RequestType in RSTR with assertionID='%s' requestType='%s' but no validator for this type available",
+				assertionId, requestType.getURI()));
 	}
 
 	private static void isRequired(XMLObject elementValue, boolean required, XMLObject requestSecurityToken) {
@@ -370,13 +391,23 @@ public class WsTrustService {
 		if (cpAttributes == null || cpAttributes.isEmpty()) {
 			log.debug("There are no CP attributes : {}", OpenSamlUtil.samlObjectToString(assertion));
 		}
+		else if (rpConfigAttributesDefinition == null) {
+			log.debug("Reproduce attributes from request assertion");
+			for (var cpAttribute : cpAttributes.entrySet()) {
+				var definition = cpAttribute.getKey();
+				var namespaceUri = definition.getNamespaceUri() != null ? definition.getNamespaceUri() : definition.getName();
+				var values = cpAttribute.getValue();
+				attributes.add(SamlFactory.createAttribute(namespaceUri, values,
+						getOriginalIssuerFromInput(requestAttributeStatements, namespaceUri)));
+			}
+		}
 		else {
 			for (Definition definition : rpConfigAttributesDefinition) {
 				var name = definition.getNamespaceUri();
 				var values = DefinitionUtil.findListByNameOrNamespace(name, null, cpAttributes);
 				if (!values.isEmpty()) {
 					attributes.add(SamlFactory.createAttribute(definition.getNamespaceUri(), values,
-							getOriginalIssuerFromInput(requestAttributeStatements, definition)));
+							getOriginalIssuerFromInput(requestAttributeStatements, definition.getNamespaceUri())));
 				}
 			}
 		}
@@ -386,13 +417,13 @@ public class WsTrustService {
 
 	// Request can have attributes with different OriginalIssuer
 	private static String getOriginalIssuerFromInput(List<AttributeStatement> requestAttributeStatements,
-			Definition definition) {
+			String definitionNamespaceUri) {
 		if (requestAttributeStatements != null && !requestAttributeStatements.isEmpty()
 				&& requestAttributeStatements.get(0) != null) {
 			var assertionAttributes = requestAttributeStatements.get(0).getAttributes();
 			for (Attribute attribute : assertionAttributes) {
 				var namespaceUri = attribute.getName();
-				if (namespaceUri != null && namespaceUri.equals(definition.getNamespaceUri())) {
+				if (namespaceUri != null && namespaceUri.equals(definitionNamespaceUri)) {
 					return SamlUtil.getOriginalIssuerFromAttribute(attribute);
 				}
 			}
@@ -400,17 +431,17 @@ public class WsTrustService {
 		return null;
 	}
 
-	private void getResponseQueryElements(Assertion headerAssertion, String addressFromRequest,
+	private void getResponseQueryElements(Assertion requestAssertion, String addressFromRequest,
 			CpResponse cpResponse) {
 
-		Subject subject = headerAssertion.getSubject();
+		Subject subject = requestAssertion.getSubject();
 		if (subject == null || subject.getNameID() == null || subject.getNameID().getValue() == null) {
 			throw new TechnicalException(String.format("Missing NameId from Assertion with id=%s for Address=%s",
-					headerAssertion.getID(), addressFromRequest));
+					requestAssertion.getID(), addressFromRequest));
 		}
 
-		if (headerAssertion.getIssuer() == null) {
-			throw new TechnicalException(String.format("Missing Issuer from Assertion with id=%s ", headerAssertion.getID()));
+		if (requestAssertion.getIssuer() == null) {
+			throw new TechnicalException(String.format("Missing Issuer from Assertion with id=%s ", requestAssertion.getID()));
 		}
 
 		var relyingPartyConfig = RelyingParty.builder().id(addressFromRequest).build();
@@ -424,26 +455,27 @@ public class WsTrustService {
 		}
 	}
 
-	private CpResponse createCpResponseDto(Assertion headerAssertion, String addressFromRequest) {
-		var issuer = headerAssertion.getIssuer();
+	private CpResponse createCpResponseDto(WsTrustValidationResult validationResult, String addressFromRequest) {
+		var requestAssertion = validationResult.validatedAssertion();
+		var issuer = requestAssertion.getIssuer();
 		if (issuer == null) {
-			throw new TechnicalException("Assertion issuer is null for Assertion with ID=" + headerAssertion.getID());
+			throw new TechnicalException("Assertion issuer is null for Assertion with ID=" + requestAssertion.getID());
 		}
-		var idpIssuer = issuer.getValue();
+		var cpIssuer = issuer.getValue();
 		Map<Definition, List<String>> cpAttributes = new HashMap<>();
 
 		// minimal processing context (WSTrust does not need state)
 		var cpResponse = new CpResponse();
-		if (headerAssertion.getSubject() != null && headerAssertion.getSubject().getNameID() != null) {
-			cpResponse.setAttribute(CoreAttributeName.NAME_ID.getNamespaceUri(), headerAssertion.getSubject().getNameID().getValue());
-			cpResponse.setNameId(headerAssertion.getSubject().getNameID().getValue());
+		if (requestAssertion.getSubject() != null && requestAssertion.getSubject().getNameID() != null) {
+			cpResponse.setAttribute(CoreAttributeName.NAME_ID.getNamespaceUri(), requestAssertion.getSubject().getNameID().getValue());
+			cpResponse.setNameId(requestAssertion.getSubject().getNameID().getValue());
 		}
-		cpResponse.setIssuer(idpIssuer);
+		cpResponse.setIssuer(cpIssuer);
 		cpResponse.setAttributes(cpAttributes);
 
 		// AttributeStatements
-		if (headerAssertion.getAttributeStatements() != null && !headerAssertion.getAttributeStatements().isEmpty()) {
-			var assertionAttributes = headerAssertion.getAttributeStatements().get(0).getAttributes();
+		if (requestAssertion.getAttributeStatements() != null && !requestAssertion.getAttributeStatements().isEmpty()) {
+			var assertionAttributes = requestAssertion.getAttributeStatements().get(0).getAttributes();
 			for (Attribute attribute : assertionAttributes) {
 				var namespaceUri = attribute.getName();
 				var values = SamlUtil.getValuesFromAttribute(attribute);
@@ -453,9 +485,11 @@ public class WsTrustService {
 			}
 		}
 
-		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(idpIssuer, "");
-		var homeName = relyingPartySetupService.getHomeName(claimsParty, List.of(headerAssertion), cpResponse);
-		cpResponse.setHomeName(homeName);
+		if (validationResult.recomputeAttributes()) {
+			var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpIssuer, "");
+			var homeName = relyingPartySetupService.getHomeName(claimsParty, List.of(requestAssertion), cpResponse);
+			cpResponse.setHomeName(homeName);
+		}
 
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, "");
 		var idmLookUp = relyingPartySetupService.getIdmLookUp(relyingParty);

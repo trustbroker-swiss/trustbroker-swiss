@@ -68,6 +68,33 @@ public class WsTrustConfig {
 	private String wsBasePath = ApiSupport.WSTRUST_API;
 
 	/**
+	 * Enable RENEW request.
+	 * <br/>
+	 * Default: false
+	 * @since 1.11.0
+	 */
+	@Builder.Default
+	private boolean renewEnabled = false;
+
+	/**
+	 * RENEW request requires a valid SSO session.
+	 * <br/>
+	 * Default: true
+	 * @since 1.11.0
+	 */
+	@Builder.Default
+	private boolean renewRequiresSsoSession = true;
+
+	/**
+	 * RENEW request requires a valid security token.
+	 * <br/>
+	 * Default: true
+	 * @since 1.11.0
+	 */
+	@Builder.Default
+	private boolean renewRequiresSecurityToken = true;
+
+	/**
 	 * SOAP version.
 	 * <br/>
 	 * Default: SOAP_1_X (alternatives SOAP_1_1, SOAP_1_2)

@@ -23,7 +23,6 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import java.io.IOException;
 import java.util.Iterator;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -59,10 +58,6 @@ class DualProtocolSaajSoapMessageFactoryTest {
 
 	@Autowired
 	private DualProtocolSaajSoapMessageFactory dualFactory;
-
-	@BeforeEach
-	void setUp() {
-	}
 
 	@Test
 	void testOutboundOnly() {

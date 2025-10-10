@@ -22,6 +22,7 @@ import static org.hamcrest.Matchers.sameInstance;
 
 import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -146,6 +147,21 @@ class CollectionUtilTest {
 		assertThat(CollectionUtil.getList(Optional.empty()), is(Collections.emptyList()));
 		List<String> value = List.of("value");
 		assertThat(CollectionUtil.getList(Optional.of(new AbstractMap.SimpleEntry<>("key", value))), is(value));
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void toLogString(Collection<String> values, String expected) {
+		assertThat(CollectionUtil.toLogString(values), is(expected));
+	}
+
+	static Object[][] toLogString() {
+		return new Object[][] {
+				{ null, "null" },
+				{ Collections.emptyList(), "[]" },
+				{ List.of("a", "bc", "d"), "[a, bc, d]" },
+				{ Set.of("a"), "[a]" }
+		};
 	}
 
 }

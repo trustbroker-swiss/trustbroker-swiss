@@ -146,6 +146,14 @@ public class OidcProperties {
 	private boolean deviceAuthorizationEnabled = true;
 
 	/**
+	 * Enable pushed authorization requests endpoints.
+	 * <br/>
+	 * Default: false (not yet verified)
+	 * @since 1.11.0
+	 */
+	private boolean pushedAuthorizationRequestsEndpointEnabled = false;
+
+	/**
 	 * Enable TLS client certificate bound access tokens.
 	 * <br/>
 	 * Default: true
@@ -155,73 +163,91 @@ public class OidcProperties {
 
 	/**
 	 * Enabled token endpoint authentication methods.
-	 * <br/>
+	 *
 	 * @since 1.10.0
 	 */
 	private List<String> tokenEndpointAuthMethods;
 
 	/**
 	 * Enabled introspection endpoint auth methods.
-	 * <br/>
+	 *
 	 * @since 1.10.0
 	 */
 	private List<String> introspectionEndpointAuthMethods;
 
 	/**
 	 * Enabled revocation endpoint auth methods.
-	 * <br/>
+	 *
 	 * @since 1.10.0
 	 */
 	private List<String> revocationEndpointAuthMethods;
 
 	/**
 	 * Enabled grant types.
-	 * <br/>
+	 *
 	 * @since 1.10.0
 	 */
 	private List<String> grantTypes;
 
 	/**
 	 * Enabled response types.
-	 * <br/>
+	 *
 	 * @since 1.10.0
 	 */
 	private List<String> responseTypes;
 
 	/**
 	 * Enabled subject types.
-	 * <br/>
+	 *
 	 * @since 1.10.0
 	 */
 	private List<String> subjectTypes;
 
 	/**
 	 * Enabled scopes.
-	 * <br/>
+	 *
 	 * @since 1.10.0
 	 */
 	private List<String> scopes;
 
 	/**
 	 * Enabled code challenge methods.
-	 * <br/>
+	 *
 	 * @since 1.10.0
 	 */
 	private List<String> codeChallengeMethods;
 
 	/**
 	 * Enabled ID token signing algorithms methods.
-	 * <br/>
+	 *
 	 * @since 1.10.0
 	 */
 	private List<String> idTokenSigningAlgorithms;
 
 	/**
+	 * Enabled Demonstrating Proof of Possession (DPoP) signing algorithm values.
+	 * <br/>
+	 * Default: none (not yet verified)
+	 * @since 1.11.0
+	 */
+	private List<String> dPoPSigningAlgValuesSupported;
+
+	/**
 	 * Use opaque refresh token.
 	 * <br/>
 	 * Default: false (i.e. JWT token)
+	 * @deprecated
 	 */
+	@Deprecated(since = "1.10.0", forRemoval = true)
 	private boolean opaqueRefreshTokenEnabled = false;
+
+	/**
+	 * Use refresh token for Public Clients
+	 * <br/>
+	 * Default: false
+	 * @since 1.11.0
+	 */
+	private boolean refreshTokenForPKCEEnabled = false;
 
 	/**
 	 * Global default QoA.

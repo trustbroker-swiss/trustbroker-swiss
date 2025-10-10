@@ -54,7 +54,7 @@ class LifecycleTest {
 	}
 
 	@Test
-	void ttlAndRemaining() throws InterruptedException {
+	void ttlAndRemaining() {
 		var lifetimeSecs = 300L;
 		var now = Instant.now();
 		var lifecycle = Lifecycle.builder()

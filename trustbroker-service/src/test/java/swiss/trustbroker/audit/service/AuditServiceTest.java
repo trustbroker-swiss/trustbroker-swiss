@@ -57,7 +57,7 @@ class AuditServiceTest {
 	private AuditService auditService;
 
 	@BeforeEach
-	public void setUp() {
+	void setUp() {
 		doReturn(false).when(mockFilter).isAdditionalAuditingEnabled();
 		doReturn(false).when(mockFilter).suppressAttribute(any(), any());
 		doReturn(false).when(mockFilter).suppressField(any(), any());

@@ -21,21 +21,24 @@ import org.opensaml.soap.wsaddressing.Action;
 import org.opensaml.soap.wsaddressing.MessageID;
 import org.opensaml.soap.wsaddressing.ReplyTo;
 import org.opensaml.soap.wsaddressing.To;
+import org.opensaml.soap.wssecurity.BinarySecurityToken;
 import org.opensaml.soap.wssecurity.Timestamp;
 
 @Data
 public class SoapMessageHeader {
 
-	Action action;
+	private Action action;
 
-	MessageID messageId;
+	private MessageID messageId;
 
-	ReplyTo replyTo;
+	private ReplyTo replyTo;
 
-	To to;
+	private To to;
 
-	Timestamp requestTimestamp;
+	private Timestamp requestTimestamp;
 
-	Assertion assertion;
+	private Assertion assertion;
+
+	private BinarySecurityToken securityToken;
 }
 

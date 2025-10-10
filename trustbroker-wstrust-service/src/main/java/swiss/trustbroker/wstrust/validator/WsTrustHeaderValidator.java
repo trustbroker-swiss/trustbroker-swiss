@@ -13,7 +13,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.wstrust.util;
+package swiss.trustbroker.wstrust.validator;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -24,9 +24,9 @@ import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
 
 @Slf4j
-public class WsHeaderValidator {
+public class WsTrustHeaderValidator {
 
-	private WsHeaderValidator() {
+	private WsTrustHeaderValidator() {
 	}
 
 	// Strict SOAP/SAML protocol checking from observation

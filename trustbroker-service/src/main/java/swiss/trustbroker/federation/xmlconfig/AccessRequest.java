@@ -63,7 +63,7 @@ public class AccessRequest implements Serializable {
 	}
 
 	public Map<String, String> getAllTriggerRoles() {
-		var config = authorizedApplications.getAuthorizedApplicationLists();
+		var config = authorizedApplications.getAuthorizedApplicationList();
 		if (config == null) {
 			return Collections.emptyMap();
 		}

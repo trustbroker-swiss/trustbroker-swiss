@@ -65,6 +65,18 @@ public class TomcatSession extends StandardSession implements Serializable {
 		return getAttributeInternal(name);
 	}
 
+	@Override
+	public boolean isValid() {
+		var validBefore = isValid;
+		var validNow = super.isValid();
+		if (validBefore != validNow) {
+			// if tomcat changes something in validity checking we might end up here and need to fix the multi session handling
+			log.error("Lost session={} during load validBefore={} validNow={} idleTime={} maxInactiveInterval={} expiring={}",
+					id, validBefore, validNow, getIdleTimeInternal(), maxInactiveInterval, expiring);
+		}
+		return validNow;
+	}
+
 	public Object getAttributeInternal(String name) {
 		var valid = isValid;
 		var ret = valid ? super.getAttribute(name) : null;

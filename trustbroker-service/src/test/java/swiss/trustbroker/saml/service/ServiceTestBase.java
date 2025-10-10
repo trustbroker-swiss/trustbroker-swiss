@@ -32,9 +32,9 @@ public class ServiceTestBase {
 
 	protected static final String PROFILE_ID2 = "123400";
 
-	private final static String IDENTITY_QUERY = "IDENTITY";
+	private static final String IDENTITY_QUERY = "IDENTITY";
 
-	private final static String TENANT_QUERY = "TENANT";
+	private static final String TENANT_QUERY = "TENANT";
 
 	protected IdmLookup givenIdmLookup() {
 		var clientExtId = "extId1";

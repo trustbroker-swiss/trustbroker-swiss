@@ -72,7 +72,7 @@ class ScriptServiceTest {
 	TrustBrokerProperties trustBrokerProperties;
 
 	@BeforeEach
-	public void setup() {
+	void setup() {
 		SamlInitializer.initSamlSubSystem();
 	}
 
@@ -85,7 +85,7 @@ class ScriptServiceTest {
 		int userSize1 = cpResponse.getUserDetails().size();
 		// process
 		scriptService.init(scriptName);
-		scriptService.processOnResponse(scriptName, cpResponse, null, null);
+		scriptService.processOnResponse(scriptName, cpResponse, null, null, null);
 		// process (removes one query)
 		int originSize2 = cpResponse.getAttributes().size();
 		int userSize2 = cpResponse.getUserDetails().size();
@@ -122,7 +122,7 @@ class ScriptServiceTest {
 								   .build();
 		// process
 		scriptService.init(scriptName);
-		scriptService.processOnResponse(scriptName, cpResponse, null, null);
+		scriptService.processOnResponse(scriptName, cpResponse, null, null, null);
 
 		// check (arbitrary which entry of the above wins)
 		assertEquals("value1", cpResponse.getAttribute("name1"));

@@ -117,11 +117,10 @@ class StateCacheServiceTest {
 		var spStateData = StateData.builder()
 				.id(spId)
 				.build();
-		var data = StateData.builder()
+		return StateData.builder()
 				.id(id)
 				.spStateData(spStateData)
 				.build();
-		return data;
 	}
 
 	@Test

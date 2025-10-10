@@ -17,7 +17,6 @@ package swiss.trustbroker.audit.service;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,6 +47,7 @@ import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.saml.util.SamlUtil;
 import swiss.trustbroker.common.tracing.TraceSupport;
+import swiss.trustbroker.common.util.CollectionUtil;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
@@ -156,7 +156,6 @@ public abstract class AuditMapper {
 
 	public AuditMapper mapFrom(HttpServletRequest request) {
 		if (request != null) {
-			setIfNotNull(builder::clientIP, WebUtil.getClientIp(request));
 			setIfNotNull(builder::clientType, WebSupport.getUserAgent(request));
 			setIfNotNull(builder::clientNetwork, WebSupport.getClientNetwork(request, trustBrokerProperties.getNetwork()));
 			setIfNotNull(builder::deviceId, WebSupport.getDeviceId(request));
@@ -168,7 +167,7 @@ public abstract class AuditMapper {
 			var httpReferer = extractReferrer(WebUtil.getHeader(HttpHeaders.REFERER, request));
 			setIfNotNull(builder::referrer, httpReferer);
 		}
-		return this;
+		return mapIps(WebUtil.getClientIp(request), WebUtil.getGatewayIp(request, true));
 	}
 
 	public AuditMapper mapFrom(StateData stateData) {
@@ -327,9 +326,16 @@ public abstract class AuditMapper {
 	}
 
 	public AuditMapper mapFromThreadContext() {
-		setIfNotNull(builder::clientIP, TraceSupport.getClientIp());
 		setIfNotNull(builder::traceId, TraceSupport.getCallerTraceParent());
 		setIfNotNull(builder::conversationId, TraceSupport.getOwnTraceParent());
+		return mapIps(TraceSupport.getClientIp(), TraceSupport.getGatewayIp());
+	}
+
+	private AuditMapper mapIps(String clientIp, String gatewayIp) {
+		setIfNotNull(builder::clientIP, clientIp);
+		if (clientIp == null || !clientIp.equals(gatewayIp)) {
+			setIfNotNull(builder::gatewayIP, gatewayIp);
+		}
 		return this;
 	}
 
@@ -455,7 +461,7 @@ public abstract class AuditMapper {
 	}
 
 	private static String listToString(List<String> ctxClasses) {
-		return CollectionUtils.isNotEmpty(ctxClasses) ? Arrays.toString(ctxClasses.toArray()) : null;
+		return CollectionUtils.isNotEmpty(ctxClasses) ? CollectionUtil.toLogString(ctxClasses) : null;
 	}
 
 	private static Object flattenList(Object value) {
