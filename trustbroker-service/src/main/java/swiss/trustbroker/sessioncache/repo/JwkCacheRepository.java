@@ -29,6 +29,6 @@ public interface JwkCacheRepository extends CrudRepository<JwkCacheEntity, Strin
 	List<JwkCacheEntity> findAllByOrderByExpirationTimestampAsc();
 
 	@Transactional
-	int deleteAllInBatchByDeleteTimestampBefore(Timestamp currentTimeStamp);
+	Integer deleteAllInBatchByDeleteTimestampBefore(Timestamp currentTimeStamp);
 
 }

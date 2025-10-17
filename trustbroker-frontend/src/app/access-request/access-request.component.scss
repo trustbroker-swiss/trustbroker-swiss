@@ -13,36 +13,36 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-@import "/src/styles/variables.scss";
-@import "/src/styles/spacing.scss";
+@use "src/styles/variables";
+@use "src/styles/spacing";
 
 .accessRequestContainer {
-  margin: 0 auto;
+	margin: 0 auto;
 
-  padding-top: 1rem;
+	padding-top: 1rem;
 
-  @media(max-width: $small-page-size) {
-    width: 80%;
-  }
+	.button-container {
+		display: flex;
+		flex-direction: row-reverse;
+		align-items: end;
+		justify-items: end;
+		gap: 1rem;
+	}
 
-  @media(min-width: $small-page-size) {
-    width: 80%;
-  }
-  @media(min-width: $medium-page-size) {
-    width: 80%;
-  }
-  @media(min-width: $large-page-size) {
-    width: 60%;
-  }
+	@media(max-width: variables.$small-page-size) {
+		.button-container {
+			flex-direction: column;
+			align-items: stretch;
+		}
+	}
+
+	@media(min-width: variables.$small-page-size) {
+		width: 80%;
+	}
+	@media(min-width: variables.$medium-page-size) {
+		width: 80%;
+	}
+	@media(min-width: variables.$large-page-size) {
+		width: 60%;
+	}
 }
-
-button {
-  position: relative;
-  float: right;
-}
-
-button:hover, button:focus {
-  background-color: $focus-background-color;
-  color: $focus-color;
-}
-

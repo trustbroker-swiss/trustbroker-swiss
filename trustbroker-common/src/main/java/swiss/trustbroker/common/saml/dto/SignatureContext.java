@@ -51,11 +51,18 @@ public class SignatureContext {
 				.build();
 	}
 
+	public static SignatureContext forSoapBinding() {
+		return SignatureContext.builder()
+				   .binding(SamlBinding.SOAP)
+				   .build();
+	}
+
 	public static SignatureContext forBinding(SamlBinding binding, String requestUrl) {
 		return switch (binding) {
 			case REDIRECT -> SignatureContext.forRedirectBinding(requestUrl);
 			case POST -> SignatureContext.forPostBinding();
 			case ARTIFACT -> SignatureContext.forArtifactBinding();
+			case SOAP -> SignatureContext.forSoapBinding();
 		};
 	}
 }

@@ -19,7 +19,6 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
 import jakarta.xml.bind.annotation.XmlAttribute;
@@ -135,30 +134,24 @@ public class Qoa implements Serializable {
 	@Builder.Default
 	private List<AcClass> classes = new ArrayList<>();
 
-	@JsonIgnore
 	public boolean enforce() {
 		return Boolean.TRUE.equals(enforce);
 	}
 
-	@JsonIgnore
 	public boolean mapOutbound() {
 		return Boolean.TRUE.equals(mapOutbound);
 	}
 
-	@JsonIgnore
 	public boolean useSingleQoaInResponse() {
 		return Boolean.TRUE.equals(singleQoaResponse);
 	}
 
-	@JsonIgnore
 	public boolean dropUnmappableQoas() {
 		return Boolean.TRUE.equals(dropUnmappable);
 	}
 
-	@JsonIgnore
 	public boolean replaceInboundQoas() {
 		return Boolean.TRUE.equals(replaceInbound);
 	}
-
 
 }

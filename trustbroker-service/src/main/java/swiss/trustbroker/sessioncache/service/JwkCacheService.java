@@ -98,6 +98,10 @@ public class JwkCacheService {
 
 			var total = repository.findAllByOrderByExpirationTimestampAsc();
 			var deleted = repository.deleteAllInBatchByDeleteTimestampBefore(Timestamp.from(start));
+			if (deleted == null) {
+				log.debug("DB deleteAllInBatchByDeleteTimestampBefore returned null");
+				deleted = 0;
+			}
 			var active = total.size() - deleted;
 			log.info("JWK rollover jwkNewKeysCount=1 jwkTotalKeysCount={} jwkExpiredKeysCount={}", total.size(), deleted);
 			// cron expression triggering too often compared too the key validity

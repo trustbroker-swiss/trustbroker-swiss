@@ -16,7 +16,6 @@
 package swiss.trustbroker.oidc;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -77,8 +76,7 @@ class OidcAuthnRequestContextCustomizer implements Consumer<OpenSaml5Authenticat
 		var clientId = OidcConfigurationUtil.getClientIdFromRequest(httpServletRequest);
 		Set<String> qoas = new HashSet<>();
 		if (acrValues != null) {
-			qoas.addAll(Arrays.stream(acrValues.split(" "))
-					.toList());
+			qoas.addAll(OidcUtil.convertAcrToContextClasses(acrValues));
 			log.debug("Got qoas={} from HTTP request {}={}", qoas, OidcUtil.OIDC_ACR_VALUES, StringUtil.clean(acrValues));
 		}
 		if (qoas.isEmpty()) {

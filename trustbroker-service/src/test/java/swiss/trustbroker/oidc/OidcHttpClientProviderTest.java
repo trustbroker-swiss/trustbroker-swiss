@@ -13,7 +13,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.oidc.client.service;
+package swiss.trustbroker.oidc;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;

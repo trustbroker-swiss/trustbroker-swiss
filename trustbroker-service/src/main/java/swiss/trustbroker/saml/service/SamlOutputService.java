@@ -73,11 +73,16 @@ public class SamlOutputService implements OutputService {
 		var context = OpenSamlUtil.createMessageContext(response, credential, endpoint, requestRelayState);
 		try {
 			// send
+			// request based conditions - checked first
 			if (encodingParameters.isUseArtifactBinding()) {
 				var arParams = createArtifactResolutionParameters();
 				OpenSamlUtil.initAndEncodeSamlArtifactMessage(httpServletResponse, context, response.getIssuer().getValue(),
 						velocityEngine, arParams, artifactCacheService.getArtifactMap());
 			}
+			else if (encodingParameters.isUseSoapBinding()) {
+				OpenSamlUtil.encodeSamlSoapMessage(httpServletResponse, context);
+			}
+			// config based conditions - checked after
 			else if (encodingParameters.isUseRedirectBinding()) {
 				if (response instanceof LogoutResponse) {
 					// LogoutResponse is using POST template for SLO notifications for REDIRECT binding

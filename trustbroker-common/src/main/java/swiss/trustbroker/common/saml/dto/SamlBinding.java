@@ -15,6 +15,7 @@
 
 package swiss.trustbroker.common.saml.dto;
 
+import java.util.Collections;
 import java.util.List;
 
 import lombok.AccessLevel;
@@ -28,19 +29,23 @@ import swiss.trustbroker.common.exception.RequestDeniedException;
 @Getter
 @Slf4j
 public enum SamlBinding {
-	POST(SAMLConstants.SAML2_POST_BINDING_URI),
-	REDIRECT(SAMLConstants.SAML2_REDIRECT_BINDING_URI),
-	ARTIFACT(SAMLConstants.SAML2_ARTIFACT_BINDING_URI);
+	REDIRECT(SAMLConstants.SAML2_REDIRECT_BINDING_URI, Collections.emptyList()),
+	// Response is never sent as REDIRECT (length restrictions)
+	POST(SAMLConstants.SAML2_POST_BINDING_URI, List.of(REDIRECT)),
+	// Response is never sent as REDIRECT (length restrictions), ARTIFACT is better than POST
+	ARTIFACT(SAMLConstants.SAML2_ARTIFACT_BINDING_URI, List.of(POST, REDIRECT)),
+	SOAP(SAMLConstants.SAML2_SOAP11_BINDING_URI, Collections.emptyList());
 
 	private final String bindingUri;
+
+	private final List<SamlBinding> compatibleRequestBindings;
 
 	public boolean compatibleWithRequestedBinding(SamlBinding requestedBinding) {
 		if (requestedBinding == null || this == requestedBinding) {
 			log.debug("Correct response binding={} for requested protocolBinding={}", this, requestedBinding);
 			return true;
 		}
-		if (requestedBinding == REDIRECT && this == POST) {
-			// Response is never sent as redirect (length restrictions)
+		if (compatibleRequestBindings.contains(requestedBinding)) {
 			log.info("Accepting responseBinding={} for requested protocolBinding={}", this, requestedBinding);
 			return true;
 		}

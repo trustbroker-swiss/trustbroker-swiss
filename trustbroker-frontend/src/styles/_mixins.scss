@@ -13,23 +13,13 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Component, EventEmitter, Input, Output } from '@angular/core';
-
-@Component({
-	selector: 'app-profile-selection-card',
-	templateUrl: './profile-selection-card.component.html',
-	styleUrls: ['./profile-selection-card.component.scss']
-})
-export class ProfileSelectionCardComponent {
-	showButton = false;
-	@Input() id: string;
-	@Input() profileName: string;
-	@Input() organization: string;
-	@Input() applications: string;
-
-	@Output() readonly cardClick = new EventEmitter<string>();
-
-	onClick(id: string) {
-		this.cardClick.emit(id);
-	}
+@mixin visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
 }

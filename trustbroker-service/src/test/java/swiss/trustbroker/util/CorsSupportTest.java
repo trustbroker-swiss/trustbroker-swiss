@@ -108,7 +108,7 @@ class CorsSupportTest {
 
 	@ParameterizedTest
 	@MethodSource
-	void testGetAllowedOrigin(List<String> allowedOrigins, String origin, String referer, String expected) {
+	void testGetAllowedOrigin(Set<String> allowedOrigins, String origin, String referer, String expected) {
 		var request = new MockHttpServletRequest();
 		if (origin != null) {
 			request.addHeader(HttpHeaders.ORIGIN, origin);
@@ -123,14 +123,14 @@ class CorsSupportTest {
 	static Object[][] testGetAllowedOrigin() {
 		return new Object[][] {
 				{ null, null, null, null },
-				{ Collections.emptyList(), URL, null, null },
-				{ List.of("*"), URL, null, URL },
-				{ List.of("http://localhost:8080", "*"), URL, null, URL },
-				{ List.of(URL), URL, null, URL },
-				{ List.of(URL + "/"), URL, null, URL },
-				{ List.of(URL), null, URL + "/", URL },
-				{ List.of(URL + "/"), null, URL + "/", URL }, // allowed match by referrer
-				{ List.of("https://localhost", URL, "http://localhost:8443/logout"), URL, null, URL }
+				{ Collections.emptySet(), URL, null, null },
+				{ Set.of("*"), URL, null, URL },
+				{ Set.of("http://localhost:8080", "*"), URL, null, URL },
+				{ Set.of(URL), URL, null, URL },
+				{ Set.of(URL + "/"), URL, null, URL },
+				{ Set.of(URL), null, URL + "/", URL },
+				{ Set.of(URL + "/"), null, URL + "/", URL }, // allowed match by referrer
+				{ Set.of("https://localhost", URL, "http://localhost:8443/logout"), URL, null, URL }
 		};
 	}
 

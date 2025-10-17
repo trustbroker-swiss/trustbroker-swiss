@@ -174,7 +174,7 @@ public class WebSupport {
 			sb.append("' ");
 		}
 		// referrer
-		var referrer = WebUtil.getHeader(HttpHeaders.REFERER, request);
+		var referrer = WebUtil.getReferer(request);
 		if (referrer != null) {
 			sb.append("referrer='");
 			sb.append(referrer);
@@ -336,5 +336,22 @@ public class WebSupport {
 				properties.getSamlConsumerUrl(),
 				properties.getOidc() != null ? properties.getOidc().getPerimeterUrl() : null,
 				properties.getOidc() != null ? properties.getOidc().getSessionIFrameEndpoint() : null);
+	}
+
+	// returns true if referer is the OIDC perimeter URL
+	public static boolean isInternalOidcRequest(TrustBrokerProperties properties, String referer) {
+		var oidcProperties = properties.getOidc();
+		if (oidcProperties == null) {
+			return false;
+		}
+		var oidcPerimeterUrl = oidcProperties.getPerimeterUrl();
+		if (oidcPerimeterUrl == null) {
+			return false;
+		}
+		var validReferer = WebUtil.getValidRefererWithoutPath(referer);
+		if (validReferer == null) {
+			return false;
+		}
+		return oidcPerimeterUrl.startsWith(validReferer);
 	}
 }

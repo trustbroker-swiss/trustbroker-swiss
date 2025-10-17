@@ -15,6 +15,7 @@
 
 package swiss.trustbroker.federation.xmlconfig;
 
+import java.util.Collections;
 import java.util.List;
 import javax.annotation.Nonnull;
 
@@ -87,9 +88,12 @@ public class ClaimsParty extends CounterParty {
 	/**
 	 * Enable IDM provisioning based on CP response.
 	 * <br/>
+	 * Consider using the newer <code>Provisioning.enabled</code> instead.
+	 * <br/>
 	 * Default: FALSE
 	 *
 	 * @since 1.9.0
+	 * @see Provisioning
 	 */
 	@XmlAttribute(name = "provision")
 	private ProvisioningMode provision;
@@ -118,6 +122,13 @@ public class ClaimsParty extends CounterParty {
 	 */
 	@XmlElement(name = "HomeName")
 	private HomeName homeName;
+
+	/**
+	 * The Account Source consumed by the <code>IdmProvisioningService<code>
+	 * @since 1.12.0
+	 */
+	@XmlElement(name = "AccountSource")
+	private AccountSource accountSource;
 
 	/**
 	 * The original issuer is by default consumed as is and not changed in the CP handling of XTB.
@@ -191,6 +202,14 @@ public class ClaimsParty extends CounterParty {
 	private Qoa qoa;
 
 	/**
+	 * Provisioning configurations for this CP.
+	 *
+	 * @since 1.12.0
+	 */
+	@XmlElement(name = "Provisioning")
+	private Provisioning provisioning;
+
+	/**
 	 * The filtering is done when the SAML response is received from the CP. This element therefore declares, which original
 	 * issuer attributes are acceptable for propagation to RPs.
 	 *
@@ -224,7 +243,7 @@ public class ClaimsParty extends CounterParty {
 	public List<Credential> getCpDecryptionCredentials() { return cpDecryptionCredentials; }
 
 	// NP safe accessor
-	public boolean isDisableACUrl() { return Boolean.TRUE.equals(disableACUrl); }
+	public boolean acUrlDisabled() { return Boolean.TRUE.equals(disableACUrl); }
 
 	public String getOriginalIssuer() {
 		return originalIssuer != null ? originalIssuer : id;
@@ -256,8 +275,14 @@ public class ClaimsParty extends CounterParty {
 		return "CP";
 	}
 
-	public boolean isProvisioningEnabled() {
-		return provision != null && provision.isEnabled();
+	public ProvisioningMode getProvision() {
+		if (provision != null) {
+			return provision;
+		}
+		if (provisioning != null) {
+			return provisioning.getProvisioning();
+		}
+		return ProvisioningMode.FALSE;
 	}
 
 	/**
@@ -285,6 +310,10 @@ public class ClaimsParty extends CounterParty {
 					id, oidcClientCount));
 		}
 		return oidc.getClients().get(0);
+	}
+
+	public List<OidcClient> getOidcClients() {
+		return oidc != null && oidc.getClients() != null ? oidc.getClients() : Collections.emptyList();
 	}
 
 }

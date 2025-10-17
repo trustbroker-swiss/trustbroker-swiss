@@ -13,8 +13,8 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-@import "/src/styles/variables";
-@import "/src/styles/spacing";
+@use "src/styles/variables";
+@use "src/styles/spacing";
 
 app-help-panel {
 
@@ -42,11 +42,11 @@ app-help-panel {
   }
 
   .mat-expansion-panel {
-    border-radius: 0px;
+    border-radius: 0;
   }
 
   .mat-expansion-panel-header:focus {
-	background: $focus-dropdown-background-color !important;
+	background: variables.$focus-dropdown-background-color !important;
   }
 
   .app-helper-sidebar-close-button {
@@ -58,7 +58,7 @@ app-help-panel {
 	  }
 
 	  &:hover, &:focus {
-		  background-color: $focus-background-color;
+		  background-color: variables.$focus-background-color;
 
 		  .ob-icon-wrapper {
 			  filter: none;

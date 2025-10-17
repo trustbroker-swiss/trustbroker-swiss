@@ -207,6 +207,22 @@ class PropertyUtilTest {
 	}
 
 	@Test
+	void copyMissingAttributesSameOrNull() {
+		var base = new TestDto();
+		var baseStr = "baseStr";
+		base.setRwString(baseStr);
+
+		assertDoesNotThrow(() -> PropertyUtil.copyMissingAttributes(null, base));
+		assertDoesNotThrow(() -> PropertyUtil.copyMissingAttributes(base, null));
+		assertDoesNotThrow(() -> PropertyUtil.copyMissingAttributes(base, base));
+		assertDoesNotThrow(() -> PropertyUtil.copyAttributeIfMissing(TestDto::setRwString, TestDto::getRwString, null, base));
+		assertDoesNotThrow(() -> PropertyUtil.copyAttributeIfMissing(TestDto::setRwString, TestDto::getRwString, base, null));
+		assertDoesNotThrow(() -> PropertyUtil.copyAttributeIfMissing(TestDto::setRwString, TestDto::getRwString, base, base));
+
+		assertThat(base.getRwString(), is(baseStr));
+	}
+
+	@Test
 	void copyMissingAttributesFiltered() {
 		var baseStr = "baseStr";
 		var baseDouble = 2.0;

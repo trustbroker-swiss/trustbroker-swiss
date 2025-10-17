@@ -48,6 +48,6 @@ public interface StateCacheRepository extends CrudRepository<StateEntity, String
 	@Transactional
 	@Modifying
 	@Query("DELETE FROM StateEntity se WHERE se.expirationTimestamp < :currentTimeStamp")
-	int deleteAllInBatchByExpirationTimestampBefore(@Param("currentTimeStamp") Timestamp currentTimeStamp);
+	Integer deleteAllInBatchByExpirationTimestampBefore(@Param("currentTimeStamp") Timestamp currentTimeStamp);
 
 }

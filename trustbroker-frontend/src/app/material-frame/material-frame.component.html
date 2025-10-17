@@ -19,8 +19,8 @@
 		}
 	</mat-sidenav>
 	<mat-sidenav-content>
-		<div class="portal-frame {{ theme.name }}" aria-hidden="false">
-			<ob-master-layout class="portal-master-layout" masterLayout>
+		<div class="{{ theme.name }}" aria-hidden="false">
+			<ob-master-layout class="portal-master-layout">
 				@if (theme.hasHeader) {
 					<ng-container obHeader>
 						<app-mat-header
@@ -35,7 +35,7 @@
 				}
 				@if (theme.hasFooter) {
 					<ng-container obFooter>
-						<app-mat-footer class="d-block w-100" [detailedFooter]="detailedFooter"></app-mat-footer>
+						<app-mat-footer [detailedFooter]="detailedFooter"></app-mat-footer>
 					</ng-container>
 				}
 			</ob-master-layout>

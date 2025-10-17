@@ -13,12 +13,13 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.oidc.client.service;
+package swiss.trustbroker.oidc.cache.service;
 
 import java.io.IOException;
 import java.net.URI;
 import java.text.ParseException;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -46,8 +47,10 @@ import swiss.trustbroker.federation.xmlconfig.Certificates;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClientAuthenticationMethod;
 import swiss.trustbroker.federation.xmlconfig.ClientAuthenticationMethods;
+import swiss.trustbroker.federation.xmlconfig.CounterParty;
 import swiss.trustbroker.federation.xmlconfig.OidcClaimsSource;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
+import swiss.trustbroker.oidc.OidcHttpClientProvider;
 import swiss.trustbroker.oidc.client.dto.OpenIdProviderConfiguration;
 
 /**
@@ -134,12 +137,16 @@ public class OidcMetadataCacheService {
 		return getCachedConfig(claimsParty, oidcClient).getConfig();
 	}
 
-	private CacheEntry getCachedConfig(ClaimsParty claimsParty, OidcClient oidcClient) {
+	public OpenIdProviderConfiguration getOidcConfiguration(CounterParty counterParty, OidcClient oidcClient) {
+		return getCachedConfig(counterParty, oidcClient).getConfig();
+	}
+
+	private CacheEntry getCachedConfig(CounterParty claimsParty, OidcClient oidcClient) {
 		return oidcConfigurations.computeIfAbsent(oidcClient.getId(),
 				clientId -> new CacheEntry(fetchProviderMetadata(oidcClient, claimsParty.getCertificates())));
 	}
 
-	private Optional<CacheEntry> refreshCachedConfig(ClaimsParty claimsParty, OidcClient oidcClient) {
+	private Optional<CacheEntry> refreshCachedConfig(CounterParty claimsParty, OidcClient oidcClient) {
 		var cacheEntry = oidcConfigurations.get(oidcClient.getId());
 		if (cacheEntry != null) {
 			long minimumCacheTimeSecs = trustBrokerProperties.getOidc().getMinimumMetadataCacheTimeSecs();
@@ -165,17 +172,46 @@ public class OidcMetadataCacheService {
 	public void refreshConfigurations() {
 		var loadCount = 0;
 		var start = System.currentTimeMillis();
-		var claimsParties = relyingPartyDefinitions
-				.getClaimsProviderSetup()
-				.getClaimsParties()
-				.stream()
-				.filter(ClaimsParty::useOidc)
-				.toList();
-		log.info("OIDC client configuration update for claimsPartyCount={}", claimsParties.size());
-		for (var claimsParty : claimsParties) {
+
+		Map<OidcClient, CounterParty> clientCertMap = new HashMap<>();
+		for (var rp : relyingPartyDefinitions.getClaimsProviderSetup().getClaimsParties()) {
+			getCounterPartyMap(rp, clientCertMap, true);
+		}
+		for (var rp : relyingPartyDefinitions.getRelyingPartySetup().getRelyingParties()) {
+			getCounterPartyMap(rp, clientCertMap, false);
+		}
+
+		loadCount = loadConfigForCounterParty(clientCertMap, loadCount);
+
+		var dTms = System.currentTimeMillis() - start;
+		var failCount = clientCertMap.size() - loadCount;
+		log.info("OIDC client configuration update done for claimsPartyCount={} in dtMs={} with failCount={}",
+				clientCertMap.size(), dTms, failCount);
+	}
+
+	void getCounterPartyMap(CounterParty counterParty, Map<OidcClient, CounterParty> clientCertMap, boolean requiresEndpoint) {
+		if (counterParty.useOidc() && !counterParty.getOidcClients().isEmpty()) {
+			for (var client : counterParty.getOidcClients()) {
+				if (client.getProtocolEndpoints() != null) {
+					clientCertMap.put(client, counterParty);
+				} else if (requiresEndpoint) {
+					log.error("OIDC client={} ProtocolEndpoint is missing", client.getId());
+				}
+			}
+		}
+	}
+
+	private int loadConfigForCounterParty(Map<OidcClient, CounterParty> counterParties, int loadCount) {
+		log.info("OIDC client configuration update for counterPartyCount={}", counterParties.size());
+		for (var entry : counterParties.entrySet()) {
+			var counterParty = entry.getValue();
 			try {
-				var oidcClient = claimsParty.getSingleOidcClient();
-				var cacheEntry = refreshCachedConfig(claimsParty, oidcClient);
+				var oidcClient = entry.getKey();
+				if (oidcClient.getProtocolEndpoints() == null) {
+					log.debug("OIDC client={} protocol endpoint is null", oidcClient.getId());
+					continue;
+				}
+				var cacheEntry = refreshCachedConfig(counterParty, oidcClient);
 				if (cacheEntry.isPresent()) {
 					++loadCount;
 				}
@@ -183,15 +219,11 @@ public class OidcMetadataCacheService {
 			}
 			catch (RuntimeException ex) {
 				// publish issues in status API:
-				claimsParty.initializedValidationStatus().addException(ex);
+				counterParty.initializedValidationStatus().addException(ex);
 				globalExceptionHandler.logException(ex);
 			}
 		}
-
-		var dTms = System.currentTimeMillis() - start;
-		var failCount = claimsParties.size() - loadCount;
-		log.info("OIDC client configuration update done for claimsPartyCount={} in dtMs={} with failCount={}",
-				claimsParties.size(), dTms, failCount);
+		return loadCount;
 	}
 
 	// cache miss or missing JWK, trigger a refresh

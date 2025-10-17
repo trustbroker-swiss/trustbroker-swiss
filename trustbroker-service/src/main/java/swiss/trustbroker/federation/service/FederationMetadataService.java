@@ -181,7 +181,9 @@ public class FederationMetadataService {
 			idpDescriptor.getNameIDFormats()
 						 .add(getNameIdFormat(nameIdFormat));
 		}
-		allSigners.forEach(cred -> idpDescriptor.getKeyDescriptors().add(getKeyDescriptor(cred, UsageType.SIGNING)));
+		if (allSigners != null) {
+			allSigners.forEach(cred -> idpDescriptor.getKeyDescriptors().add(getKeyDescriptor(cred, UsageType.SIGNING)));
+		}
 		// Encryption certs towards RPs belong to IDP descriptor (matching the role of XTB towards RPs)
 		return idpDescriptor;
 	}
@@ -274,7 +276,7 @@ public class FederationMetadataService {
 		AuthnQueryService authnQueryService = OpenSamlUtil.buildSamlObject(AuthnQueryService.class);
 		authnQueryService.setBinding(SAMLConstants.SAML2_SOAP11_BINDING_URI);
 		String perimeterUrl = trustBrokerProperties.getPerimeterUrl();
-		authnQueryService.setLocation(perimeterUrl + ApiSupport.ADFS_SERVICES_PATH);
+		authnQueryService.setLocation(perimeterUrl + ApiSupport.ADFS_WS_TRUST_COMPAT_URL);
 		return authnQueryService;
 	}
 

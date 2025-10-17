@@ -26,6 +26,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
+import org.apache.commons.collections.CollectionUtils;
 import swiss.trustbroker.common.saml.dto.SamlBinding;
 import swiss.trustbroker.common.saml.dto.SignatureParameters;
 import swiss.trustbroker.mapping.dto.QoaConfig;
@@ -106,6 +107,28 @@ public abstract class CounterParty implements PathReference, Serializable {
 	 */
 	public abstract Qoa getQoa();
 
+	/**
+	 * @return Certificate
+	 *
+	 * @since 1.12.0
+	 */
+	public abstract Certificates getCertificates();
+
+	/**
+	 * @return true if OIDC is to be used towards the Cp/Rp
+	 *
+	 * @since 1.12.0
+	 */
+	public abstract boolean useOidc();
+
+	/**
+	 * @return RP/CP Oidc clients
+	 *
+	 * @since 1.12.0
+	 */
+	public abstract List<OidcClient> getOidcClients();
+
+
 	// XmlTransient not allowed on transient fields (the Javadoc does not say transient is considered XmlTransient):
 
 	@XmlTransient
@@ -154,6 +177,11 @@ public abstract class CounterParty implements PathReference, Serializable {
 		return saml != null ? saml.getArtifactBinding() : null;
 	}
 
+	public List<SamlBinding> getSupportedSamlBindings() {
+		var saml = getSaml();
+		return saml != null ? saml.getSupportedBindings() : null;
+	}
+
 	public Encryption getEncryption() {
 		var saml = getSaml();
 		return saml != null ? saml.getEncryption() : null;
@@ -172,10 +200,20 @@ public abstract class CounterParty implements PathReference, Serializable {
 	}
 
 	public boolean isValidInboundBinding(SamlBinding samlBinding) {
-		if (getSamlArtifactBinding() == null) {
+		var supportedSamlBindings = getSupportedSamlBindings();
+		if (CollectionUtils.isNotEmpty(supportedSamlBindings) && !supportedSamlBindings.contains(samlBinding)) {
+			return false;
+		}
+		var samlArtifactBinding = getSamlArtifactBinding();
+		if (samlArtifactBinding == null) {
 			return true;
 		}
-		return getSamlArtifactBinding().validInboundBinding(samlBinding);
+		return samlArtifactBinding.validInboundBinding(samlBinding);
+	}
+
+	public boolean forwardRpProtocolBinding() {
+		var saml = getSaml();
+		return saml == null || Boolean.TRUE.equals(saml.getForwardRpProtocolBinding());
 	}
 
 	public QoaConfig getQoaConfig() {
@@ -214,6 +252,11 @@ public abstract class CounterParty implements PathReference, Serializable {
 
 	public boolean doSignArtifactResolve(boolean defaultValue) {
 		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getDoSignArtifactResolve,
+				() -> defaultValue);
+	}
+
+	public boolean validateHttpHeaders(boolean defaultValue) {
+		return PropertyUtil.evaluatePropery(getSecurityPolicies(), SecurityPolicies::getValidateHttpHeaders,
 				() -> defaultValue);
 	}
 

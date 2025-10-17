@@ -13,7 +13,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.oidc.client.service;
+package swiss.trustbroker.oidc;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -35,7 +35,7 @@ import swiss.trustbroker.util.CertificateUtil;
  */
 @Service
 @AllArgsConstructor
-class OidcHttpClientProvider {
+public class OidcHttpClientProvider {
 
 	private final TrustBrokerProperties trustBrokerProperties;
 

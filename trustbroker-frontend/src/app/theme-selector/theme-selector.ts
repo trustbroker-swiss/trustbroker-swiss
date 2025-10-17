@@ -21,7 +21,8 @@ import { ThemeService } from '../services/theme-service';
 @Component({
 	selector: 'app-theme-selector',
 	templateUrl: './theme-selector.html',
-	styleUrls: ['./theme-selector.scss']
+	styleUrls: ['./theme-selector.scss'],
+	standalone: false
 })
 export class ThemeSelectorComponent {
 	@Input()

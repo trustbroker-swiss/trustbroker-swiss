@@ -70,6 +70,7 @@ import swiss.trustbroker.common.util.UrlAcceptor;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
+import swiss.trustbroker.config.dto.SsoSessionIdPolicy;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.FingerprintCheck;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
@@ -430,9 +431,7 @@ public class SsoService {
 		}
 		ensureAuthnReqOrImplicitSsoState(stateDataByAuthnReq);
 		var requestedContextClasses = stateDataByAuthnReq.getRpContextClasses();
-		var signedAuthnRequest = Boolean.TRUE.equals(stateDataByAuthnReq.getSignedAuthnRequest());
-		return validAuthnRequestForSso(claimsParty, relyingParty, ssoStateData, stateDataByAuthnReq, signedAuthnRequest,
-				requestedContextClasses);
+		return validAuthnRequestForSso(claimsParty, relyingParty, ssoStateData, stateDataByAuthnReq, requestedContextClasses);
 	}
 
 	private boolean validStateForSso(StateData ssoStateData) {
@@ -472,8 +471,8 @@ public class SsoService {
 	}
 
 	private SsoSessionOperation validAuthnRequestForSso(ClaimsParty claimsParty, RelyingParty relyingParty, StateData ssoStateData,
-			StateData stateDataByAuthnReq, boolean authnRequestSigned, List<String> requestedContextClasses) {
-		if (!authnRequestSigned) {
+			StateData stateDataByAuthnReq, List<String> requestedContextClasses) {
+		if (!stateDataByAuthnReq.isAuthnRequestSigned()) {
 			var requireSignedAuthnRequest = relyingParty.requireSignedAuthnRequestForSsoJoin();
 			log.info("AuthnRequest sessionId={} is not signed - denySsoJoin={}",
 					stateDataByAuthnReq.getId(), requireSignedAuthnRequest);
@@ -538,7 +537,7 @@ public class SsoService {
 		}
 		// repeat the checks done before device info (for the single CP/no HRD case and as a defense against attacks)
 		var ssoOp = validAuthnRequestForSso(claimsParty, relyingParty, ssoStateData, stateDataByAuthnReq,
-				ssoStateData.getSignedAuthnRequest(), ssoStateData.getRpContextClasses());
+				ssoStateData.getRpContextClasses());
 		if (ssoOp != SsoSessionOperation.JOIN) {
 			return false;
 		}
@@ -756,7 +755,9 @@ public class SsoService {
 
 	private SsoSessionOperation qoaLevelSufficient(ClaimsParty claimsParty, RelyingParty relyingParty,
 			List<String> requestedContextClasses, StateData stateData) {
-		var authnQoas = extractValidQoasFromContextClasses(requestedContextClasses, relyingParty.getQoaConfig());
+		var spStateData = stateData != null ? stateData.getSpStateData() : null;
+		var qoaConfiguration = qoaMappingService.getQoaConfiguration(spStateData, relyingParty);
+		var authnQoas = extractValidQoasFromContextClasses(requestedContextClasses, qoaConfiguration);
 
 		if (authnQoas.isEmpty()) {
 			log.info("No QOA requested in Authn context classes on ssoSessionId={} - can join SSO session", stateData.getId());
@@ -1212,17 +1213,20 @@ public class SsoService {
 				if (relyingParty.getId().equals(sessionRpId)) {
 					log.debug("rpIssuerId={} matching sessionId={} RP issuer ID", sessionRpId, stateData.getId());
 					validStates.put(key, stateData);
-				} else if (isRpSessionParticipant(stateData, relyingParty)) {
+				}
+				else if (isRpSessionParticipant(stateData, relyingParty)) {
 					log.debug("rpIssuerId={} is an SSO participant of sessionId={}", sessionRpId, stateData.getId());
 					validStates.put(key, stateData);
-				} else if (relyingParty.getCpMappingForAlias(sessionRpId).isPresent()) {
+				}
+				else if (relyingParty.getCpMappingForAlias(sessionRpId).isPresent()) {
 					log.debug("rpIssuerId={} is an alias for sessionId={} RP issuer ID", sessionRpId, stateData.getId());
 					validStates.put(key, stateData);
 				}
 			}
 			if (validStates.size() > 1) {
 				throw new RequestDeniedException(
-						String.format("Ambiguous session for rpIssuerId=%s in session=%s", relyingParty.getId(), sessionRpPair));
+						String.format("Ambiguous session found validStates=%s for rpIssuerId=%s in sessions=%s",
+								validStates.size(), relyingParty.getId(), sessionRpPair));
 			}
 			return validStates.isEmpty() ? Optional.empty() : Optional.of(validStates.values().iterator().next());
 		};
@@ -1358,6 +1362,13 @@ public class SsoService {
 			// identify the cookie(s) that address a state
 			var cookieParams = SsoService.SsoCookieNameParams.of(relyingParty.getSso().getGroupName());
 			var result = findValidStateAndCookiesToExpire(cookieParams, cookies, relyingParty);
+			if (result.isEmpty()) {
+				// no session by cookies, check session indexes
+				var session = findValidSsoSessionForSessionIndexes(sessionIndexes);
+				if (session.isPresent()) {
+					result = Optional.of(StateWithCookies.of(session.get(), Collections.emptyList()));
+				}
+			}
 			if (result.isPresent()) {
 				var stateWithCookies = result.get();
 				var stateData = stateWithCookies.getStateData();
@@ -1795,4 +1806,29 @@ public class SsoService {
 				.findFirst();
 	}
 
+	public Optional<StateData> findValidSsoSessionForSessionIndexes(List<String> sessionIndexes) {
+		List<StateData> sessions = sessionIndexes.stream()
+				.filter(SsoSessionIdPolicy::isSsoSession)
+				.map(findSsoSession())
+				.filter(Optional::isPresent)
+				.map(Optional::get)
+				.filter(StateData::isSsoEstablished)
+				.toList();
+		if (sessions.isEmpty()) {
+			log.debug("no valid SSO session with sessionIndexes={}", sessionIndexes);
+			return Optional.empty();
+		}
+		// usually there is just a single AuthnStatement and this could not happen
+		if (sessions.size() > 1 && log.isErrorEnabled()) {
+			List<String> foundSessionIds = sessions.stream().map(StateData::getSsoSessionId).toList();
+			log.error("Multiple valid SSO session with sessionIndexes={} foundSessionIds={}", sessionIndexes, foundSessionIds);
+		}
+		var stateData = sessions.get(0);
+		log.info("Found valid stateId={} ssoSessionId={}", stateData.getId(), stateData.getSsoSessionId());
+		return Optional.of(stateData);
+	}
+
+	private Function<String, Optional<StateData>> findSsoSession() {
+		return ssoSessionId -> stateCacheService.findBySsoSessionId(ssoSessionId, SsoService.class.getName());
+	}
 }

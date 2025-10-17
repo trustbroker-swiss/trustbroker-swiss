@@ -37,6 +37,7 @@ import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.mapping.service.ClaimsMapperService;
+import swiss.trustbroker.oidc.OidcMockTestData;
 
 @SpringBootTest(classes = JwtClaimsService.class)
 class JwtClaimsServiceTest {

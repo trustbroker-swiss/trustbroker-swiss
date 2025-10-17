@@ -37,6 +37,7 @@ import org.apache.commons.collections.ListUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.opensaml.security.credential.Credential;
 import swiss.trustbroker.api.relyingparty.dto.RelyingPartyConfig;
+import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.dto.SignatureParameters;
 
 /**
@@ -88,6 +89,15 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 	 */
 	@XmlElement(name = "ClientName")
 	private String clientName;
+
+	/**
+	 * If the SAML ProviderName or OIDC client_id are wrong or missing, a relying party can be configured with a global
+	 * ApplicationName used for AccessRequest ProfileSelection or AnnouncementService to select the matching data items.
+	 *
+	 * 	@since 1.12.0
+	 */
+	@XmlElement(name = "ApplicationName")
+	private String applicationName;
 
 	/**
 	 * We introduce the billing field, so we can start make some trials adding it to the config. We might need to move it
@@ -243,6 +253,8 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 
 	private transient Credential rpEncryptionTrustCredential;
 
+	private transient List<Credential> rpDecryptionCredentials;
+
 	// Lombok would generate these, but schemagen compilation complains about not implementing RelyingPartyConfig / CounterParty
 
 	@Override
@@ -284,6 +296,23 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 	@Override
 	public Qoa getQoa() {
 		return qoa;
+	}
+
+	@Override
+	public Certificates getCertificates() {
+		return certificates;
+	}
+
+	public OidcClient getSingleOidcClient() {
+		if (oidc == null) {
+			throw new TechnicalException(String.format("Invalid RelyingParty id=%s (missing OidcClient)", id));
+		}
+		var oidcClientCount = oidc.getClients().size();
+		if (oidcClientCount != 1) {
+			throw new TechnicalException(String.format("Invalid RelyingParty id=%s expected single OidcClient, but count=%s",
+					id, oidcClientCount));
+		}
+		return oidc.getClients().get(0);
 	}
 
 	// XmlTransient not allowed on transient fields (the Javadoc does not say transient is considered XmlTransient):
@@ -402,5 +431,12 @@ public class RelyingParty extends CounterParty implements RelyingPartyConfig {
 	@Override
 	public String getShortType() {
 		return "RP";
+	}
+
+	/**
+	 * @return true if the RP has Oidc configuration
+	 */
+	public boolean useOidc() {
+		return oidc != null;
 	}
 }

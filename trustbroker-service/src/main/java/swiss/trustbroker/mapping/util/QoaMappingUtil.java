@@ -30,7 +30,6 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import swiss.trustbroker.common.exception.ErrorCode;
 import swiss.trustbroker.common.exception.RequestDeniedException;
-import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.federation.xmlconfig.AcClass;
 import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.QoaComparison;
@@ -179,7 +178,7 @@ public class QoaMappingUtil {
 			// check config class to determine level
 			var configAcClasses = getConfigAcClasses(contextClass, configQoa.config(), outbound);
 			// 	Accept QOA with different name but same order
-			if (!orders.isEmpty() && configAcClasses .isEmpty()) {
+			if (!orders.isEmpty() && configAcClasses.isEmpty()) {
 				configAcClasses = getConfigAcClassesByOrders(configQoa, orders, globalMapping, outbound);
 			}
 			if (configAcClasses.isEmpty() || orders.isEmpty()) {
@@ -214,7 +213,7 @@ public class QoaMappingUtil {
 			return;
 		}
 		if (configQoa.config().enforce()) {
-			throw new TechnicalException(
+			throw new RequestDeniedException(ErrorCode.NO_AUTHN_CONTEXT,
 					String.format("Missing ctxClass=%s in config (HINT: check application.yaml trustbroker.config.qoa"
 							+ " or the SetupRP.xml) for rpIssuer=%s qoaConf=%s", contextClass, configQoa.issuerId(), configQoa));
 		}
@@ -319,10 +318,10 @@ public class QoaMappingUtil {
 			// level must be defined in global or RP config
 			var msg = String.format(
 					"Missing Qoa in config ctxClass=%s issuer=%s, cannot determine order"
-							+ " (HINT: Check trustbroker.config.qoa or SetupRP.xml/SetupCP.xml)",
+							+ " (HINT: Check trustbroker.config.qoa or SetupRP.xml/SetupCP.xml defining order)",
 					classRef, configQoa.issuerId());
 			if (configQoa.config().enforce()) {
-				throw new TechnicalException(msg);
+				throw new RequestDeniedException(ErrorCode.NO_AUTHN_CONTEXT, msg);
 			}
 			else {
 				logEnforceWarn(msg);
@@ -362,10 +361,10 @@ public class QoaMappingUtil {
 			// level must be defined in global or RP/CP config
 			var msg = String.format(
 					"Missing Qoa in config ctxClass=%s inboundIssuer=%s outboundIssuer=%s, cannot determine order"
-							+ " (HINT: Check trustbroker.config.qoa or SetupRP.xml/SetupCP.xml)",
+							+ " (HINT: Check trustbroker.config.qoa or SetupRP.xml/SetupCP.xml defining Qoa model)",
 					classRef, inboundQoaConf.issuerId(), outboundQoaConf.issuerId());
 			if (inboundQoaConf.config().enforce() || outboundQoaConf.config().enforce()) {
-				throw new TechnicalException(msg);
+				throw new RequestDeniedException(ErrorCode.NO_AUTHN_CONTEXT, msg);
 			}
 			else {
 				logEnforceWarn(msg);

@@ -600,13 +600,13 @@ class SsoServiceTest {
 		stateData.getSpStateData().setId(authnRequest.getID());
 		stateData.getSpStateData().setContextClasses(OpenSamlUtil.extractAuthnRequestContextClasses(authnRequest));
 		stateData.setSignedAuthnRequest(authnRequest.isSigned());
+		stateData.setSignedAuthnRequest(true);
 		return stateData;
 	}
 
 	private StateData buildStateForSso(String sessionId, String deviceId, Set<String> ssoRps) {
 		var stateData = buildStateWithSpState(sessionId);
 		stateData.setDeviceId(deviceId);
-		stateData.setSignedAuthnRequest(true);
 		var ssoState = stateData.initializedSsoState();
 		if (ssoRps != null) {
 			var ssoParticipants = buildSsoParticipants(ssoRps);
@@ -667,6 +667,7 @@ class SsoServiceTest {
 				.id(SESSION_ID)
 				.issuer(CP_ISSUER_ID)
 				.spStateData(spStateData)
+				.signedAuthnRequest(true)
 				.build();
 	}
 
@@ -1225,8 +1226,8 @@ class SsoServiceTest {
 		var relyingParty = buildRelyingParty(true);
 		var claimsParty = buildClaimsParty(CP_ISSUER_ID);
 		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(relyingParty.getId()));
-		ssoStateData.setSignedAuthnRequest(false);
 		var stateDataByAuthnReq = buildStateDataByAuthnReq();
+		stateDataByAuthnReq.setSignedAuthnRequest(false);
 		assertThat(ssoService.ssoStateValidForDeviceInfo(claimsParty, relyingParty, ssoStateData, stateDataByAuthnReq, DEVICE_ID,
 				CP_ISSUER_ID), is(false));
 	}
@@ -1310,10 +1311,17 @@ class SsoServiceTest {
 
 	private void mockQoaService(RelyingParty relyingParty, ClaimsParty claimsParty, Qoa qoaConfig, List<String> expectedQuoas) {
 		when(trustBrokerProperties.getQoa()).thenReturn(givenGlobalQoa());
+		var mobileOneFactorUnregisteredName = SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName();
+		var kerberosName = SamlTestBase.Qoa.KERBEROS.getName();
+
 		doReturn(true).when(qoaService).isStrongestPossible(MockQoa.STRONGEST_POSSIBLE.getName());
 		doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1)).when(qoaService).getUnspecifiedLevel();
 		doReturn(new CustomQoa(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(), SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getLevel()))
 				.when(qoaService).getDefaultLevel();
+		doReturn(new CustomQoa(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(), SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getLevel())).when(qoaService).extractQoaLevel(mobileOneFactorUnregisteredName, null);
+		doReturn(new CustomQoa(SamlTestBase.Qoa.KERBEROS.getName(), SamlTestBase.Qoa.KERBEROS.getLevel())).when(qoaService).extractQoaLevel(kerberosName, null);
+		doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), SamlTestBase.Qoa.UNSPECIFIED.getLevel())).when(qoaService).extractQoaLevel(SamlTestBase.Qoa.UNSPECIFIED.getName(), null);
+		doReturn(new CustomQoa(SamlTestBase.Qoa.SOFTWARE_PKI.getName(), SamlTestBase.Qoa.SOFTWARE_PKI.getLevel())).when(qoaService).extractQoaLevel("urn:oasis:names:tc:SAML:2.0:ac:classes:SmartcardPKI", null);
 
 		if (relyingParty != null) {
 			doReturn(new CustomQoa(SamlTestBase.Qoa.UNSPECIFIED.getName(), -1))
@@ -1335,6 +1343,9 @@ class SsoServiceTest {
 			if (expectedQuoas != null) {
 				doReturn(mockQoaList(expectedQuoas))
 						.when(qoaService).extractQoaLevels(expectedQuoas, relyingParty.getQoaConfig());
+				for (var qoa : expectedQuoas) {
+					doReturn(new CustomQoa(qoa, 20)).when(qoaService).extractQoaLevel(qoa, null);
+				}
 			}
 		}
 		var qoa = new QoaConfig(qoaConfig, "testId");
@@ -1546,6 +1557,7 @@ class SsoServiceTest {
 		ssoStateData.getLifecycle().setSsoEstablishedTime(Timestamp.from(START_INSTANT));
 		var authnRequest = buildAuthnRequest(CP_ISSUER_ID, AUTHN_REQUEST_ID, false);
 		var stateDataByAuthnReq = buildStateForAuthnRequest(authnRequest);
+		stateDataByAuthnReq.setSignedAuthnRequest(false);
 		var result = ssoService.skipCpAuthentication(null, relyingParty, stateDataByAuthnReq, ssoStateData);
 		assertThat(result, is(SsoService.SsoSessionOperation.IGNORE));
 	}
@@ -1989,8 +2001,8 @@ class SsoServiceTest {
 	@Test
 	void allowSsoForSignedAuthnRequest() {
 		var relyingParty = buildRelyingParty(true);
-		var ssoStateData = buildStateForSso(SESSION_ID, DEVICE_ID, Set.of(RELYING_PARTY_ID));
-		var result = ssoService.isRelyingPartyOkForSso(relyingParty, ssoStateData);
+		var stateData = buildStateDataByAuthnReq();
+		var result = ssoService.isRelyingPartyOkForSso(relyingParty, stateData);
 		assertThat(result, is(true));
 	}
 

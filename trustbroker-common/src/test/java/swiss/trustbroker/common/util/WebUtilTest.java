@@ -200,6 +200,23 @@ class WebUtilTest {
 
 	@ParameterizedTest
 	@CsvSource(value = {
+			"null,NULL", // special origin value ignored
+			"NULL,NULL",
+			",NULL",
+			"foobar,NULL",
+			"https://example.trustbroker.swiss,https://example.trustbroker.swiss/",
+			"https://example.trustbroker.swiss/,https://example.trustbroker.swiss/",
+			"https://example.trustbroker.swiss/path?query=value#fragment,https://example.trustbroker.swiss/",
+			"https://example.trustbroker.swiss:443,https://example.trustbroker.swiss:443/",
+			"custom://value,custom://value/",
+			"http://localhost:8080,http://localhost:8080/"
+	}, nullValues = "NULL") // capital on purpose due to null referer value
+	void testGetValidRefererWithoutPath(String referer, String expected) {
+		assertThat(WebUtil.getValidRefererWithoutPath(referer), CoreMatchers.is(expected));
+	}
+
+	@ParameterizedTest
+	@CsvSource(value = {
 			"null,null",
 			"/path,null", // relative
 			"://,null", // invalid

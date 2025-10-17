@@ -18,23 +18,41 @@ package swiss.trustbroker.federation.xmlconfig;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
-import org.junit.jupiter.api.Test;
+import java.util.Collections;
+import java.util.List;
+
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class SsoTest {
 
-	@Test
-	void logoutNotificationsDisabled() {
-		var sso = Sso.builder().build();
-		assertThat(sso.logoutNotificationsEnabled(), is(false));
-		sso.setLogoutNotifications(Boolean.FALSE);
-		assertThat(sso.logoutNotificationsEnabled(), is(false));
+	@ParameterizedTest
+	@MethodSource
+	void logoutNotificationsEnabled(Boolean logoutNotifications, List<SloResponse> responses, boolean expected) {
+		var sso = Sso.builder()
+					 .logoutNotifications(logoutNotifications)
+					 .sloResponse(responses)
+					 .build();
+		assertThat(sso.logoutNotificationsEnabled(), is(expected));
 	}
 
-	@Test
-	void logoutNotificationsEnabled() {
-		var sso = Sso.builder().build();
-		sso.setLogoutNotifications(Boolean.TRUE);
-		assertThat(sso.logoutNotificationsEnabled(), is(true));
+	static Object[][] logoutNotificationsEnabled() {
+		var response = SloResponse.builder().mode(SloMode.RESPONSE).build();
+		var notify = SloResponse.builder().mode(SloMode.NOTIFY_TRY).build();
+		return new Object[][] {
+				// default
+				{ null, null, false },
+				{ null, Collections.emptyList(), false },
+				// notifications override default
+				{ null, List.of(response, notify), true },
+				// explicit false wins
+				{ false, Collections.emptyList(), false },
+				{ false, List.of(notify), false },
+				{ false, List.of(response, notify), false },
+				// explicit true wins
+				{ true, Collections.emptyList(), true },
+				{ true, List.of(response), true },
+		};
 	}
 
 }

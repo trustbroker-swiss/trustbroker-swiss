@@ -35,7 +35,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang3.StringUtils;
@@ -246,7 +245,7 @@ class ClaimsMapperServiceTest {
 
 		Map<AttributeName, List<String>> psUserDetails = givenPSResultUserDetails();
 		var psResult = ProfileSelectionResult.builder()
-											 .filteredAttributes(Optional.of(psUserDetails))
+											 .filteredAttributes(psUserDetails)
 											 .build();
 		claimsMapperService.applyProfileSelection(cpResponse, psResult);
 		assertNotEquals(userDetails, cpResponse.getUserDetails());

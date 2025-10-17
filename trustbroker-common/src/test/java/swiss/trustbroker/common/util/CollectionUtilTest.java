@@ -56,6 +56,14 @@ class CollectionUtilTest {
 	}
 
 	@Test
+	void collectionAsSet() {
+		var collection = List.of("1", "2", "2", "3");
+		var expected = Set.of("1", "2", "3");
+		assertThat(CollectionUtil.collectionAsSet(expected), sameInstance(expected));
+		assertThat(CollectionUtil.collectionAsSet(collection), is(expected));
+	}
+
+	@Test
 	void asMap() {
 		var key = "key";
 		var value = "value";

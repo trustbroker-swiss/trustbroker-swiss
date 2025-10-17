@@ -20,14 +20,13 @@ import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeAll;
@@ -60,8 +59,9 @@ import swiss.trustbroker.config.dto.WsTrustConfig;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.sessioncache.dto.StateData;
-import swiss.trustbroker.sessioncache.service.StateCacheService;
+import swiss.trustbroker.sso.service.SsoService;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
+import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
 import swiss.trustbroker.wstrust.util.WsTrustUtil;
 
 @ExtendWith(SpringExtension.class)
@@ -79,14 +79,14 @@ class WsTrustRenewValidatorTest {
 
 	private static final String XTB_ISSUER_ID = "xtb:issuer";
 
-	private static final Instant NOW = Instant.ofEpochMilli(1000000l);
+	private static final Instant NOW = Instant.ofEpochMilli(1000000L);
 
 	private static final int SUBJECT_VALID_SECS = 10;
 
 	private static final int CONDITION_VALID_SECS = 20;
 
 	@MockitoBean
-	private StateCacheService stateCacheService;
+	private SsoService ssoService;
 
 	@MockitoBean
 	private TrustBrokerProperties trustBrokerProperties;
@@ -201,9 +201,12 @@ class WsTrustRenewValidatorTest {
 				{ givenSecurityToken(WSSConstants.VALUE_X509_V3, WSSConstants.ENCODING_BASE64_BINARY, null) },
 				// invalid value
 				{ givenSecurityToken(WSSConstants.VALUE_X509_V3, WSSConstants.ENCODING_BASE64_BINARY, "AABBCCDD") },
-				// invalid certificate
+				// invalid PEM certificate
 				{ givenSecurityToken(WSSConstants.VALUE_X509_V3, WSSConstants.ENCODING_BASE64_BINARY,
-						givenCertValue(SamlTestBase.TEST_IDP_MOCK_KEYSTORE_PEM)) }
+						givenCertValue(SamlTestBase.TEST_IDP_MOCK_CERTIFICATE_PEM)) },
+				// invalid Base64 DER certificate
+				{ givenSecurityToken(WSSConstants.VALUE_X509_V3, WSSConstants.ENCODING_BASE64_BINARY,
+						givenCertValue(SamlTestBase.TEST_IDP_MOCK_CERTIFICATE_DER_BASE64)) }
 		};
 	}
 
@@ -222,16 +225,21 @@ class WsTrustRenewValidatorTest {
 		mockSsoSession(true);
 		when(trustBrokerProperties.getIssuer()).thenReturn(XTB_ISSUER_ID);
 		when(clock.instant()).thenReturn(now);
+		var requestHeader = new SoapMessageHeader();
+		requestHeader.setSecurityToken(securityToken);
+		requestHeader.setRequestTimestamp(WsTrustUtil.createTimestamp(now, now.plusSeconds(60)));
 
 		if (expectFailure) {
-			assertThrows(RequestDeniedException.class, () -> wsTrustRenewValidator.validate(rst, null, securityToken));
+			assertThrows(RequestDeniedException.class, () -> wsTrustRenewValidator.validate(rst, requestHeader));
 		}
 		else {
-			var result = wsTrustRenewValidator.validate(rst, null, securityToken);
+			var result = wsTrustRenewValidator.validate(rst, requestHeader);
 
-			assertThat(result.validatedAssertion(), is(assertion));
-			assertThat(result.recomputeAttributes(), is(false));
-			assertThat(result.recipientIssuerId(), is(RP_ISSUER_ID));
+			assertThat(result.getValidatedAssertion(), is(assertion));
+			assertThat(result.isRecomputeAttributes(), is(false));
+			assertThat(result.getRecipientIssuerId(), is(RP_ISSUER_ID));
+			assertThat(result.isUseAssertionLifetime(), is(true));
+			assertThat(result.getSessionIndex(), is(SSO_SESSION_ID));
 		}
 	}
 
@@ -239,7 +247,7 @@ class WsTrustRenewValidatorTest {
 		return new Object[][] {
 				{ NOW, null, false },
 				{ NOW.plusSeconds(SecurityChecks.RENEW_TOLERANCE_NOT_AFTER_SEC), null, false },
-				{ NOW.plusSeconds(10_000l), 10_000l, false },
+				{ NOW.plusSeconds(10_000L), 10_000L, false },
 				{ NOW.plusSeconds(SecurityChecks.RENEW_TOLERANCE_NOT_AFTER_SEC + SUBJECT_VALID_SECS - 1), null, false },
 				{ NOW.plusSeconds(SecurityChecks.RENEW_TOLERANCE_NOT_AFTER_SEC + SUBJECT_VALID_SECS), null, true },
 				// SUBJECT_VALID_SECS < CONDITION_VALID_SECS
@@ -276,7 +284,7 @@ class WsTrustRenewValidatorTest {
 
 	private StateData mockSsoSession(boolean present) {
 		var stateData = givenStateData();
-		when(stateCacheService.findBySsoSessionId(eq(SSO_SESSION_ID), any()))
+		when(ssoService.findValidSsoSessionForSessionIndexes(List.of(SSO_SESSION_ID)))
 				.thenReturn(present ? Optional.of(givenStateData()) : Optional.empty());
 		return stateData;
 	}

@@ -26,7 +26,7 @@ export class MasterLayoutConfig extends ObMasterLayoutConfig {
 		this.header.isCustom = true;
 		this.header.isSticky = false;
 		this.footer.isCustom = true;
-		this.footer.hasLogoOnScroll = false;
+
 		this.layout.hasMainNavigation = false;
 		this.navigation.scrollMode = ObEScrollMode.DISABLED;
 		this.locale.defaultLanguage = Constant.DefaultLanguageCode.toString();

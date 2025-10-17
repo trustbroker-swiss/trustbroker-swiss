@@ -16,12 +16,14 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Params } from '@angular/router';
 
+import { ValidationService } from '../services/validation-service';
 import { environment } from '../../environments/environment';
 
 @Component({
 	selector: 'app-access-request',
 	templateUrl: './access-request.component.html',
-	styleUrls: ['./access-request.component.scss']
+	styleUrls: ['./access-request.component.scss'],
+	standalone: false
 })
 export class AccessRequestComponent implements OnInit {
 	private readonly baseUrl = environment.apiUrl;
@@ -31,7 +33,10 @@ export class AccessRequestComponent implements OnInit {
 	private _showAbortButton: boolean;
 	private _showLoginButton: boolean;
 
-	constructor(private readonly route: ActivatedRoute) {}
+	constructor(
+		private readonly route: ActivatedRoute,
+		private readonly validation: ValidationService
+	) {}
 
 	get showContinueButton(): boolean {
 		return this._showContinueButton;
@@ -45,14 +50,14 @@ export class AccessRequestComponent implements OnInit {
 		return this._showLoginButton;
 	}
 
-	get state(): string {
-		return this._state;
+	get infoKey(): string {
+		return `trustbroker.accessrequest.message.${this._state}`;
 	}
 
 	ngOnInit(): void {
 		this.route.params.subscribe((params: Params) => {
-			this.sessionId = params['sessionId'];
-			this._state = params['state'];
+			this.sessionId = this.validation.getValidParameter(params, 'sessionId', ValidationService.ID, '');
+			this._state = this.validation.getValidParameter(params, 'state', ValidationService.TEXT_KEY, '');
 			this._showContinueButton = this._state === 'initiate';
 			this._showAbortButton = this._state === 'initiate' || this._state === 'abort';
 			this._showLoginButton = this._state === 'confirm';

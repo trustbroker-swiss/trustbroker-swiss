@@ -35,7 +35,6 @@ import org.opensaml.saml.saml2.core.StatusResponseType;
 import org.opensaml.saml.saml2.metadata.IDPSSODescriptor;
 import org.opensaml.saml.saml2.metadata.SPSSODescriptor;
 import org.opensaml.security.credential.Credential;
-import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import swiss.trustbroker.audit.service.AuditService;
 import swiss.trustbroker.audit.service.InboundAuditMapper;
@@ -98,7 +97,7 @@ public class ArtifactResolutionService {
 		ArtifactPeer peer;
 		Optional<SignatureParameters> signatureParameters;
 		SignatureValidationParameters signatureValidationParameters;
-		var referrer = WebUtil.getHeader(HttpHeaders.REFERER, request);
+		var referrer = WebUtil.getReferer(request);
 		var rp = relyingPartySetupService.getRelyingPartyByArtifactSourceIdOrReferrer(sourceId, referrer);
 		if (isRelyingPartyValid(rp)) {
 			peer = buildArtifactPeer(rp.get().getSamlProtocolEndpoints(), rp.get().getCertificates(), true);
@@ -218,7 +217,7 @@ public class ArtifactResolutionService {
 		try {
 			var artifactResolve = SoapUtil.extractSamlObjectFromEnvelope(request.getInputStream(), ArtifactResolve.class);
 			var issuerId = artifactResolve.getIssuer().getValue();
-			var refererUrl = WebUtil.getHeader(HttpHeaders.REFERER, request);
+			var refererUrl = WebUtil.getReferer(request);
 			var artifactId = artifactResolve.getArtifact().getValue();
 			log.info("Received ArtifactResolve with id={} from issuerId={} refererUrl={} for artifact={}",
 					artifactResolve.getID(),

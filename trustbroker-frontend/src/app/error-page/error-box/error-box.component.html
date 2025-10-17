@@ -14,34 +14,34 @@
 -->
 <div class="{{ theme.name }} errorBoxContainer">
 	<div class="errorBoxTitleContainer">
-		<h1 class="high-emphasis mb-3">
+		<h2>
 			@if (titleKey | hasTranslation | async) {
 				{{ titleKey | translate }}
 			} @else {
 				{{ "trustbroker.error.main.title.default" | translate }}
 			}
-		</h1>
+		</h2>
 	</div>
 	<div>
 		@if (textKey | hasTranslation | async) {
-			<h2 class="medium-emphasis mb-2" [innerHTML]="textKey | translate | safeMarkup"></h2>
+			<p class="mb-2 strong" [innerHTML]="textKey | translate | safeMarkup"></p>
 		} @else {
-			<h2 class="medium-emphasis mb-2" [innerHTML]="'trustbroker.error.main.text.default' | translate | safeMarkup"></h2>
+			<p class="mb-2 strong" [innerHTML]="'trustbroker.error.main.text.default' | translate | safeMarkup"></p>
 		}
 		@if (!supportInfo && infoKey | hasTranslation | async) {
-			<p class="medium-emphasis" [innerHTML]="infoKey | translate | safeMarkup"></p>
+			<p [innerHTML]="infoKey | translate | safeMarkup"></p>
 		}
 		@if (additionalInfoTitleKey | hasTranslation | async) {
-			<h2 class="medium-emphasis mb-2" [innerHTML]="additionalInfoTitleKey | translate | safeMarkup"></h2>
+			<p class="mb-2 strong" [innerHTML]="additionalInfoTitleKey | translate | safeMarkup"></p>
 		}
 		@if (additionalInfoTextKey | hasTranslation | async) {
-			<p class="medium-emphasis" [innerHTML]="additionalInfoTextKey | translate | safeMarkup"></p>
+			<p [innerHTML]="additionalInfoTextKey | translate | safeMarkup"></p>
 		}
 		@if (supportInfo && supportInfoData) {
 			<div class="app-support">
 				@if (languageAppUrl) {
 					<div class="app-support-info">
-						<div class="medium-emphasis" [innerHTML]="'trustbroker.error.main.support.furtherinfo' | translate | safeMarkup"></div>
+						<div [innerHTML]="'trustbroker.error.main.support.furtherinfo' | translate | safeMarkup"></div>
 						<div>
 							<a href="{{ languageAppUrl }}">{{ "trustbroker.error.main.support.documentation" | translate }}</a>
 						</div>
@@ -49,7 +49,7 @@
 				}
 				@if (supportInfoData.emailAddress || supportInfoData.phoneNumber) {
 					<div class="app-support-contact">
-						<div class="medium-emphasis" [innerHTML]="'trustbroker.error.main.support.servicedesk' | translate | safeMarkup"></div>
+						<div [innerHTML]="'trustbroker.error.main.support.servicedesk' | translate | safeMarkup"></div>
 						@if (supportInfoData.emailAddress) {
 							<div>
 								<div>{{ "trustbroker.error.main.support.emailladdress" | translate }}</div>
@@ -86,20 +86,22 @@
 				<span [innerHTML]="referenceKey | translate | safeMarkup"></span><span>{{ reference }}</span>
 			</div>
 		}
-		@if (continueButton) {
-			<button mat-flat-button color="accent" (click)="continueFlow()" tabindex="1" type="submit" class="{{ theme.name }} button-text mt-2">
-				<span>{{ "trustbroker.error.main.button.continue" | translate }}</span>
-			</button>
-		}
-		@if (reloginButton) {
-			<button mat-flat-button color="accent" (click)="relogin()" tabindex="2" type="submit" class="{{ theme.name }} button-text mt-2">
-				<span>{{ "trustbroker.error.main.button.relogin" | translate }}</span>
-			</button>
-		}
-		@if (linkButton && languageAppUrl) {
-			<button mat-flat-button color="accent" (click)="followLink()" tabindex="1" type="submit" class="{{ theme.name }} button-text mt-2">
-				<span>{{ "trustbroker.error.main.button.link" | translate }}</span>
-			</button>
-		}
+		<div class="button-container">
+			@if (continueButton) {
+				<button mat-flat-button obButton="primary" (click)="continueFlow()" type="submit" class="{{ theme.name }}">
+					<span>{{ "trustbroker.error.main.button.continue" | translate }}</span>
+				</button>
+			}
+			@if (reloginButton) {
+				<button mat-flat-button obButton="primary" (click)="relogin()" type="submit" class="{{ theme.name }}">
+					<span>{{ "trustbroker.error.main.button.relogin" | translate }}</span>
+				</button>
+			}
+			@if (linkButton && languageAppUrl) {
+				<button mat-flat-button obButton="primary" (click)="followLink()" type="submit" class="{{ theme.name }}">
+					<span>{{ "trustbroker.error.main.button.link" | translate }}</span>
+				</button>
+			}
+		</div>
 	</div>
 </div>

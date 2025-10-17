@@ -38,10 +38,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.opensaml.saml.saml2.core.RequestAbstractType;
 import org.opensaml.saml.saml2.core.Response;
-import org.opensaml.soap.wstrust.RequestSecurityTokenResponseCollection;
+import org.opensaml.soap.wstrust.WSTrustObject;
 import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.exception.TrustBrokerException;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.setup.service.GitService;
 import swiss.trustbroker.common.tracing.TraceSupport;
@@ -108,7 +109,7 @@ public class ScriptService {
 
 	private static final String BEAN_SAML_REQUEST = "SAMLRequest"; // RP AuthRequest in opensaml dom API
 
-	private static final String BEAN_WS_TRUST_RESPONSE = "WsTrustResponse"; // RSTR
+	private static final String BEAN_WS_TRUST_RESPONSE = "WsTrustResponse"; // RSTR / RSTRC
 
 	private static final String BEAN_IDM_QUERIES = "IDMQueryList"; // map of queries we shall execute
 
@@ -251,7 +252,7 @@ public class ScriptService {
 		processAllSamlScripts(hook, scripts, cpResponse, response, null, null);
 	}
 
-	public void processWsTrustOnResponse(CpResponse cpResponse, RequestSecurityTokenResponseCollection wsTrustResponse,
+	public void processWsTrustOnResponse(CpResponse cpResponse, WSTrustObject wsTrustResponse,
 										 String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_ON_WS_TRUST_RESPONSE;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
@@ -280,24 +281,23 @@ public class ScriptService {
 	public void processRpOnToken(CpResponse cpResponse, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_OIDC_ON_TOKEN;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
-		processAllOidcScripts(hook, scripts, cpResponse, null);
+		processAllOidcScripts(hook, scripts, cpResponse);
 	}
 
 	public void processRpOnUserInfo(CpResponse cpResponse, String requestIssuer, String referrer) {
 		var hook = SCRIPT_TYPE_OIDC_ON_USERINFO;
 		var scripts = getScriptsByType(requestIssuer, referrer, hook, true);
-		processAllOidcScripts(hook, scripts, cpResponse, null);
+		processAllOidcScripts(hook, scripts, cpResponse);
 	}
 
-	void processAllOidcScripts(String hookType, List<Pair<String, CompiledScript>> scripts, CpResponse cpResponse,
-			Response response) {
+	private void processAllOidcScripts(String hookType, List<Pair<String, CompiledScript>> scripts, CpResponse cpResponse) {
 		for (var script : scripts) {
-			processOnResponse(hookType, script, cpResponse, response, null, null);
+			processOnResponse(hookType, script, cpResponse, null, null, null);
 		}
 	}
 
 	public void processAllSamlScripts(String hookType, List<Pair<String, CompiledScript>> scripts, CpResponse cpResponse,
-									  Response response, RequestSecurityTokenResponseCollection wsTrustResponse,
+									  Response response, WSTrustObject wsTrustResponse,
 									  List<IdmQuery> idmQueries) {
 		for (var script : scripts) {
 			processOnResponse(hookType, script, cpResponse, response, wsTrustResponse, idmQueries);
@@ -325,6 +325,9 @@ public class ScriptService {
 			}
 			script.getValue().eval(bindings);
 		}
+		catch (TrustBrokerException te) {
+			throw te;
+		}
 		catch (Exception e) {
 			throw new TechnicalException(String.format("Failed to process script '%s'.  Details: %s", script.getKey(), e), e);
 		}
@@ -332,15 +335,14 @@ public class ScriptService {
 
 	// On unit testing it's not very relevant which hook it is
 	protected void processOnResponse(String scriptName, CpResponse cpResponse, Response response,
-									 RequestSecurityTokenResponseCollection wsTrustResponse, List<IdmQuery> idmQueries)
+									 WSTrustObject wsTrustResponse, List<IdmQuery> idmQueries)
 			throws TechnicalException {
 		var compiledScript = resolveScript(scriptName);
 		processOnResponse("TestStep", compiledScript, cpResponse, response, wsTrustResponse, idmQueries);
 	}
 
 	private void processOnResponse(String hookType, Pair<String, CompiledScript> script,
-								   CpResponse cpResponse, Response response,
-								   RequestSecurityTokenResponseCollection wsTrustResponse,
+								   CpResponse cpResponse, Response response, WSTrustObject wsTrustResponse,
 								   List<IdmQuery> idmQueries) throws TechnicalException {
 		var bindings = bindResponseBeans(hookType, cpResponse, response, wsTrustResponse, idmQueries);
 		try {
@@ -353,6 +355,9 @@ public class ScriptService {
 						BEAN_IDM_QUERIES, CollectionUtil.toLogString(idmQueries));
 			}
 			script.getValue().eval(bindings);
+		}
+		catch (TrustBrokerException te) {
+			throw te;
 		}
 		catch (Exception e) {
 			throw new TechnicalException(String.format("Failed to evaluate script='%s'.  Details: %s", script.getKey(), e), e);
@@ -392,7 +397,7 @@ public class ScriptService {
 	}
 
 	private Bindings bindResponseBeans(String hookType, CpResponse cpResponse, Response response,
-									   RequestSecurityTokenResponseCollection wsTrustResponse, List<IdmQuery> idmQueries) {
+			WSTrustObject wsTrustResponse, List<IdmQuery> idmQueries) {
 		var bindings = scriptEngine.createBindings();
 		bindings.put(BEAN_SCRIPT_TYPE, hookType);
 		// input (undocumented, unused, just in case)

@@ -13,7 +13,6 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { HttpErrorResponse } from '@angular/common/http';
 import { Observable, Observer, ReplaySubject } from 'rxjs';
 import { CookieConfiguration } from '../model/CookieConfiguration';
 import { Theme } from '../model/Theme';
@@ -26,7 +25,7 @@ import { DestroyRef, Injectable } from '@angular/core';
 
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
-	public static readonly defaultTheme = new Theme('xtb-default', true, true, false, false, true, false, true, true, 10);
+	public static readonly defaultTheme = new Theme('xtb-default', true, true, false, false, true);
 
 	public readonly theme$: Observable<Theme>;
 
@@ -92,70 +91,43 @@ export class ThemeService {
 		return theme !== null && theme !== '';
 	}
 
-	private static isDefaultTheme(theme: string): boolean {
-		return theme === ThemeService.defaultTheme.name;
-	}
-
 	private themeNamed(theme: string): Theme {
 		// The full range of options that are configurable in principle is not yet supported (button ordering, button types, features)
 		const hasHelpPanel = this.buttons.includes(HeaderButton.HELP_PANEL);
 		const hasHeader = this.features.includes(GuiFeature.HEADER);
 		const hasFooter = this.features.includes(GuiFeature.FOOTER);
 		const hasBackdrop = this.features.includes(GuiFeature.BACKDROP);
-		const fullLanguageName = this.buttons.includes(HeaderButton.LANGUAGE_LONG);
-		const helpIndex = Math.max(this.buttons.indexOf(HeaderButton.HELP_PANEL), this.buttons.indexOf(HeaderButton.HELP_LINK));
-		const languageSelectorIndex = Math.max(this.buttons.indexOf(HeaderButton.LANGUAGE_LONG), this.buttons.indexOf(HeaderButton.LANGUAGE_SHORT));
 		const themeSelectorIndex = this.buttons.indexOf(HeaderButton.THEME);
-		const helpTabindex = helpIndex < languageSelectorIndex ? 10 : 30;
+
 		// NOSONAR
 		// console.debug('[ThemeService] Theme', theme, 'helpPanel:', hasHelpPanel, 'backdrop:', hasBackdrop, 'variants:', hasVariants, 'helpTabindex:', helpTabindex);
-		return new Theme(
-			theme,
-			hasHeader,
-			hasFooter,
-			hasBackdrop,
-			themeSelectorIndex >= 0,
-			languageSelectorIndex >= 0,
-			fullLanguageName,
-			helpIndex >= 0,
-			hasHelpPanel,
-			helpTabindex
-		);
+		return new Theme(theme, hasHeader, hasFooter, hasBackdrop, themeSelectorIndex >= 0, hasHelpPanel);
 	}
 
 	private loadConfig() {
-		this.apiService
-			.getConfiguration()
-			.pipe(takeUntilDestroyed(this.destroyRef))
-			.subscribe?.({
-				next: configuration => {
-					const themeCookie: CookieConfiguration = configuration.themeCookie;
-					if (themeCookie?.name == null || themeCookie.values == null) {
-						// NOSONAR
-						// console.debug('[ThemeService] Keeping default theme cookie', this.themeCookie.name, 'values:', this.themeCookie.values);
-						return;
-					}
-					this.themeCookie = themeCookie;
-					this.features = configuration.features;
-					if (this.features == null) {
-						this.features = [];
-					}
-					this.buttons = configuration.buttons;
-					if (this.buttons == null) {
-						this.buttons = [];
-					}
-					this.defaultCookieParameters = false;
-					// NOSONAR
-					// console.debug('[ThemeService] Server sent theme cookie parameters', this.themeCookie.name, 'values:', this.themeCookie.values);
-					this.publish(this.getTheme());
-				},
-				error: (errorResponse: HttpErrorResponse) => {
-					console.error(errorResponse);
-				}
-			});
+		const configuration = this.apiService.getConfiguration();
+		const themeCookie: CookieConfiguration = configuration.themeCookie;
+		if (themeCookie?.name == null || themeCookie.values == null) {
+			// NOSONAR
+			// console.debug('[ThemeService] Keeping default theme cookie', this.themeCookie.name, 'values:', this.themeCookie.values);
+			return;
+		}
+		this.themeCookie = themeCookie;
+		this.features = configuration.features;
+		if (this.features == null) {
+			this.features = [];
+		}
+		this.buttons = configuration.buttons;
+		if (this.buttons == null) {
+			this.buttons = [];
+		}
+		this.defaultCookieParameters = false;
+		// NOSONAR
+		// console.debug('[ThemeService] Server sent theme cookie parameters', this.themeCookie.name, 'values:', this.themeCookie.values);
+		this.publish(this.getTheme());
 	}
 
-	private publish(theme: Theme) {
+	private publish(theme: Theme): void {
 		// NOSONAR
 		// console.debug('[ThemeService] Publishing theme change to', theme.name);
 		this.themeChangedSubject.next(theme);

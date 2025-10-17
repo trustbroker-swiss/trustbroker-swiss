@@ -53,9 +53,7 @@ import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.federation.xmlconfig.SsoGroup;
 import swiss.trustbroker.homerealmdiscovery.util.RelyingPartyUtil;
-import swiss.trustbroker.mapping.dto.QoaConfig;
 import swiss.trustbroker.saml.dto.CpResponse;
-import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.util.PropertyUtil;
 
 @Service
@@ -498,21 +496,6 @@ public class RelyingPartySetupService {
 			return getSecurityPolicies(relyingParty);
 		}
 		return null;
-	}
-
-	public QoaConfig getQoaConfiguration(StateData spStateData, RelyingParty relyingParty,
-			TrustBrokerProperties trustBrokerProperties) {
-		if (spStateData != null && spStateData.getOidcClientId() != null) {
-			var oidcClientConfigById =
-					relyingPartiesMapping.getOidcClientConfigById(spStateData.getOidcClientId(), trustBrokerProperties);
-			if (oidcClientConfigById.isPresent()) {
-				var oidcQoa = oidcClientConfigById.get().getQoaConfig();
-				if (oidcQoa.hasConfig()) {
-					return oidcQoa;
-				}
-			}
-		}
-		return relyingParty.getQoaConfig();
 	}
 
 	public ClaimsProvider getClaimsProviderById(RelyingParty relyingParty, String cpId) {

@@ -50,7 +50,7 @@ describe('OrderIdpObjectsPipe', () => {
 		const result = pipe.transform(input);
 
 		// then
-		expect(result.map(each => each.map(({ name }) => name))).toEqual([['F', 'E', 'G'], ['D', 'H'], ['I'], ['A', 'J']]);
+		expect(result.map(each => each.map(({ name }) => name))).toEqual([['F', 'E', 'G'], ['D', 'H'], ['I'], ['C', 'A', 'B', 'J']]);
 	});
 
 	it('creates no more than the max number of groups', () => {
@@ -75,7 +75,7 @@ describe('OrderIdpObjectsPipe', () => {
 		expect(result.map(each => each.map(({ name }) => name))).toEqual([
 			['F', 'E', 'G'],
 			['D', 'H'],
-			['I', 'A', 'J']
+			['I', 'C', 'A', 'B', 'J']
 		]);
 	});
 

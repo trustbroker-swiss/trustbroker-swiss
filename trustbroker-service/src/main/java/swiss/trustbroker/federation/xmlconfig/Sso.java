@@ -88,6 +88,11 @@ public class Sso implements Serializable {
 	/**
 	 * Notify other SSO participants about the ongoing logout. The participants need to have their notification
 	 * endpoints configured using SloResponse elements.
+	 * <br/>
+	 * Potentially breaking changes:
+	 * <ul>
+	 *     <li>Since 1.12.0 the default was changed from false to true if there SloResponse notifications are configured.</li>
+	 * </ul>
 	 */
 	@XmlAttribute(name="logoutNotifications", required = false)
 	private Boolean logoutNotifications;
@@ -97,7 +102,12 @@ public class Sso implements Serializable {
 	private List<SloResponse> sloResponse = new ArrayList<>();
 
 	public boolean logoutNotificationsEnabled() {
-		return Boolean.TRUE.equals(logoutNotifications);
+		return Boolean.TRUE.equals(logoutNotifications) ||
+				(logoutNotifications == null && hasSloNotifications());
+	}
+
+	private boolean hasSloNotifications() {
+		return sloResponse != null && sloResponse.stream().anyMatch(response -> response.getMode().isNotification());
 	}
 
 	public boolean skipHrdWithSsoSession() { return Boolean.TRUE.equals(skipHrdWithSsoSession); }

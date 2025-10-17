@@ -19,6 +19,7 @@ import { environment } from '../../environments/environment';
 import { ThemeService } from '../services/theme-service';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../services/api.service';
+import { ValidationService } from '../services/validation-service';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { switchMap } from 'rxjs';
 import { IdpObjectService } from '../services/idp-object.service';
@@ -29,7 +30,8 @@ import { Overlay } from '@angular/cdk/overlay';
 	selector: 'app-hrd-cards-v2',
 	templateUrl: './hrd-cards-v2.component.html',
 	styleUrl: './hrd-cards-v2.component.scss',
-	changeDetection: ChangeDetectionStrategy.OnPush
+	changeDetection: ChangeDetectionStrategy.OnPush,
+	standalone: false
 })
 export class HrdCardsV2Component {
 	baseUrl: string = environment.apiUrl;
@@ -43,6 +45,7 @@ export class HrdCardsV2Component {
 		private readonly route: ActivatedRoute,
 		private readonly router: Router,
 		private readonly apiService: ApiService,
+		private readonly validation: ValidationService,
 		protected readonly themeService: ThemeService,
 		private readonly destroyRef: DestroyRef,
 		private readonly idpObjectService: IdpObjectService,
@@ -52,7 +55,8 @@ export class HrdCardsV2Component {
 		effect(() => {
 			if (this.idpObjects().tiles?.length === 1 && !this.idpObjects().tiles[0].disabled) {
 				this.onCardClick(this.idpObjects().tiles[0]);
-			} else if (this.idpObjects().tiles?.length > 1) {
+			} else {
+				// disabled tiles are also displayed in help
 				this.idpObjectService.addIdpObjects(this.idpObjects().tiles);
 			}
 		});
@@ -61,7 +65,7 @@ export class HrdCardsV2Component {
 	public onCardClick(idpObject: IdpObject) {
 		this.route.params
 			.pipe(
-				switchMap(params => this.apiService.selectIdp(params['authnRequestId'], idpObject.urn)),
+				switchMap(params => this.apiService.selectIdp(this.validation.getValidParameter(params, 'authnRequestId', ValidationService.ID, ''), idpObject.urn)),
 				takeUntilDestroyed(this.destroyRef)
 			)
 			.subscribe({

@@ -99,7 +99,8 @@ public class CustomUserInfoResponseHandler implements AuthenticationSuccessHandl
 		claims.forEach(claimsSetBuilder::claim);
 		var claimsSet = claimsSetBuilder.build();
 
-		var jwk = JwkUtil.createEncrptionJWK(encryptionParams.getCredential(), clientId, encryptionParams.getKeyId());
+		var jweHeader = OidcUtil.getJWEHeader(true, encryptionParams.getEncryptionAlgorithm(), encryptionParams.getEncryptionMethod(), encryptionParams.getKeyId());
+		var jwk = JwkUtil.createEncrptionJWK(encryptionParams.getCredential(), clientId, jweHeader);
 		if (jwk == null) {
 			log.warn("Couldn't create Encryption JWK for={}. Skipping UserInfo response encryption", clientId);
 			setJwtResponseAttributes(response, claims);
@@ -108,13 +109,12 @@ public class CustomUserInfoResponseHandler implements AuthenticationSuccessHandl
 
 		// LATER The response MAY be encrypted without also being signed https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
 		var payload = OidcUtil.getAndSignPayload(claimsSet, true, JwkUtil.buildJwsHeader(jwkSource), jwkSource, clientId);
-		var jweHeader = OidcUtil.getJWEHeader(true, encryptionParams.getEncryptionAlgorithm(), encryptionParams.getEncryptionMethod(), encryptionParams.getKeyId());
 		String encryptJwt = null;
 		try {
+			log.debug("Sending encrypted UserInfo response to={}", clientId);
 			encryptJwt = JwtUtil.encryptJwt(jweHeader, payload, jwk);
-
 			response.setContentType(JwtUtil.APPLICATION_JWT_TYPE);
-			objectMapper.writeValue(response.getOutputStream(), encryptJwt);
+			response.getOutputStream().write(encryptJwt.getBytes(StandardCharsets.UTF_8));
 		}
 		catch (JOSEException e) {
 			throw new TechnicalException(String.format("JWT encryption failed: message=\"%s\"", e.getMessage()), e);

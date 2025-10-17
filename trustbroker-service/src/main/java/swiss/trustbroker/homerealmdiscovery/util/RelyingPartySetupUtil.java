@@ -57,6 +57,7 @@ import swiss.trustbroker.federation.xmlconfig.Oidc;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.ProfileSelection;
 import swiss.trustbroker.federation.xmlconfig.ProtocolEndpoints;
+import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.Saml;
 import swiss.trustbroker.federation.xmlconfig.Script;
@@ -398,11 +399,12 @@ public class RelyingPartySetupUtil {
 			return;
 		}
 
-		relyingParty.getOidc().getClients().forEach(client -> mergeOidcClient(client, baseOidc.getClients().get(0)));
+		relyingParty.getOidc().getClients().forEach(client -> mergeOidcClient(client, baseOidc.getClients().get(0), relyingParty));
 	}
 
-	protected static void mergeOidcClient(OidcClient client, OidcClient baseClient) {
+	protected static void mergeOidcClient(OidcClient client, OidcClient baseClient, RelyingParty relyingParty) {
 		PropertyUtil.copyMissingAttributes(client, baseClient);
+		mergeQoaLevels(client, relyingParty.getQoa());
 	}
 
 	private static void mergeSaml(RelyingParty relyingParty, Saml baseSaml) {
@@ -476,10 +478,28 @@ public class RelyingPartySetupUtil {
 		PropertyUtil.copyMissingAttributes(rpQoa, baseQoa);
 	}
 
-	private static void mergeProfileSelection(RelyingParty relyingParty, ProfileSelection baseProfileSelection) {
+	protected static void mergeQoaLevels(OidcClient client, Qoa rpSamlQoa) {
+		if (rpSamlQoa == null) {
+			return;
+		}
+		var clientQoa = client.getQoa();
+		if (clientQoa == null) {
+			client.setQoa(rpSamlQoa);
+			return;
+		}
+		if (CollectionUtils.isEmpty(clientQoa.getClasses())) {
+			clientQoa.setClasses(rpSamlQoa.getClasses());
+		}
+		PropertyUtil.copyMissingAttributes(clientQoa, rpSamlQoa);
+	}
+
+	static void mergeProfileSelection(RelyingParty relyingParty, ProfileSelection baseProfileSelection) {
 		var profileSelection = relyingParty.getProfileSelection();
 		if (profileSelection == null) {
 			relyingParty.setProfileSelection(baseProfileSelection);
+		}
+		else {
+			PropertyUtil.copyMissingAttributes(profileSelection, baseProfileSelection);
 		}
 	}
 
@@ -510,6 +530,7 @@ public class RelyingPartySetupUtil {
 				mergeAuthorizedApplications(authorizedApplications.getAuthorizedApplicationList(),
 						baseAuthorizedApplications.getAuthorizedApplicationList());
 			}
+			PropertyUtil.copyMissingAttributes(relyingParty.getAccessRequest(), baseRelyingParty.getAccessRequest());
 			// check for all cases, after merge
 			if (relyingParty.getOidcClients().isEmpty()) {
 				enforceSingleDefaultAccessRequestApplication(relyingParty);
@@ -518,7 +539,7 @@ public class RelyingPartySetupUtil {
 		}
 		catch (TechnicalException ex) {
 			var accessRequest = relyingParty.getAccessRequest();
-			if (accessRequest == null || !Boolean.TRUE.equals(accessRequest.getEnabled())) {
+			if (accessRequest == null || !accessRequest.enabled()) {
 				log.error("AccessRequest not enabled for rpIssuerId={} - ignoring error: {}", relyingParty.getId(), ex.getInternalMessage());
 			}
 			else {

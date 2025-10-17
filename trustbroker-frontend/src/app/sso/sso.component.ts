@@ -25,11 +25,13 @@ import { SsoParticipants } from '../model/SsoParticipants';
 import { Theme } from '../model/Theme';
 import { ApiService } from '../services/api.service';
 import { ThemeService } from '../services/theme-service';
+import { ValidationService } from '../services/validation-service';
 
 @Component({
 	selector: 'app-sso-cards',
 	templateUrl: './sso.component.html',
-	styleUrls: ['./sso.component.scss']
+	styleUrls: ['./sso.component.scss'],
+	standalone: false
 })
 export class SsoComponent implements OnInit {
 	ssoParticipants: SsoParticipants[];
@@ -39,7 +41,6 @@ export class SsoComponent implements OnInit {
 	isButtonSize: boolean;
 	silentLogout: boolean;
 	logoutIssuer: string;
-	returnUrl: string;
 	clicked: boolean;
 	theme: Theme;
 
@@ -47,7 +48,8 @@ export class SsoComponent implements OnInit {
 		private readonly apiService: ApiService,
 		private readonly route: ActivatedRoute,
 		private readonly breakpointObserver: BreakpointObserver,
-		private readonly themeService: ThemeService
+		private readonly themeService: ThemeService,
+		private readonly validation: ValidationService
 	) {
 		this.theme = this.themeService.getTheme();
 		this.themeService.subscribe({
@@ -68,15 +70,11 @@ export class SsoComponent implements OnInit {
 			}
 			// missing subscribe happens in the test mock even though the result is created with rxjs 'of'
 			participants.subscribe?.(value => {
-				if (this.silentLogout && value.length === 0) {
-					this.gotoReturnUrl();
-				} else {
-					this.setSsoParticipants(value);
-				}
+				this.setSsoParticipants(value);
 			});
 		});
 
-		this.breakpointObserver.observe(['(min-width: 768px)']).subscribe((state: BreakpointState) => {
+		this.breakpointObserver.observe(['(min-width: 600px)']).subscribe((state: BreakpointState) => {
 			this.isButtonSize = !state.matches;
 		});
 	}
@@ -111,42 +109,16 @@ export class SsoComponent implements OnInit {
 	}
 
 	private setParams(params: Params) {
-		this.setReturnUrlIfValid(params['redirect']);
-		this.ssoGroupName = params['ssoGroupName'];
-		this.ssoSubject = params['ssoSubject'];
-		this.logoutIssuer = params['ssuer'];
-		this.silentLogout = params['silent'] === 'silent' && this.returnUrl != null && this.logoutIssuer != null;
+		this.ssoGroupName = this.validation.getValidParameter(params, 'ssoGroupName', ValidationService.ID, '');
+		this.ssoSubject = this.validation.getValidParameter(params, 'ssoSubject', ValidationService.ID, '');
+		this.logoutIssuer = this.validation.getValidParameter(params, 'issuer', ValidationService.ID, '');
+		this.silentLogout = this.validation.getValidParameter(params, 'silent', ValidationService.TEXT_KEY, '') === 'silent' && this.logoutIssuer != null;
 		// NOSONAR
 		// console.debug('[SSOComponent] Extracted parameters:');
 		// console.debug('[SSOComponent] ssoGroupName (= param)', this.ssoGroupName);
 		// console.debug('[SSOComponent] ssoSubject (= param)', this.ssoSubject);
 		// console.debug('[SSOComponent] silentLogout / silent param', this.silentLogout, params.silent);
 		// console.debug('[SSOComponent] logoutIssuer (= issuer param)', this.logoutIssuer);
-		// console.debug('[SSOComponent] returnUrl / redirect param', this.returnUrl, params.redirect);
-	}
-
-	private setReturnUrlIfValid(returnUrl: string) {
-		if (!!returnUrl && returnUrl.length > 0 && this.isValidHttpUrl(returnUrl)) {
-			this.returnUrl = returnUrl;
-		} else {
-			this.returnUrl = undefined;
-		}
-	}
-
-	// allow only successfully parsed URL with http[s] scheme (in particular we must avoid script and data URLs)
-	private isValidHttpUrl(returnUrl: string) {
-		try {
-			const url = new URL(returnUrl);
-			return url.protocol === 'http:' || url.protocol === 'https:';
-		} catch (ex) {
-			console.error('Return URL is not valid', ex, returnUrl);
-		}
-		return false;
-	}
-
-	// as we perform this in the browser, it is not an 'open redirect', we're just changing the location in the browser
-	private gotoReturnUrl() {
-		window.location.href = this.returnUrl;
 	}
 
 	private setSsoParticipants(ssoParticipants: SsoParticipants[]) {

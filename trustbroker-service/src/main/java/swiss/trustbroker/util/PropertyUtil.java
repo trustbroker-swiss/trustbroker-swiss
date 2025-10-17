@@ -53,7 +53,7 @@ public class PropertyUtil {
 	 * Copy all attributes from base to target if set in base, but not in target.
 	 */
 	public static <X> void copyMissingAttributes(Set<String> propertyNames, X target, X base) {
-		if (base == null || target == null) {
+		if (base == null || target == null || base == target) {
 			return;
 		}
 		if (!target.getClass().isAssignableFrom(base.getClass())) {
@@ -102,7 +102,7 @@ public class PropertyUtil {
 	 */
 	public static <X, Y> boolean copyAttributeIfRequired(BiConsumer<X, Y> setter, Function<X, Y> getter, X target, X base,
 			Predicate<Y> copyCondition) {
-		if (base == null || target == null) {
+		if (base == null || target == null || base == target) {
 			return true;
 		}
 		var baseValue = getter.apply(base);

@@ -22,7 +22,6 @@ import { HrdCardsComponent } from './hrd-cards/hrd-cards.component';
 import { ProfileSelectionComponent } from './profile-selection/profile-selection.component';
 import { SsoComponent } from './sso/sso.component';
 import { HrdCardsContainerComponent } from './hrd-cards-container/hrd-cards-container.component';
-import { configResolver } from './config.resolver';
 
 export const routes: Routes = [
 	{
@@ -47,7 +46,7 @@ export const routes: Routes = [
 		component: SsoComponent
 	},
 	{
-		path: 'sso/:silent/:issuer/:redirect',
+		path: 'sso/:silent/:issuer/:ignored',
 		component: SsoComponent
 	},
 	{
@@ -64,13 +63,11 @@ export const routes: Routes = [
 	},
 	{
 		path: 'announcements/:issuer/:authnRequestId',
-		loadComponent: () => import('./announcements/announcements.component'),
-		resolve: { config: configResolver }
+		loadComponent: () => import('./announcements/announcements.component')
 	},
 	{
 		path: 'announcements/:issuer/:authnRequestId/:appName',
-		loadComponent: () => import('./announcements/announcements.component'),
-		resolve: { config: configResolver }
+		loadComponent: () => import('./announcements/announcements.component')
 	},
 	{
 		path: 'failure/:textKey/:reference',

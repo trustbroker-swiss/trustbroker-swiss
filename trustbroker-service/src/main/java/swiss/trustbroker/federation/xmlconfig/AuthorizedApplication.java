@@ -62,6 +62,12 @@ public class AuthorizedApplication implements Serializable {
 	private String url;
 
 	/**
+	 * If configured the value is sent as appUrl instead of sending app=name in the INTERACTIVE AccessRequest.
+	 */
+	@XmlAttribute(name = "applUrl")
+	private String applUrl;
+
+	/**
 	 * Matched against minimum QOA from SAML AuthnContextClassRef.
 	 * When an RP has multiple applications, and they cannot be differentiated via HTTP Referer,
 	 * the minimum AuthnContextClassRef in the AuthnRequest can be used to select the application.

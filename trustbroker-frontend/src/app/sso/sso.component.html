@@ -12,10 +12,10 @@
  You should have received a copy of the GNU Affero General Public License along with this program.
  If not, see <https://www.gnu.org/licenses/>.
 -->
-<main class="mainContent">
+<div class="mainContent">
 	<div class="title-container" id="titleContainer">
-		<h1 class="high-emphasis mb-2">{{ "trustbroker.sso.main.title" | translate }}</h1>
-		<div class="body-1 medium-emphasis mb-2">
+		<h2>{{ "trustbroker.sso.main.title" | translate }}</h2>
+		<div>
 			<div id="selectionText">
 				<p [innerHTML]="'trustbroker.sso.main.subtitle' | translate | safeMarkup"></p>
 			</div>
@@ -44,7 +44,6 @@
 											appearance="outlined"
 											class="small"
 											id="{{ ssoGroupParticipants.ssoGroupName + '.' + participant.rpId }}"
-											tabindex="1"
 											role="button"
 											[attr.aria-label]="'trustbroker.sso.rp.' + participant.name + '.title' | translate: { Default: participant.name }"
 											(keydown.enter)="onClickCard(ssoGroupParticipants.ssoGroupName, participant.rpId, participant.cpId, ssoGroupParticipants.ssoSubject)"
@@ -58,10 +57,11 @@
 												(click)="onClickCard(ssoGroupParticipants.ssoGroupName, participant.rpId, participant.cpId, ssoGroupParticipants.ssoSubject)"
 											/>
 											<mat-card-title class="high-emphasis">
-												<h2
+												<p
+													class="strong"
 													[id]="'sso-participant.' + +ssoGroupParticipants.ssoGroupName + '.' + ssoGroupParticipants.ssoSubject + '.' + participant.name"
 													[innerHTML]="'trustbroker.sso.rp.' + participant.name + '.title' | translate: { Default: participant.name } | safeMarkup"
-												></h2>
+												></p>
 											</mat-card-title>
 										</mat-card>
 									}
@@ -84,4 +84,4 @@
 			</div>
 		}
 	</div>
-</main>
+</div>

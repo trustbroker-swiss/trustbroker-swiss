@@ -95,7 +95,7 @@ public class ServiceSamlTestUtil implements SamlHttpTestBase {
 		return SamlIoUtil.unmarshallLogoutRequest(logoutRequestFilePath);
 	}
 
-	public static SAMLObject loadPITResponse() {
+	public static SAMLObject loadSampleResponse() {
 		String authResponseFilePath = SamlTestBase.filePathFromClassPath(SAMPLE_CP_RESPONSE);
 		return (SAMLObject) SamlIoUtil.getXmlObjectFromFileOrClassPath(authResponseFilePath);
 	}
@@ -199,7 +199,7 @@ public class ServiceSamlTestUtil implements SamlHttpTestBase {
 		StateData spStateData = StateData.builder()
 				.lifecycle(Lifecycle.builder().lifecycleState(LifecycleState.INIT).build())
 				.id("sp-requestid")
-				.issuer("urn:test:TESTRP")
+				.issuer(AUTHN_REQUEST_ISSUER_ID)
 				.relayState("sp-relaystate")
 				.build();
 		return StateData.builder()

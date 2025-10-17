@@ -109,7 +109,7 @@ public class HrdController {
 			@PathVariable("issuer") String issuer, @RequestParam(value = "session", required = false) String rpAuthnRequestId) {
 		rpAuthnRequestId = StringUtil.clean(rpAuthnRequestId);
 		var rpIssuer = ApiSupport.decodeUrlParameter(issuer);
-		var referer = WebUtil.getHeader(HttpHeaders.REFERER, httpRequest);
+		var referer = WebUtil.getReferer(httpRequest);
 
 		// state for current AuthnRequest must exist
 		var stateDataByAuthnReq = stateCacheService.findBySpIdResilient(rpAuthnRequestId, this.getClass().getSimpleName());
@@ -142,8 +142,12 @@ public class HrdController {
 		SamlValidationUtil.validateProfileRequestId(id);
 		log.debug("Rendering response for profileId={}", id);
 		var stateData = stateCacheService.find(id, this.getClass().getSimpleName());
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(stateData.getRpIssuer(), null);
+		var profileSelection = relyingParty != null ? relyingParty.getProfileSelection() : null;
 		var profileSelectionData = ProfileSelectionData.builder()
+													   .profileSelectionProperties(profileSelection)
 													   .selectedProfileId(id)
+													   .applicationName(stateData.getRpApplicationName())
 													   .build();
 		return profileSelectionService.buildProfileResponse(profileSelectionData, stateData.getCpResponse());
 	}
@@ -254,7 +258,7 @@ public class HrdController {
 			// AuthnRequest attributes like QOA etc. have been checked earlier in AssertionConsumerService
 			if (ssoService.ssoStateValidForDeviceInfo(claimsParty, relyingParty, ssoStateData, stateDataByAuthnReq, deviceID,
 					cpIssuerId)) {
-				return sendResponseForSso(request, response, relyingParty, claimsParty,  ssoStateData, stateDataByAuthnReq);
+				return sendResponseForSso(request, response, relyingParty, claimsParty, ssoStateData, stateDataByAuthnReq);
 			}
 		}
 
@@ -308,7 +312,7 @@ public class HrdController {
 			stateCacheService.save(stateDataByAuthnReq, this.getClass().getSimpleName());
 
 			// handle CP invocation
-			var redirectUrl =  claimsProviderService.sendAuthnRequestToCp(request, response, stateDataByAuthnReq, claimsParty);
+			var redirectUrl = claimsProviderService.sendAuthnRequestToCp(request, response, stateDataByAuthnReq, claimsParty);
 			if (redirectUrl == null) {
 				return null;
 			}

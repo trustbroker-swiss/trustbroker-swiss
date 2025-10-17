@@ -13,7 +13,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.oidc.client.service;
+package swiss.trustbroker.oidc.cache.service;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
 import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.oidc.OidcMockTestData;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
 
 class OidcClientSecretResolverTest {

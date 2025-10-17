@@ -21,6 +21,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.Security;
@@ -32,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import io.micrometer.common.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 import net.shibboleth.shared.resolver.CriteriaSet;
 import net.shibboleth.shared.resolver.Criterion;
@@ -71,6 +73,8 @@ public class CredentialReader {
 	private static final String TYPE_RSAKEY2 = "ENCRYPTED PRIVATE KEY";
 
 	private static final String JAVA_VERSION = "java.version";
+
+	private static final String PEM_MARKER = "-----BEGIN CERTIFICATE-----";
 
 	private static String invalidKeystoreMessage(String certType, String certPath) {
 		return String.format("Unsupported keystore type %s for keystore %s", certType, certPath);
@@ -194,9 +198,31 @@ public class CredentialReader {
 		log.debug("PEM certificate successfully read");
 		return credential;
 	}
+	// read from base64 encoded binary (DER) or PEM, returns X509Credential
+	public static Credential getDerOrPemCredential(String certData, String source) {
+		if (StringUtils.isEmpty(certData)) {
+			throw new TechnicalException(String.format("Reading keystore from source=%s failed: data is null", source));
+		}
+		Certificate certificate;
+		if (certData.startsWith(PEM_MARKER)) {
+			certificate = readPemCertificate(new ByteArrayInputStream(certData.getBytes(StandardCharsets.UTF_8)), source);
+		}
+		else {
+			var base64Data = Base64Util.decode(certData);
+			certificate = readDerCertificate(new ByteArrayInputStream(base64Data), source);
+		}
+		return new BasicX509Credential((X509Certificate) certificate);
+	}
 
+	// read from PEM encoded stream, returns X509Credential
 	public static Credential getPemCredential(InputStream inputStream, String source) {
 		var certificate = readPemCertificate(inputStream, source);
+		return new BasicX509Credential((X509Certificate) certificate);
+	}
+
+	// read from binary stream (DER), returns X509Credential
+	public static Credential getDerCredential(InputStream inputStream, String source) {
+		var certificate = readDerCertificate(inputStream, source);
 		return new BasicX509Credential((X509Certificate) certificate);
 	}
 
@@ -340,6 +366,21 @@ public class CredentialReader {
 		}
 	}
 
+	// read from binary stream (DER)
+	public static Certificate readDerCertificate(InputStream inputStream, String source) {
+		try {
+			var certificateFactory = CertificateFactory.getInstance("X509");
+			return certificateFactory.generateCertificate(inputStream);
+		}
+		catch (TechnicalException e) {
+			throw e;
+		}
+		catch (Exception e) {
+			throw new TechnicalException(String.format("Reading DER keystore from source=%s failed: %s",
+					source, e.getMessage()), e);
+		}
+	}
+
 	private static Credential getJKSorPKCS12Credential(String keystorePath, String password, String alias) {
 		//!!!!!!!!!PERFORMANCE ISSUE WITH PKCS12 IF IT IS USED FOR EVERY REQUEST
 		log.debug("Processing certificate {} looking for alias {}", keystorePath, alias);
@@ -409,7 +450,7 @@ public class CredentialReader {
 		return createCredential(certPath, certType, password, alias, keyPath);
 	}
 
-	private static List<Credential> readTrustCertCredentialFromPem(String keystorePath) {
+	public static List<Credential> readTrustCertCredentialFromPem(String keystorePath) {
 		var objCount = 0;
 		try (var inputStream = readFromFileOrClasspath(keystorePath, "certificate");
 				var streamReader = new InputStreamReader(inputStream);

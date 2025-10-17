@@ -19,7 +19,7 @@ import java.util.List;
 
 public interface AnnouncementsRpData {
 
-	boolean isEnabled();
+	boolean isAnnouncementEnabled();
 
 	List<String> getAnnouncementUrls();
 

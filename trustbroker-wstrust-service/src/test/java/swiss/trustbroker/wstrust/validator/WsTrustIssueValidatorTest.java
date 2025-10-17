@@ -17,10 +17,12 @@ package swiss.trustbroker.wstrust.validator;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.mockito.Mockito.when;
 
 import java.time.Clock;
 
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -32,6 +34,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.WsTrustConfig;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.wstrust.util.WsTrustUtil;
 
@@ -54,6 +57,14 @@ class WsTrustIssueValidatorTest {
 	@Autowired
 	private WsTrustIssueValidator wsTrustIssueValidator;
 
+	private WsTrustConfig wsTrustConfig;
+
+	@BeforeEach
+	void setup() {
+		wsTrustConfig = new WsTrustConfig();
+		when(trustBrokerProperties.getWstrust()).thenReturn(wsTrustConfig);
+	}
+
 	@BeforeAll
 	static void setupAll() {
 		SamlInitializer.initSamlSubSystem();
@@ -61,14 +72,16 @@ class WsTrustIssueValidatorTest {
 
 	@ParameterizedTest
 	@MethodSource
-	void applies(RequestType requestType, boolean expectedResult) {
+	void applies(RequestType requestType, boolean enabled, boolean expectedResult) {
+		wsTrustConfig.setIssueEnabled(enabled);
 		assertThat(wsTrustIssueValidator.applies(requestType), is(expectedResult));
 	}
 
 	static Object[][] applies() {
 		return new Object[][] {
-				{ WsTrustUtil.createRequestType(RequestType.ISSUE), true },
-				{ WsTrustUtil.createRequestType(RequestType.RENEW), false }
+				{ WsTrustUtil.createRequestType(RequestType.ISSUE), true, true },
+				{ WsTrustUtil.createRequestType(RequestType.ISSUE), false, false },
+				{ WsTrustUtil.createRequestType(RequestType.RENEW), true, false }
 		};
 	}
 

@@ -24,10 +24,8 @@ import { BehaviorSubject, Connectable, Observable, connectable } from 'rxjs';
 import { map, startWith } from 'rxjs/operators';
 import { CookieConfiguration } from '../model/CookieConfiguration';
 import { Constant } from '../shared/constants';
-import { HttpErrorResponse } from '@angular/common/http';
 import { ApiService } from './api.service';
 import { CookieService } from './cookie-service';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Injectable({ providedIn: 'root' })
 export class LanguageService {
@@ -104,27 +102,18 @@ export class LanguageService {
 	}
 
 	private loadConfig() {
-		this.apiService
-			.getConfiguration()
-			.pipe(takeUntilDestroyed(this.destroyRef))
-			.subscribe({
-				next: configuration => {
-					const languageCookie: CookieConfiguration = configuration.languageCookie;
-					if (languageCookie?.name == null) {
-						// NOSONAR
-						// console.debug('[LanguageService] Keeping default language cookie', this.languageCookie.name, 'values', languageCookie.values, 'defaultValue', languageCookie.defaultValue);
-						return;
-					}
-					this.languageCookie = languageCookie;
-					this.defaultCookieParameters = false;
-					// NOSONAR
-					// console.debug('[LanguageService] Server sent language cookie parameters ', this.languageCookie.name, 'values', languageCookie.values, 'defaultValue', languageCookie.defaultValue);
-					this.setLanguage();
-				},
-				error: (errorResponse: HttpErrorResponse) => {
-					console.error(errorResponse);
-				}
-			});
+		const configuration = this.apiService.getConfiguration();
+		const languageCookie: CookieConfiguration = configuration.languageCookie;
+		if (languageCookie?.name == null) {
+			// NOSONAR
+			// console.debug('[LanguageService] Keeping default language cookie', this.languageCookie.name, 'values', languageCookie.values, 'defaultValue', languageCookie.defaultValue);
+			return;
+		}
+		this.languageCookie = languageCookie;
+		this.defaultCookieParameters = false;
+		// NOSONAR
+		// console.debug('[LanguageService] Server sent language cookie parameters ', this.languageCookie.name, 'values', languageCookie.values, 'defaultValue', languageCookie.defaultValue);
+		this.setLanguage();
 	}
 
 	private initTranslationService(): void {

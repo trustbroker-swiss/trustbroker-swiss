@@ -13,7 +13,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-@import "/src/styles/variables";
+@use "src/styles/variables";
 
 mat-card {
 	cursor: pointer;
@@ -21,7 +21,7 @@ mat-card {
 
 mat-card.button {
 	display: flex;
-	padding: 0px !important;
+	padding: 0 !important;
 	margin: 0 -16px -16px -16px;
 }
 

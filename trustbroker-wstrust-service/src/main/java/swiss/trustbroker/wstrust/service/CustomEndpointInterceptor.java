@@ -61,7 +61,6 @@ import swiss.trustbroker.common.saml.util.SamlTracer;
 import swiss.trustbroker.common.saml.util.SoapUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
-import swiss.trustbroker.wstrust.validator.WsTrustHeaderValidator;
 
 
 /**
@@ -111,9 +110,8 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 		SamlTracer.logSoapObject(">>>>> Incoming SOAP body", bodyNode);
 
 		SoapMessageHeader requestHeader = getRequestHeaderElements(headerNode);
+		requestHeader.setSoapAction(soapMessage.getSoapAction());
 		RequestLocalContextHolder.setRequestContext(requestHeader);
-
-		WsTrustHeaderValidator.validateHeaderElements(requestHeader, trustBrokerProperties.getIssuer());
 
 		return true;
 	}
@@ -174,10 +172,9 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 				log.debug("Timestamp created on={}", timestamp.getCreated() != null ? timestamp.getCreated().getValue() : null);
 				requestHeader.setRequestTimestamp(timestamp);
 			}
-			else if (xmlObject instanceof Security security) {
-				// The Security header is handled by SpringWS - but for RENEW we need to check it too
-				log.debug("Security header is present in the request");
-				extractBinarySecurityToken(requestHeader, security);
+			else if (xmlObject instanceof BinarySecurityToken binarySecurityToken) {
+				log.debug("BinarySecurityToken is present in the request");
+				requestHeader.setSecurityToken(binarySecurityToken);
 			}
 			else if (xmlObject instanceof Signature) {
 				// The Signature header is handled by SpringWS
@@ -187,16 +184,6 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 				log.error("Unknown security header xml object with namespace={}: {}",
 						xmlObject.getElementQName(), OpenSamlUtil.samlObjectToString(securityHeader));
 			}
-		}
-	}
-
-	private static void extractBinarySecurityToken(SoapMessageHeader requestHeader, Security security) {
-		List<XMLObject> tokens = security.getUnknownXMLObjects().stream().filter(BinarySecurityToken.class::isInstance).toList();
-		if (tokens.size() > 1 || requestHeader.getSecurityToken() != null) {
-			log.error("SOAP header contains multiple Security.BinarySecurityToken objects");
-		}
-		if (!tokens.isEmpty()) {
-			requestHeader.setSecurityToken((BinarySecurityToken) tokens.get(0));
 		}
 	}
 
@@ -252,14 +239,15 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 			//Action header
 			StringSource actionHeaderSource = getHeaderSourceString(marshallerFactory, ADDRESSING_HEADER,
 					Action.ELEMENT_LOCAL_NAME, createActionHeader(), true);
+			transformer.transform(actionHeaderSource, header.getResult());
 
 			//ReplyTo header
-			StringSource relatesToHeaderSource = getHeaderSourceString(marshallerFactory, ADDRESSING_HEADER,
-					RelatesTo.ELEMENT_LOCAL_NAME, createEnvRelatesToHeader(), false);
-
-			transformer.transform(actionHeaderSource, header.getResult());
-			transformer.transform(relatesToHeaderSource, header.getResult());
-
+			var envRelatesToHeader = createEnvRelatesToHeader();
+			if (envRelatesToHeader != null) {
+				StringSource relatesToHeaderSource = getHeaderSourceString(marshallerFactory, ADDRESSING_HEADER,
+						RelatesTo.ELEMENT_LOCAL_NAME, envRelatesToHeader, false);
+				transformer.transform(relatesToHeaderSource, header.getResult());
+			}
 		}
 		finally {
 			RequestLocalContextHolder.destroyRequestContext();
@@ -331,6 +319,9 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 		relatesTo.setRelationshipType("");
 
 		SoapMessageHeader requestHeader = RequestLocalContextHolder.getRequestContext();
+		if (requestHeader.getMessageId() == null) {
+			return null;
+		}
 		relatesTo.setURI(requestHeader.getMessageId().getURI());
 		return relatesTo;
 	}

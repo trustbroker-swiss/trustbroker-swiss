@@ -12,40 +12,40 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
+@forward "src/styles/variables";
 
-@import "spacing";
-@import "typography";
-@import "material/cards";
-@import "variables";
+@use "src/styles/spacing";
+@use "src/styles/typography";
+@use "src/styles/material/cards";
 
-@import "xtb/fonts";
+@use "src/styles/xtb/fonts";
 
-@import "xtb/typography";
+@use "src/styles/xtb/typography" as xtb-typography;
 
-@import "xtb/variables";
+@use "src/styles/xtb/variables";
 
-@import "xtb/app";
+@use "src/styles/xtb/app";
 
-@import "xtb/material-frame";
+@use "src/styles/xtb/material-frame";
 
-@import "xtb/material-header";
+@use "src/styles/xtb/material-header";
 
-@import "xtb/tile-layout";
+@use "src/styles/xtb/tile-layout";
 
-@import "xtb/hrd-cards";
+@use "src/styles/xtb/hrd-cards";
 
-@import "xtb/small-card";
+@use "src/styles/xtb/small-card";
 
-@import "xtb/error-page";
+@use "src/styles/xtb/error-page";
 
-@import "xtb/error-box";
+@use "src/styles/xtb/error-box";
 
-@import "xtb/announcements";
+@use "src/styles/xtb/announcements";
 
-@import "xtb/announcement";
+@use "src/styles/xtb/announcement";
 
-@import "xtb/backdrop";
+@use "src/styles/xtb/backdrop";
 
-@import "xtb/theme-selector";
+@use "src/styles/xtb/theme-selector";
 
-@import "xtb/button";
+@use "src/styles/xtb/button";

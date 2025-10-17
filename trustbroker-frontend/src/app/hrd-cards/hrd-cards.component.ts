@@ -20,11 +20,11 @@ import { ActivatedRoute, Router } from '@angular/router';
 
 import { environment } from '../../environments/environment';
 import { IdpObjects } from '../model/IdpObject';
-import { Theme } from '../model/Theme';
 import { ApiService } from '../services/api.service';
 import { IdpObjectService } from '../services/idp-object.service';
 import { LanguageService } from '../services/language.service';
 import { ThemeService } from '../services/theme-service';
+import { ValidationService } from '../services/validation-service';
 import { Observable, switchMap } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
@@ -32,7 +32,8 @@ import { map } from 'rxjs/operators';
 @Component({
 	selector: 'app-hrd-cards',
 	templateUrl: './hrd-cards.component.html',
-	styleUrls: ['./hrd-cards.component.scss']
+	styleUrls: ['./hrd-cards.component.scss'],
+	standalone: false
 })
 export class HrdCardsComponent {
 	idpObjects = input.required<IdpObjects>();
@@ -41,35 +42,31 @@ export class HrdCardsComponent {
 	baseUrl: string = environment.apiUrl;
 	showNormalSize$: Observable<boolean>;
 	clicked: boolean;
-	theme: Theme;
+
+	protected readonly ThemeService = ThemeService;
 
 	constructor(
 		private readonly apiService: ApiService,
 		breakpointObserver: BreakpointObserver,
 		private readonly idpObjectService: IdpObjectService,
 		public readonly languageService: LanguageService,
-		private readonly themeService: ThemeService,
+		public readonly themeService: ThemeService,
+		private readonly validation: ValidationService,
 		private readonly route: ActivatedRoute,
 		private readonly router: Router,
 		private readonly destroyRef: DestroyRef
 	) {
-		this.theme = this.themeService.getTheme();
-		this.themeService.subscribe({
-			next: theme => {
-				this.theme = theme;
-			}
-		});
-
 		effect(() => {
 			if (this.idpObjects().tiles?.length === 1 && !this.idpObjects().tiles[0].disabled) {
 				this.showHrd = false;
 				this.onClickCard(this.idpObjects().tiles[0]);
-			} else if (this.idpObjects().tiles?.length > 1) {
+			} else {
+				// disabled tiles are also displayed in help
 				this.idpObjectService.addIdpObjects(this.idpObjects().tiles);
 			}
 		});
 
-		this.showNormalSize$ = breakpointObserver.observe(['(min-width: 768px)']).pipe(map(({ matches }) => matches));
+		this.showNormalSize$ = breakpointObserver.observe(['(min-width: 600px)']).pipe(map(({ matches }) => matches));
 	}
 
 	getImageUrl(imageName): string {
@@ -86,7 +83,7 @@ export class HrdCardsComponent {
 		this.clicked = true;
 		this.route.params
 			.pipe(
-				switchMap(params => this.apiService.selectIdp(params['authnRequestId'], idpObject.urn)),
+				switchMap(params => this.apiService.selectIdp(this.validation.getValidParameter(params, 'authnRequestId', ValidationService.ID, ''), idpObject.urn)),
 				takeUntilDestroyed(this.destroyRef)
 			)
 			.subscribe({

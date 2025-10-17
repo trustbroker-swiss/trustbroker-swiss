@@ -13,14 +13,15 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-@import "/src/styles/variables";
+@use "src/styles/variables";
 
 .portal-footer {
 	font-size: 0.85rem;
 }
 
-@media (min-width: $ob-layout-collapse-max) {
+@media (min-width: variables.$ob-layout-collapse-max) {
 	.portal-footer {
 		display: flex;
+		justify-content: space-between;
 	}
 }

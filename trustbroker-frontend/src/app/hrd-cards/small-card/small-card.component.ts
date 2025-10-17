@@ -21,7 +21,8 @@ import { SafeHtml } from '@angular/platform-browser';
 @Component({
 	selector: 'app-small-card',
 	templateUrl: './small-card.component.html',
-	styleUrls: ['./small-card.component.scss']
+	styleUrls: ['./small-card.component.scss'],
+	standalone: false
 })
 export class SmallCardComponent {
 	@Input() id: string;

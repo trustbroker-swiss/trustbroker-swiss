@@ -39,12 +39,14 @@ import org.apache.commons.beanutils.BeanUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.SamlContextClass;
 import swiss.trustbroker.federation.xmlconfig.AcClass;
 import swiss.trustbroker.federation.xmlconfig.AcWhitelist;
 import swiss.trustbroker.federation.xmlconfig.AccessRequest;
+import swiss.trustbroker.federation.xmlconfig.AnnouncementRpConfig;
 import swiss.trustbroker.federation.xmlconfig.AttributesSelection;
 import swiss.trustbroker.federation.xmlconfig.AuthorizationGrantType;
 import swiss.trustbroker.federation.xmlconfig.AuthorizationGrantTypes;
@@ -60,7 +62,10 @@ import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.Oidc;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.OidcSecurityPolicies;
+import swiss.trustbroker.federation.xmlconfig.ProfileSelection;
+import swiss.trustbroker.federation.xmlconfig.ProfileSelectionMode;
 import swiss.trustbroker.federation.xmlconfig.Qoa;
+import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.Scopes;
 
@@ -221,12 +226,14 @@ class RelyingPartySetupUtilTest {
 		var templateApp = AuthorizedApplication.builder().name("app1").build();
 		profile.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList().add(templateApp);
 		var rp = createRelyingPartyWithAccessRequest();
+		rp.getAccessRequest().setEnabled(null);
 
 		RelyingPartySetupUtil.mergeAccessRequest(rp, profile);
 
 		assertThat(rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList().size(), is(1));
 		assertThat(rp.getAccessRequest().getAuthorizedApplications().getAuthorizedApplicationList().get(0),
 				sameInstance(templateApp));
+		assertThat(rp.getAccessRequest().enabled(), is(profile.getAccessRequest().enabled()));
 	}
 
 	@Test
@@ -316,6 +323,33 @@ class RelyingPartySetupUtilTest {
 		rp.setOidc(Oidc.builder().clients(List.of(OidcClient.builder().build())).build());
 
 		assertDoesNotThrow(() -> RelyingPartySetupUtil.mergeAccessRequest(rp, profile));
+	}
+
+	@Test
+	void mergeAnnouncements() {
+		var profile = createRelyingPartyWithAnnouncements();
+		var urls = List.of("url1");
+		profile.getAnnouncement().setAnnouncementUrls(urls);
+		var rp = createRelyingPartyWithAnnouncements();
+		rp.getAnnouncement().setEnabled(null);
+
+		RelyingPartySetupUtil.mergeAnnouncements(rp, profile);
+
+		assertThat(rp.getAnnouncement().getAnnouncementUrls(), is(profile.getAnnouncement().getAnnouncementUrls()));
+		assertThat(rp.getAnnouncement().isAnnouncementEnabled(), is(profile.getAnnouncement().isAnnouncementEnabled()));
+	}
+
+	@Test
+	void mergeProfileSelection() {
+		var profile = createRelyingPartyWithProfileSelection();
+		var rp = createRelyingPartyWithProfileSelection();
+		rp.getProfileSelection().setOidcOnly(null);
+
+		RelyingPartySetupUtil.mergeProfileSelection(rp, profile.getProfileSelection());
+
+		assertThat(rp.getProfileSelection().getProfileSelectionMode(), is(profile.getProfileSelection().getProfileSelectionMode()));
+		assertThat(rp.getProfileSelection().isProfileSelectionEnabled(), is(profile.getProfileSelection().isProfileSelectionEnabled()));
+		assertThat(rp.getProfileSelection().isForOidcOnly(), is(profile.getProfileSelection().isForOidcOnly()));
 	}
 
 	@Test
@@ -515,7 +549,8 @@ class RelyingPartySetupUtilTest {
 				.qoa(Qoa.builder().classes(List.of(AcClass.builder().contextClass("lost").build())).build())
 				.build();
 
-		RelyingPartySetupUtil.mergeOidcClient(client, base);
+
+		RelyingPartySetupUtil.mergeOidcClient(client, base, RelyingParty.builder().build());
 
 		var expected = OidcClient.builder().build();
 		BeanUtils.copyProperties(expected, client);
@@ -574,6 +609,16 @@ class RelyingPartySetupUtilTest {
 	private static RelyingParty createRelyingPartyWithAccessRequest() {
 		var ar = AccessRequest.builder().enabled(true).build();
 		return RelyingParty.builder().id("rpId").accessRequest(ar).build();
+	}
+
+	private static RelyingParty createRelyingPartyWithAnnouncements() {
+		var announcement = AnnouncementRpConfig.builder().enabled(true).build();
+		return RelyingParty.builder().id("rpId").announcement(announcement).build();
+	}
+
+	private static RelyingParty createRelyingPartyWithProfileSelection() {
+		var ps = ProfileSelection.builder().enabled(true).mode(ProfileSelectionMode.INTERACTIVE).build();
+		return RelyingParty.builder().id("rpId").profileSelection(ps).build();
 	}
 
 	private ArrayList<ClaimsProvider> givenClaimsProviders() {
@@ -685,4 +730,33 @@ class RelyingPartySetupUtilTest {
 		assertFalse(RelyingPartySetupUtil.isValidClaimsProviderMappings(claimsProviders, "claimsProviderDef"));
 	}
 
+	@ParameterizedTest
+	@MethodSource
+	void mergeOidcQoaLevelsTest(Qoa oidcQoa, Qoa samlQoa, Qoa resultedQoa) {
+		var oidcClient = OidcClient.builder().qoa(oidcQoa).build();
+		RelyingPartySetupUtil.mergeQoaLevels(oidcClient, samlQoa);
+		var oidcQoaResult = oidcClient.getQoa();
+		if (resultedQoa == null) {
+			assertNull(oidcQoaResult);
+		}
+		else {
+			assertEquals(resultedQoa.getEnforce(), oidcQoaResult.getEnforce());
+			assertEquals(resultedQoa.getMapOutbound(), oidcQoaResult.getMapOutbound());
+			assertEquals(resultedQoa.getComparison(), oidcQoaResult.getComparison());
+			assertEquals(resultedQoa.getClasses(), oidcQoaResult.getClasses());
+		}
+	}
+
+	static Object[][] mergeOidcQoaLevelsTest() {
+		var accClasses = List.of(AcClass.builder().contextClass("qoa1").build());
+		return new Object[][]{
+				{ null, null, null },
+				{ null, Qoa.builder().enforce(true).build(), Qoa.builder().enforce(true).build() },
+				{ Qoa.builder().enforce(true).build(), null, Qoa.builder().enforce(true).build() },
+				{ Qoa.builder().enforce(true).build(), Qoa.builder().enforce(false).build(), Qoa.builder().enforce(true).build() },
+				{ Qoa.builder().enforce(true).build(), Qoa.builder().enforce(false).mapOutbound(false).build(), Qoa.builder().enforce(true).mapOutbound(true).build() },
+				{ Qoa.builder().enforce(true).comparison(QoaComparison.MINIMUM).build(), Qoa.builder().enforce(true).comparison(QoaComparison.EXACT).build(), Qoa.builder().comparison(QoaComparison.MINIMUM).enforce(true).build() },
+				{ Qoa.builder().enforce(true).comparison(QoaComparison.MINIMUM).build(), Qoa.builder().enforce(true).comparison(QoaComparison.EXACT).classes(accClasses).build(), Qoa.builder().comparison(QoaComparison.MINIMUM).classes(accClasses).enforce(true).build() }
+		};
+	}
 }

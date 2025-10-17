@@ -34,6 +34,7 @@ import org.springframework.security.web.firewall.RequestRejectedException;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import swiss.trustbroker.common.util.OidcUtil;
 
 @AllArgsConstructor
 @Slf4j
@@ -102,7 +103,7 @@ public class OIdcMockJwtCustomizer implements OAuth2TokenCustomizer<JwtEncodingC
 			var value = entry.getValue().toString();
 			if (key != null && !authorizeParams.contains(key)) {
 				if ("acr_values".equals(key)) {
-					customClaims.put("acr", value.split(" "));
+					customClaims.put("acr", OidcUtil.convertAcrToContextClasses(value).toArray());
 				}
 				else {
 					customClaims.put(key, value);

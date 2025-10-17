@@ -35,6 +35,7 @@ import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
+import swiss.trustbroker.oidc.OidcMockTestData;
 
 class OidcClaimValidatorServiceTest {
 

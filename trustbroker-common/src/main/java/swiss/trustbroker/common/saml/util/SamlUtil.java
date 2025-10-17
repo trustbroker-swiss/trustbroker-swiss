@@ -46,7 +46,9 @@ import org.opensaml.core.xml.util.XMLObjectSupport;
 import org.opensaml.messaging.encoder.MessageEncodingException;
 import org.opensaml.saml.saml2.core.Assertion;
 import org.opensaml.saml.saml2.core.Attribute;
+import org.opensaml.saml.saml2.core.EncryptedAssertion;
 import org.opensaml.saml.saml2.core.NameIDType;
+import org.opensaml.saml.saml2.core.Response;
 import org.opensaml.security.SecurityException;
 import org.opensaml.security.credential.Credential;
 import org.opensaml.security.x509.X509Credential;
@@ -592,4 +594,26 @@ public class SamlUtil {
 		return attribute.getUnknownAttributes().containsKey(ORIGINAL_ISSUER_QNAME);
 	}
 
+	public static List<Assertion> getResponseAssertions(Response response, List<Credential> decryptionCredentials,
+														 boolean requireEncryptedAssertion) {
+		List<Assertion> assertions = new ArrayList<>();
+		var issuerId = OpenSamlUtil.getMessageIssuerId(response);
+		var encryptedAssertions = response.getEncryptedAssertions();
+		if (CollectionUtils.isNotEmpty(decryptionCredentials) && CollectionUtils.isEmpty(encryptedAssertions) && requireEncryptedAssertion) {
+			throw new TechnicalException(String.format(
+					"Decryption of assertions is required for cpIssuer=%s, but the response contains no encrypted assertions: %s",
+					issuerId, OpenSamlUtil.samlObjectToString(response)));
+		}
+		if (CollectionUtils.isNotEmpty(encryptedAssertions)) {
+			for (EncryptedAssertion encryptedAssertion : encryptedAssertions) {
+				Assertion assertion = EncryptionUtil.decryptAssertion(
+						encryptedAssertion, decryptionCredentials, response.getID(), issuerId);
+				assertions.add(assertion);
+			}
+		}
+		else {
+			assertions = response.getAssertions();
+		}
+		return assertions;
+	}
 }

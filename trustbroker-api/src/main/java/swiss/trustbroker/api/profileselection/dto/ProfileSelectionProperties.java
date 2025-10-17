@@ -19,9 +19,9 @@ public interface ProfileSelectionProperties {
 
 	String getProfileSelectionMode();
 
-	boolean isEnabled();
+	boolean isProfileSelectionEnabled();
 
-	boolean isOidcOnly();
+	boolean isForOidcOnly();
 
 	boolean isN2kEnabled();
 
@@ -30,5 +30,13 @@ public interface ProfileSelectionProperties {
 	boolean isTransformUnitPropsEnabled();
 
 	boolean isFilterUnitPropsEnabled();
+
+	boolean isSortRoleEnabled();
+
+	boolean isFilterRoleEnabled();
+
+	boolean isFilterRoleOutput();
+
+	String getFilterRoleConfiguration();
 
 }

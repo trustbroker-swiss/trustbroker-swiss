@@ -17,7 +17,10 @@ import { Pipe, PipeTransform } from '@angular/core';
 
 import { Constant } from '../shared/constants';
 
-@Pipe({ name: 'languageDisplay' })
+@Pipe({
+	name: 'languageDisplay',
+	standalone: false
+})
 export class LanguageDisplayPipe implements PipeTransform {
 	transform(lang: string, fullName: boolean): string {
 		let result = Constant.LanguageDisplayLabels[lang];

@@ -13,8 +13,8 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-@import "/src/styles/variables.scss";
-@import "/src/styles/spacing.scss";
+@use "src/styles/spacing";
+@use "src/styles/variables";
 
 #announcementCard {
 	overflow: auto;
@@ -24,6 +24,7 @@
 
 	display: flex;
 	flex-direction: column;
+	gap: 0.5em;
 }
 
 .ob-alert {
@@ -31,8 +32,8 @@
 }
 
 .title {
-	font-weight: $font-weight-bold;
-	letter-spacing: 0.1px;
+	font-weight: variables.$font-weight-bold;
+	margin-bottom: 0.5em;
 }
 
 .infoColumn {
@@ -46,18 +47,13 @@
 	}
 }
 
-.infoColumn .title{
-	padding-bottom: 8px;
-}
-
 .subtitle {
-	font-weight: $font-weight-normal;
-	letter-spacing: 0.25px
+	font-weight: variables.$font-weight-normal;
+	margin-bottom: 0;
 }
 
 p a {
-	font-weight: $font-weight-normal;
-	letter-spacing: 1.25px;
+	font-weight: variables.$font-weight-normal;
 }
 
 .infoContainer {
@@ -65,11 +61,11 @@ p a {
 }
 
 .ob-alert-error-background {
-	background-color: $ob-error-50;
+	background-color: variables.$ob-error-50;
 }
 
 .ob-alert-success-background {
-	background-color: $ob-success-50;
+	background-color: variables.$ob-success-50;
 }
 
 .ob-alert-warning-background {
@@ -77,5 +73,5 @@ p a {
 }
 
 .ob-alert-info-background {
-	background-color: $ob-primary-50;
+	background-color: variables.$ob-primary-50;
 }

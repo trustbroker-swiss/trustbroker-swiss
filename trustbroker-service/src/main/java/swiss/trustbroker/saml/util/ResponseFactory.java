@@ -75,8 +75,7 @@ public class ResponseFactory {
 		// assemble assertion
 		params.setNameIdFormat(cpResponse.getNameIdFormat());
 		var constAttr = relyingParty.getConstAttributes();
-		var rpQoaConfig = relyingPartySetupService.getQoaConfiguration(idpStateData.getSpStateData(),
-				relyingParty, trustBrokerProperties);
+		var rpQoaConfig = qoaMappingService.getQoaConfiguration(idpStateData.getSpStateData(), relyingParty);
 		rpQoaConfig = rpQoaConfig != null ?  rpQoaConfig : new QoaConfig(null, null);
 
 		// map CP Qoa model to RP Qoa model (the relevant comparison type is what the RP requested)

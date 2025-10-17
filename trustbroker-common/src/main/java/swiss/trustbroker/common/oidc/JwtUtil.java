@@ -15,6 +15,8 @@
 
 package swiss.trustbroker.common.oidc;
 
+import java.security.interfaces.RSAPrivateKey;
+import java.text.ParseException;
 import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
@@ -24,21 +26,28 @@ import java.util.Objects;
 
 import com.nimbusds.jose.EncryptionMethod;
 import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JWEAlgorithm;
+import com.nimbusds.jose.JWEEncrypter;
 import com.nimbusds.jose.JWEHeader;
 import com.nimbusds.jose.JWEObject;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.Payload;
+import com.nimbusds.jose.crypto.ECDHDecrypter;
+import com.nimbusds.jose.crypto.ECDHEncrypter;
+import com.nimbusds.jose.crypto.RSADecrypter;
 import com.nimbusds.jose.crypto.RSAEncrypter;
 import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import com.nimbusds.jwt.EncryptedJWT;
 import com.nimbusds.jwt.JWT;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.JWTParser;
 import com.nimbusds.jwt.SignedJWT;
 import lombok.extern.slf4j.Slf4j;
+import org.bouncycastle.jcajce.provider.asymmetric.ec.BCECPrivateKey;
 import org.opensaml.security.credential.Credential;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -133,11 +142,26 @@ public class JwtUtil {
 	}
 
 	public static String encryptJwt(JWEHeader jweHeader, Payload payload, JWK jwk) throws JOSEException {
-		JWEObject jweObject = new JWEObject(jweHeader, payload);
-		jweObject.encrypt(new RSAEncrypter(jwk.toRSAKey().toRSAPublicKey()));
+		var jweObject = new JWEObject(jweHeader, payload);
+		jweObject.encrypt(getEncrypter(jweHeader.getAlgorithm(), jwk));
 		var keyID = jwk.getKeyID();
 		log.debug("Payload={} encrypted with key={}", payload, keyID);
 		return jweObject.serialize();
+	}
+
+	private static JWEEncrypter getEncrypter(JWEAlgorithm alg, JWK jwk) {
+		try {
+			var algFamily = JwkUtil.getAlgFamily(alg);
+			return switch (algFamily) {
+				case RSA -> new RSAEncrypter(jwk.toRSAKey().toRSAPublicKey());
+				case EC -> new ECDHEncrypter(jwk.toECKey().toECPublicKey());
+				// NOT supported: "A128KW", "A256KW", "A128GCMKW", "A256GCMKW", "PBES2-HS256+A128KW", "PBES2-HS512+A256KW", "dir"
+				default -> throw new TechnicalException("Unsupported JWE algorithm family: " + algFamily);
+			};
+		}
+		catch (JOSEException e) {
+			throw new TechnicalException("Failed to create JWEEncrypter for alg=" + alg, e);
+		}
 	}
 
 	public static JWT parseJWT(String token) {
@@ -160,7 +184,7 @@ public class JwtUtil {
 			Payload payload = OidcUtil.getAndSignPayload(jwtClaimsSet, signToken, jwsHeader, jwkSource, id);
 
 			// encrypt
-			JWK jwk = JwkUtil.createEncrptionJWK(encryptionCredential, id, jweHeader.getKeyID());
+			JWK jwk = JwkUtil.createEncrptionJWK(encryptionCredential, id, jweHeader);
 			if (jwk == null) {
 				log.debug("Could not create encryption JWK for={}, skipping encryption", id);
 				var nimbusJwtEncoder = new NimbusJwtEncoder(jwkSource);
@@ -216,5 +240,40 @@ public class JwtUtil {
 					// "RSA-OAEP", "RSA-OAEP-256", "ECDH-ES", "ECDH-ES+A256KW", "A256KW", "dir"
 					EncryptionMethod.A256GCM.getName();
 		};
+	}
+
+	public static EncryptedJWT decryptJwt(String token, Credential credential, String clientId) throws ParseException, JOSEException {
+		var parse = EncryptedJWT.parse(token);
+
+		if (credential == null) {
+			throw new TechnicalException(String.format("No credential found for id=%s", clientId));
+		}
+
+		var privateKey = credential.getPrivateKey();
+		if (privateKey == null) {
+			throw new TechnicalException(String.format("No PrivateKey found for id=%s in credential=%s", clientId, credential));
+		}
+
+		// BASE64URL(UTF8(JWE Protected Header)) '.' BASE64URL(JWE Encrypted Key) '.' BASE64URL(JWE Initialization Vector) '.'   BASE64URL(JWE Ciphertext) '.'  BASE64URL(JWE Authentication Tag)
+		if (privateKey instanceof RSAPrivateKey key) {
+			parse.decrypt(new RSADecrypter(key));
+		}
+		else if (privateKey instanceof BCECPrivateKey key) {
+			parse.decrypt(new ECDHDecrypter(key));
+		}
+		else {
+			throw new TechnicalException(String.format("Invalid decryption credential alg=%s found for id=%s", privateKey.getAlgorithm(), clientId));
+		}
+
+		// Header
+		log.debug("Decrypted JWT Header: {}", parse.getHeader().toJSONObject());
+		// Encrypted Key
+		log.debug("Decrypted JWT Content Encrypted Key: {}", parse.getEncryptedKey());
+		// Initialization vector
+		log.debug("Decrypted JWT Initialization vector: {}", parse.getIV());
+		// Authentication Tag
+		log.debug("Decrypted JWT Authentication Tag: {}", parse.getAuthTag());
+
+		return parse;
 	}
 }

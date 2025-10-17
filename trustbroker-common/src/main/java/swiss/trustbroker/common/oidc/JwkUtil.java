@@ -15,15 +15,22 @@
 
 package swiss.trustbroker.common.oidc;
 
+import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
+import com.nimbusds.jose.JWEAlgorithm;
+import com.nimbusds.jose.JWEHeader;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.KeySourceException;
+import com.nimbusds.jose.jwk.Curve;
+import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKMatcher;
 import com.nimbusds.jose.jwk.JWKSelector;
+import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.KeyType;
 import com.nimbusds.jose.jwk.KeyUse;
 import com.nimbusds.jose.jwk.RSAKey;
@@ -69,24 +76,83 @@ public class JwkUtil {
         }
     }
 
-	public static JWK createEncrptionJWK(Credential credential, String id, String keyID) {
+	public static JWK createEncrptionJWK(Credential credential, String id, JWEHeader jweHeader) {
 		if (credential == null) {
 			log.debug("Missing Encryption credential for={}", id);
 			return null;
 		}
-		var publicKey = (RSAPublicKey) credential.getPublicKey();
 
-		if (publicKey == null) {
-			log.warn("Missing public for={}", id);
-			return null;
+		var keyID = getKeyIdFromHeader(jweHeader);
+		var alg = getAlgFromHeader(jweHeader);
+		var algFamily = getAlgFamilyFromHeader(jweHeader);
+
+		if (EncAlgFamily.EC.equals(algFamily)) {
+			var publicKey = (ECPublicKey) credential.getPublicKey();
+			if (publicKey == null) {
+				log.warn("Missing EC public for={}", id);
+				return null;
+			}
+			return new ECKey.Builder(Curve.P_256, publicKey)
+					.keyID(keyID)
+					.algorithm(alg)
+					.keyUse(KeyUse.ENCRYPTION)
+					.build();
 		}
-		if(keyID == null) {
-			keyID = UUID.randomUUID().toString();
+
+		var publicKey = (RSAPublicKey) credential.getPublicKey();
+		if (publicKey == null) {
+			log.warn("Missing RSA public for={}", id);
+			return null;
 		}
 		return new RSAKey.Builder(publicKey)
 				.keyID(keyID)
+				.algorithm(alg)
 				.keyUse(KeyUse.ENCRYPTION)
 				.build();
+	}
+
+	private static JWEAlgorithm getAlgFromHeader(JWEHeader jweHeader) {
+		JWEAlgorithm alg = null;
+		if (jweHeader != null && jweHeader.getAlgorithm() != null) {
+			alg = jweHeader.getAlgorithm();
+		}
+		else {
+			alg = JWEAlgorithm.RSA_OAEP_256;
+		}
+		return alg;
+	}
+
+	private static EncAlgFamily getAlgFamilyFromHeader(JWEHeader jweHeader) {
+		var algFamily = EncAlgFamily.RSA;
+		if (jweHeader != null && jweHeader.getAlgorithm() != null) {
+			var alg = jweHeader.getAlgorithm();
+			algFamily = getAlgFamily(alg);
+		}
+		return algFamily;
+	}
+
+	public static EncAlgFamily getAlgFamily(JWEAlgorithm alg) {
+		if (alg == null) {
+			return EncAlgFamily.RSA;
+		}
+		return switch (alg.getName()) {
+			case "RSA1_5", "RSA-OAEP", "RSA-OAEP-256", "RSA-OAEP-384", "RSA-OAEP-512" -> EncAlgFamily.RSA;
+			case "ECDH-ES", "ECDH-ES+A128KW", "ECDH-ES+A256KW" -> EncAlgFamily.EC;
+			// NOT supported: "A128KW", "A256KW", "A128GCMKW", "A256GCMKW", "PBES2-HS256+A128KW", "PBES2-HS512+A256KW", "dir"
+			default -> throw new TechnicalException("Unsupported JWE algorithm: " + alg.getName());
+		};
+	}
+
+	private static String getKeyIdFromHeader(JWEHeader jweHeader) {
+		String keyID = null;
+		if (jweHeader != null && jweHeader.getKeyID() != null) {
+			keyID = jweHeader.getKeyID();
+		}
+		else {
+			keyID = UUID.randomUUID().toString();
+
+		}
+		return keyID;
 	}
 
 	public static JWKMatcher createJwkMatcher(JwsHeader headers, KeyUse keyUse, String id) {
@@ -145,5 +211,28 @@ public class JwkUtil {
 			jwsHeaderBuilder.keyId(kid);
 		}
 		return jwsHeaderBuilder.build();
+	}
+
+	public static JWK findEncJwkForAlg(JWKSet jwkSet, String encryptionAlgorithm, String clientId, String protocolEndpoint) {
+		if (jwkSet.isEmpty()) {
+			log.warn("No JWKs found for protocol client={} endpoint={}", clientId, protocolEndpoint);
+			return null;
+		}
+		var encJwks = jwkSet.getKeys().stream().filter(key -> key != null && key.getKeyUse() == KeyUse.ENCRYPTION).toList();
+		if (encJwks.isEmpty()) {
+			log.warn("No Encryption JWKs found for protocol client={} endpoint={}", clientId, protocolEndpoint);
+			return null;
+		}
+		if (encJwks.size() == 1) {
+			return encJwks.get(0);
+		}
+		if (encryptionAlgorithm != null) {
+			var keyForAlg = encJwks.stream().filter(key -> key != null && key.getAlgorithm() != null &&
+					Objects.equals(key.getAlgorithm().getName(), encryptionAlgorithm)).findFirst().orElse(null);
+			if (keyForAlg != null) {
+				return keyForAlg;
+			}
+		}
+		return encJwks.get(0);
 	}
 }

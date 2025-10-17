@@ -3,6 +3,7 @@
 	<ACWhitelist>
 		<ACUrl>https://localhost:8321/SAML2.0/ServiceProvider/AssertionConsumer</ACUrl>
 		<ACUrl>https://localhost:10443/auth/saml2/sso/IDP-PRIVATE</ACUrl>
+		<ACUrl>https://saml-test.localdomain/caller</ACUrl>
 		<ACUrl>https://saml-test.localdomain</ACUrl>
 	</ACWhitelist>
 	<Certificates>
@@ -17,6 +18,7 @@
 			<Password>testit</Password>
 		</SignerTruststore>
 	</Certificates>
+	<SecurityPolicies validateHttpHeaders="true"/>
 	<IDMLookup>
 		<IDMQuery name='IDENTITY'>
 			<ClientExtId>100</ClientExtId>

@@ -58,6 +58,7 @@ import org.opensaml.messaging.context.MessageContext;
 import org.opensaml.messaging.decoder.MessageDecodingException;
 import org.opensaml.messaging.decoder.servlet.BaseHttpServletRequestXMLMessageDecoder;
 import org.opensaml.messaging.encoder.MessageEncodingException;
+import org.opensaml.messaging.encoder.servlet.AbstractHttpServletResponseMessageEncoder;
 import org.opensaml.saml.common.SAMLObject;
 import org.opensaml.saml.common.binding.SAMLBindingSupport;
 import org.opensaml.saml.common.binding.artifact.SAMLArtifactMap;
@@ -78,10 +79,12 @@ import org.opensaml.saml.saml2.binding.artifact.SAML2ArtifactType0004;
 import org.opensaml.saml.saml2.binding.decoding.impl.HTTPArtifactDecoder;
 import org.opensaml.saml.saml2.binding.decoding.impl.HTTPPostDecoder;
 import org.opensaml.saml.saml2.binding.decoding.impl.HTTPRedirectDeflateDecoder;
+import org.opensaml.saml.saml2.binding.decoding.impl.HTTPSOAP11Decoder;
 import org.opensaml.saml.saml2.binding.encoding.impl.BaseSAML2MessageEncoder;
 import org.opensaml.saml.saml2.binding.encoding.impl.HTTPArtifactEncoder;
 import org.opensaml.saml.saml2.binding.encoding.impl.HTTPPostEncoder;
 import org.opensaml.saml.saml2.binding.encoding.impl.HTTPRedirectDeflateEncoder;
+import org.opensaml.saml.saml2.binding.encoding.impl.HTTPSOAP11Encoder;
 import org.opensaml.saml.saml2.binding.encoding.impl.HttpClientRequestSOAP11Encoder;
 import org.opensaml.saml.saml2.core.ArtifactResolve;
 import org.opensaml.saml.saml2.core.ArtifactResponse;
@@ -118,6 +121,7 @@ import org.opensaml.storage.StorageService;
 import org.opensaml.xmlsec.SignatureSigningParameters;
 import org.opensaml.xmlsec.context.SecurityParametersContext;
 import org.opensaml.xmlsec.signature.support.SignatureConstants;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.util.CollectionUtils;
 import org.w3c.dom.Element;
@@ -156,9 +160,9 @@ public class OpenSamlUtil {
 
 	private static class StaticMetaDataResolver implements MetadataResolver {
 
-		private String id;
+		private final String id;
 
-		private EntityDescriptor artifactService;
+		private final EntityDescriptor artifactService;
 
 		private StaticMetaDataResolver(String id, String artifactResolutionUrl, int artifactResolutionIndex) {
 			this.id = id;
@@ -545,6 +549,11 @@ public class OpenSamlUtil {
 		encodeSamlMessage(encoder);
 	}
 
+	public static void encodeSamlSoapMessage(HttpServletResponse httpServletResponse, MessageContext context) {
+		var encoder = createSamlSoapEncoder(httpServletResponse, context);
+		encodeSamlMessage(encoder);
+	}
+
 	@SuppressWarnings("unchecked")
 	public static <T extends BaseSAML2MessageEncoder> T configureSamlRedirectEncoder(HttpServletResponse httpServletResponse,
 			MessageContext context, T encoder) {
@@ -579,7 +588,19 @@ public class OpenSamlUtil {
 		return encoder;
 	}
 
-	private static void initEncoder(BaseSAML2MessageEncoder encoder, HttpServletResponse httpServletResponse,
+	public static HTTPSOAP11Encoder createSamlSoapEncoder(HttpServletResponse httpServletResponse, MessageContext context) {
+		var encoder = new HTTPSOAP11Encoder();
+		initEncoder(encoder, httpServletResponse, context);
+		try {
+			encoder.prepareContext();
+		}
+		catch (MessageEncodingException ex) {
+			throw new TechnicalException(String.format("Cannot encode context=%s ex=%s", context, ex.getMessage()), ex);
+		}
+		return encoder;
+	}
+
+	private static void initEncoder(AbstractHttpServletResponseMessageEncoder encoder, HttpServletResponse httpServletResponse,
 			MessageContext context) {
 		encoder.setHttpServletResponseSupplier(() -> httpServletResponse);
 		encoder.setMessageContext(context);
@@ -601,7 +622,7 @@ public class OpenSamlUtil {
 		encodeSamlMessage(encoder);
 	}
 
-	private static void encodeSamlMessage(BaseSAML2MessageEncoder encoder) {
+	private static void encodeSamlMessage(AbstractHttpServletResponseMessageEncoder encoder) {
 		try {
 			encoder.initialize();
 			encoder.encode();
@@ -619,7 +640,13 @@ public class OpenSamlUtil {
 	}
 
 	public static boolean isSamlRedirectRequest(HttpServletRequest httpServletRequest) {
-		return SamlIoUtil.getSamlDataFromHttpProtocol(httpServletRequest) != null;
+		return httpServletRequest.getMethod().equals(HttpMethod.GET.name()) &&
+				SamlIoUtil.getSamlDataFromHttpProtocol(httpServletRequest) != null;
+	}
+
+	public static boolean isSamlPostRequest(HttpServletRequest httpServletRequest) {
+		return httpServletRequest.getMethod().equals(HttpMethod.POST.name()) &&
+			SamlIoUtil.getSamlDataFromHttpProtocol(httpServletRequest) != null;
 	}
 
 	// De-marshal SAML POST message
@@ -649,6 +676,21 @@ public class OpenSamlUtil {
 			throw new RequestDeniedException(String.format(
 					"SAML redirect message decoding failed with exceptionMessage='%s' samlPostData='%s'",
 					ExceptionUtil.getRootMessage(e), SamlIoUtil.getSamlRedirectDataFromHttpProtocol(request, true)), e);
+		}
+	}
+
+	// De-marshal SAML SOAP message
+	public static MessageContext decodeSamlSoapMessage(HttpServletRequest request) {
+		try {
+			var decoder = new HTTPSOAP11Decoder();
+			return decodeSamlMessage(request, decoder);
+		}
+		catch (Exception e) {
+			// Keep in mind CVE-2021-42550 (aka LOGBACK-1591) as we actually log potential attack data to logback here.
+			// In the end it's integration friendliness versus security and the attack could have already happened in opensaml.
+			throw new RequestDeniedException(String.format(
+					"SAML SOAP message decoding failed with exceptionMessage='%s' samlPostData='%s'",
+					ExceptionUtil.getRootMessage(e), SamlIoUtil.getSamlPostDataFromHttpProtocol(request, true)), e);
 		}
 	}
 
@@ -878,10 +920,10 @@ public class OpenSamlUtil {
 		}
 	}
 
-	private static Endpoint createEndpoint(String destionationUrl) {
+	private static Endpoint createEndpoint(String destinationUrl) {
 		SingleSignOnService endpoint = buildSamlObject(SingleSignOnService.class);
 		endpoint.setBinding(SAMLConstants.SAML2_REDIRECT_BINDING_URI);
-		endpoint.setLocation(destionationUrl);
+		endpoint.setLocation(destinationUrl);
 		return endpoint;
 	}
 
@@ -1012,10 +1054,10 @@ public class OpenSamlUtil {
 																 Optional<List<String>> confClasses) {
 		var requestedAuthnContext = authnRequest.getRequestedAuthnContext();
 
-		if (confClasses.isPresent() && Boolean.TRUE.equals(replaceInbound)) {
+		if (confClasses.isPresent() && (Boolean.TRUE.equals(replaceInbound) || requestedAuthnContext == null)) {
 			var value = authnRequest.getIssuer() != null ? authnRequest.getIssuer().getValue() : "UNKNOWN";
-			log.info("Dropping incoming authn request from={} context classes={} replaced with={}", value,
-					requestedAuthnContext, confClasses);
+			log.info("Replacing incoming authn request from={} context classes={} replaced with={}", value,
+					requestedAuthnContext, confClasses.get());
 			return confClasses.get();
 		}
 
@@ -1076,6 +1118,9 @@ public class OpenSamlUtil {
 				break;
 			case POST:
 				sendSamlPostMessage(velocityEngine, context, samlRequest, httpServletResponse, destinationAlias);
+				break;
+			case SOAP:
+				sendSamlSoapMessage(context, samlRequest, httpServletResponse, destinationAlias);
 		}
 	}
 
@@ -1083,7 +1128,7 @@ public class OpenSamlUtil {
 			T samlObject, HttpServletResponse httpServletResponse, String destinationAlias) {
 			var encoder = configureSamlPostEncoder(httpServletResponse, context, velocityEngine, null);
 			sendSamlMessage(encoder, samlObject, destinationAlias);
-		}
+	}
 
 	private static <T extends SAMLObject> void sendSamlRedirectMessage(MessageContext context,
 			T samlObject, HttpServletResponse httpServletResponse, String destinationAlias) {
@@ -1091,8 +1136,14 @@ public class OpenSamlUtil {
 			sendSamlMessage(encoder, samlObject, destinationAlias);
 	}
 
-	private static <E extends BaseSAML2MessageEncoder, T extends SAMLObject> void sendSamlMessage(E encoder, T samlObject,
-			String destinationAlias) {
+	public static <T extends SAMLObject> void sendSamlSoapMessage(MessageContext context,
+			T samlObject, HttpServletResponse httpServletResponse, String destinationAlias) {
+		var encoder = createSamlSoapEncoder(httpServletResponse, context);
+		sendSamlMessage(encoder, samlObject, destinationAlias);
+	}
+
+	private static <E extends AbstractHttpServletResponseMessageEncoder, T extends SAMLObject> void sendSamlMessage(
+			E encoder, T samlObject, String destinationAlias) {
 		encodeSamlMessage(encoder);
 		SamlTracer.logSamlObject("<<<<< Redirect SAML " + samlObject.getClass().getName()
 					+ " to " + destinationAlias, samlObject);
@@ -1208,6 +1259,5 @@ public class OpenSamlUtil {
 		}
 		return scoping.getIDPList().getIDPEntrys().get(0).getProviderID();
 	}
-
 
 }

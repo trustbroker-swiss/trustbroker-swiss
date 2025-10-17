@@ -47,6 +47,8 @@ import swiss.trustbroker.federation.xmlconfig.QoaComparison;
 import swiss.trustbroker.federation.xmlconfig.ResponseMode;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.mapping.dto.QoaSpec;
+import swiss.trustbroker.oidc.OidcMockTestData;
+import swiss.trustbroker.oidc.cache.service.OidcMetadataCacheService;
 import swiss.trustbroker.oidc.client.dto.OpenIdProviderConfiguration;
 import swiss.trustbroker.util.ApiSupport;
 

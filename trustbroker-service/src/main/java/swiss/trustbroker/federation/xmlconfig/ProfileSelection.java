@@ -49,6 +49,41 @@ public class ProfileSelection implements Serializable, ProfileSelectionPropertie
 	private Boolean enabled;
 
 	/**
+	 * Apply filtering on roles.
+	 * <br/>
+	 * Default: true
+	 * Alternatives: false to disable, regexp for picking custom role list.
+	 *
+	 * @since 1.12.0
+	 * */
+	@XmlAttribute(name = "filter")
+	@Builder.Default
+	private String filter = "true";
+
+	/**
+	 * Apply filtering on roles to claims output as well reducing data to what has been selected by the user in INTERACTIVE mode.
+	 * <br/>
+	 * Default: false
+	 *
+	 * @since 1.12.0
+	 */
+	@XmlAttribute(name = "filterOutbound")
+	@Builder.Default
+	private Boolean filterOutbound = Boolean.FALSE;
+
+	/**
+	 * Apply sorting on profiles and roles.
+	 * <br/>
+	 * Default: true (sort ascending)
+	 * Alternatives: false to disable sorting
+	 *
+	 * @since 1.12.0
+	 */
+	@XmlAttribute(name = "sort")
+	@Builder.Default
+	private Boolean sort = Boolean.TRUE;
+
+	/**
 	 * Apply name/value transformation.
 	 * <br/>
 	 * Default: false
@@ -100,7 +135,7 @@ public class ProfileSelection implements Serializable, ProfileSelectionPropertie
 
 	@JsonIgnore
 	@Override
-	public boolean isEnabled() {
+	public boolean isProfileSelectionEnabled() {
 		return Boolean.TRUE.equals(enabled);
 	}
 
@@ -112,7 +147,7 @@ public class ProfileSelection implements Serializable, ProfileSelectionPropertie
 
 	@JsonIgnore
 	@Override
-	public boolean isOidcOnly() {
+	public boolean isForOidcOnly() {
 		return Boolean.TRUE.equals(oidcOnly);
 	}
 
@@ -139,6 +174,30 @@ public class ProfileSelection implements Serializable, ProfileSelectionPropertie
 	@Override
 	public boolean isFilterUnitPropsEnabled() {
 		return isN2kEnabled() && Boolean.TRUE.equals(filterUnits);
+	}
+
+	@JsonIgnore
+	@Override
+	public boolean isSortRoleEnabled() {
+		return Boolean.TRUE.equals(sort);
+	}
+
+	@JsonIgnore
+	@Override
+	public boolean isFilterRoleEnabled() {
+		return !Boolean.FALSE.toString().equalsIgnoreCase(filter);
+	}
+
+	@JsonIgnore
+	@Override
+	public boolean isFilterRoleOutput() {
+		return isFilterRoleEnabled() && filterOutbound;
+	}
+
+	@JsonIgnore
+	@Override
+	public String getFilterRoleConfiguration() {
+		return filter;
 	}
 
 }

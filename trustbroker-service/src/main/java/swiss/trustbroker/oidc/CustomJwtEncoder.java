@@ -64,6 +64,7 @@ public class CustomJwtEncoder implements JwtEncoder {
 		}
 
 		if (!encryptionEnabled || !isIdToken) {
+			log.debug("Encryption disabled for={} or isIdToken={}", clientId, isIdToken);
 			var nimbusJwtEncoder = new NimbusJwtEncoder(jwkSource);
 			return nimbusJwtEncoder.encode(parameters);
 		}

@@ -15,19 +15,18 @@
 
 package swiss.trustbroker.wstrust.validator;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Function;
 import javax.xml.namespace.QName;
 
 import lombok.extern.slf4j.Slf4j;
 import org.opensaml.core.xml.XMLObject;
 import org.opensaml.saml.saml2.core.Assertion;
 import org.opensaml.saml.saml2.core.AuthnStatement;
+import org.opensaml.saml.saml2.core.SubjectConfirmation;
+import org.opensaml.saml.saml2.core.SubjectConfirmationData;
 import org.opensaml.security.credential.Credential;
 import org.opensaml.security.x509.X509Credential;
 import org.opensaml.soap.wssecurity.BinarySecurityToken;
@@ -37,18 +36,21 @@ import org.opensaml.soap.wstrust.RequestType;
 import org.opensaml.soap.wstrust.WSTrustConstants;
 import org.springframework.stereotype.Component;
 import swiss.trustbroker.common.exception.RequestDeniedException;
-import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CredentialReader;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
+import swiss.trustbroker.common.util.CollectionUtil;
+import swiss.trustbroker.common.util.StringUtil;
+import swiss.trustbroker.common.util.UrlAcceptor;
 import swiss.trustbroker.common.util.WSSConstants;
+import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
-import swiss.trustbroker.config.dto.SsoSessionIdPolicy;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.saml.util.AssertionValidator;
 import swiss.trustbroker.sessioncache.dto.StateData;
-import swiss.trustbroker.sessioncache.service.StateCacheService;
+import swiss.trustbroker.sso.service.SsoService;
 import swiss.trustbroker.util.CertificateUtil;
+import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
 import swiss.trustbroker.wstrust.dto.WsTrustValidationResult;
 
 /**
@@ -58,15 +60,17 @@ import swiss.trustbroker.wstrust.dto.WsTrustValidationResult;
 @Slf4j
 public class WsTrustRenewValidator extends WsTrustBaseValidator {
 
-	private final StateCacheService stateCacheService;
+	private static final String REQUEST_TYPE = RequestType.RENEW;
+
+	private final SsoService ssoService;
 
 	private final Optional<List<Credential>> signerTrustCredentials;
 
 	public WsTrustRenewValidator(
 			TrustBrokerProperties trustBrokerProperties, RelyingPartySetupService relyingPartySetupService, Clock clock,
-			StateCacheService stateCacheService) {
+			SsoService ssoService) {
 		super(trustBrokerProperties, relyingPartySetupService, clock);
-		this.stateCacheService = stateCacheService;
+		this.ssoService = ssoService;
 		if (enabled()) {
 			this.signerTrustCredentials = Optional.of(CertificateUtil.getXtbSignerCredentials(trustBrokerProperties));
 		}
@@ -77,7 +81,7 @@ public class WsTrustRenewValidator extends WsTrustBaseValidator {
 
 	@Override
 	public boolean applies(RequestType requestType) {
-		if (!RequestType.RENEW.equals(requestType.getURI())) {
+		if (!REQUEST_TYPE.equals(requestType.getURI())) {
 			return false;
 		}
 		if (!enabled()) {
@@ -93,13 +97,14 @@ public class WsTrustRenewValidator extends WsTrustBaseValidator {
 	}
 
 	@Override
-	public WsTrustValidationResult validate(RequestSecurityToken requestSecurityToken, Assertion headerAssertion,
-						   BinarySecurityToken securityToken) {
+	public WsTrustValidationResult validate(RequestSecurityToken requestSecurityToken, SoapMessageHeader requestHeader) {
+		validateHeaderElements(requestHeader);
+		var headerAssertion = requestHeader.getAssertion();
 		if (headerAssertion != null) {
 			// not required for RENEW, but validate if present
 			// (e.g. client using same wss4j configuration for ISSUE and RENEW)
 			log.info("RSTR with requestType='{}' validating ignored header assertionID='{}'",
-					RequestType.RENEW, headerAssertion.getID());
+					REQUEST_TYPE, headerAssertion.getID());
 			validateAssertion(headerAssertion, null, Optional.empty());
 		}
 		var childObjects = requestSecurityToken.getUnknownXMLObjects();
@@ -111,16 +116,95 @@ public class WsTrustRenewValidator extends WsTrustBaseValidator {
 		if (session.isPresent()) {
 			expectedSessionId = session.get().getSsoSessionId();
 		}
+		var expectedRecipient = getValidAcsUrlOrRecipient(assertion, relyingParty);
 		var expectedValues = AssertionValidator.ExpectedAssertionValues.builder()
 																	   .expectedIssuer(getTrustBrokerProperties().getIssuer())
 																	   .expectedAudience(relyingParty.getId())
 																	   .expectedSessionIndex(expectedSessionId)
-																	   .expectedRecipient(relyingParty.getId())
+																	   .expectedRecipient(expectedRecipient)
 																	   .renew(true)
 																	   .build();
 		validateAssertion(assertion, expectedValues, signerTrustCredentials);
-		validateSecurityToken(securityToken, relyingParty);
-		return new WsTrustValidationResult(assertion, false, relyingParty.getId());
+		validateSecurityToken(requestHeader.getSecurityToken(), relyingParty);
+		return WsTrustValidationResult.builder()
+									  .requestType(REQUEST_TYPE)
+									  .validatedAssertion(assertion)
+									  .recomputeAttributes(false)
+									  .recipientIssuerId(relyingParty.getId())
+									  .useAssertionLifetime(true)
+									  .createResponseCollection(false)
+									  .sessionIndex(expectedSessionId)
+									  .build();
+	}
+
+	// return validated ACUrl or RP ID (which might fail assertion validation)
+	private String getValidAcsUrlOrRecipient(Assertion assertion, RelyingParty relyingParty) {
+		if (!getTrustBrokerProperties().getSecurity().isValidateSecurityTokenRequestAssertion()) {
+			log.debug("Assertion validation disabled");
+			return relyingParty.getId();
+		}
+		if (assertion.getSubject() == null) {
+			log.debug("Missing Subject in assertion={}", assertion.getID());
+			return relyingParty.getId();
+		}
+		if (relyingParty.getAcWhitelist() == null) {
+			log.debug("Missing AC whitelist for rpIssuerId={}", relyingParty.getId());
+			return relyingParty.getId();
+		}
+		// issuer is XTB, XTB never sets a single SubjectConfirmationData
+		var acsUrl = assertion.getSubject()
+						 .getSubjectConfirmations()
+						 .stream()
+						 .map(SubjectConfirmation::getSubjectConfirmationData)
+						 .filter(Objects::nonNull)
+						 .map(SubjectConfirmationData::getRecipient)
+						 .filter(Objects::nonNull)
+						 .findFirst();
+		if (acsUrl.isEmpty()) {
+			log.debug("Missing SubjectConfirmationData.Recipient in assertion={}", assertion.getID());
+			return relyingParty.getId();
+		}
+		if (acsUrl.get().equals(relyingParty.getId())) {
+			log.debug("SubjectConfirmationData.Recipient is rpIssuerId={} assertion={}",
+					relyingParty.getId(), assertion.getID());
+			return relyingParty.getId();
+		}
+		var acsUri = WebUtil.getValidatedUri(acsUrl.get());
+		if (acsUri == null) {
+			log.info("SubjectConfirmationData.Recipient={} does not match rpIssuerId={} and is no valid URI",
+					acsUrl.get(), relyingParty.getId());
+			return relyingParty.getId(); // should fail validation
+		}
+		for (var check : relyingParty.getAcWhitelist().getAcNetUrls()) {
+			if (UrlAcceptor.isUrlOkForAccess(acsUri, check)) {
+				log.debug("SubjectConfirmationData.Recipient={} matches ACWhitelistEntry={}", acsUrl.get(), check);
+				return acsUrl.get();
+			}
+		}
+		log.info("SubjectConfirmationData.Recipient={} does not match rpIssuerId={} or any ACWhitelist={} ACWhitelistNetUrls={}",
+				acsUrl.get(), relyingParty.getId(),
+				CollectionUtil.toLogString(relyingParty.getAcWhitelist().getAcUrls()),
+				CollectionUtil.toLogString(relyingParty.getAcWhitelist().getAcNetUrls()));
+		return relyingParty.getId(); // should fail validation
+	}
+
+	private void validateHeaderElements(SoapMessageHeader requestHeader) {
+		log.debug("Validate WSTrust RENEW SOAP headers....");
+		WsTrustHeaderValidator.validateTimestamp(requestHeader, getClock().instant(), getTrustBrokerProperties().getSecurity());
+		var soapAction = WsTrustHeaderValidator.getSoapAction(requestHeader);
+		// must work without action, but wrong action is an error
+		if (soapAction != null && !soapAction.equals(WSTrustConstants.WSA_ACTION_RST_RENEW)) {
+			throw new RequestDeniedException(String.format(
+					"Action invalid in SOAP header, action='%s' expected='%s'",
+					StringUtil.clean(soapAction), WSTrustConstants.WSA_ACTION_RST_RENEW));
+		}
+		// must work without any of these
+		var messageId = requestHeader.getMessageId() != null ? requestHeader.getMessageId().getURI() : null;
+		var replyToAddress = requestHeader.getReplyTo() != null && requestHeader.getReplyTo().getAddress() != null ?
+				requestHeader.getReplyTo().getAddress().getURI() : null ;
+		var to = requestHeader.getTo() != null ? requestHeader.getTo().getURI() : null;
+		log.debug("SOAP header soapAction='{}' messageId='{}' replyToAddress='{}' to='{}'",
+				soapAction, messageId, replyToAddress, to);
 	}
 
 	private static Assertion extractRenewTargetAssertion(List<XMLObject> childObjects) {
@@ -130,46 +214,29 @@ public class WsTrustRenewValidator extends WsTrustBaseValidator {
 		if (!(renewTargetObject instanceof Assertion renewAssertion)) {
 			throw new RequestDeniedException(String.format(
 					"RSTR with header requestType='%s' renewTarget='%s' has wrong type, expected Assertion",
-					RequestType.RENEW, renewTargetObject != null ? renewTargetObject.getClass().getName() : null));
+					REQUEST_TYPE, renewTargetObject != null ? renewTargetObject.getClass().getName() : null));
 		}
 		return renewAssertion;
 	}
 
 	Optional<StateData> findValidSsoSession(Assertion assertion) {
-		List<String> ssoSessionIds = extractSsoSessionIds(assertion);
-		List<StateData> sessions = ssoSessionIds.stream()
-												.map(findSsoSession())
-												.filter(Optional::isPresent)
-												.map(Optional::get)
-												.toList();
-		if (sessions.isEmpty()) {
+		List<String> ssoSessionIds = extractSessionIndexes(assertion);
+		var session = ssoService.findValidSsoSessionForSessionIndexes(ssoSessionIds);
+		if (session.isEmpty()) {
 			if (getTrustBrokerProperties().getWstrust().isRenewRequiresSsoSession()) {
 				throw new RequestDeniedException(String.format(
 						"RSTR with requestType='%s' - no valid SSO session with ssoSessionIds=%s",
-						RequestType.RENEW, ssoSessionIds));
+						REQUEST_TYPE, ssoSessionIds));
 			}
-			log.debug("RSTR with requestType='{}' - no valid SSO session with ssoSessionIds={}", RequestType.RENEW, ssoSessionIds);
-			return Optional.empty();
+			log.debug("RSTR with requestType='{}' - no valid SSO session with ssoSessionIds={}", REQUEST_TYPE, ssoSessionIds);
 		}
-		// usually there is just a single AuthnStatement and this could not happen
-		if (sessions.size() > 1 && log.isErrorEnabled()) {
-			List<String> foundSessionIds = sessions.stream().map(StateData::getSsoSessionId).toList();
-			log.error("Multiple valid SSO session with ssoSessionIds={} foundSessionIds={}", ssoSessionIds, foundSessionIds);
-		}
-		var stateData = sessions.get(0);
-		log.info("Found valid stateId={} ssoSessionId={}", stateData.getId(), stateData.getSsoSessionId());
-		return Optional.of(stateData);
+		return session;
 	}
 
-	private Function<String, Optional<StateData>> findSsoSession() {
-		return ssoSessionId -> stateCacheService.findBySsoSessionId(ssoSessionId, WsTrustRenewValidator.class.getName());
-	}
-
-	private static List<String> extractSsoSessionIds(Assertion assertion) {
+	private static List<String> extractSessionIndexes(Assertion assertion) {
 		return assertion.getAuthnStatements()
 						.stream()
 						.map(AuthnStatement::getSessionIndex)
-						.filter(SsoSessionIdPolicy::isSsoSession)
 						.toList();
 	}
 
@@ -177,41 +244,36 @@ public class WsTrustRenewValidator extends WsTrustBaseValidator {
 		if (securityToken == null) {
 			if (getTrustBrokerProperties().getWstrust().isRenewRequiresSecurityToken()) {
 				throw new RequestDeniedException(String.format(
-						"RSTR with requestType='%s' missing header security token", RequestType.RENEW));
+						"RSTR with requestType='%s' missing header security token", REQUEST_TYPE));
 			}
-			log.debug("RSTR with requestType='{}' missing header security token", RequestType.RENEW);
+			log.debug("RSTR with requestType='{}' missing header security token", REQUEST_TYPE);
 			return;
 		}
 		if (!WSSConstants.ENCODING_BASE64_BINARY.equals(securityToken.getEncodingType())) {
 			throw new RequestDeniedException(String.format(
 					"RSTR with requestType='%s' contains security token with encodingType='%s' expectedEncodingType=%s",
-					RequestType.RENEW, securityToken.getEncodingType(), WSSConstants.ENCODING_BASE64_BINARY));
+					REQUEST_TYPE, securityToken.getEncodingType(), WSSConstants.ENCODING_BASE64_BINARY));
 		}
 		if (!WSSConstants.VALUE_X509_V3.equals(securityToken.getValueType())) {
 			throw new RequestDeniedException(String.format(
 					"RSTR with requestType='%s' contains security token with valueType='%s' expectedValueType=%s",
-					RequestType.RENEW, securityToken.getValueType(), WSSConstants.VALUE_X509_V3));
+					REQUEST_TYPE, securityToken.getValueType(), WSSConstants.VALUE_X509_V3));
 		}
 		validateCertificate(securityToken, relyingParty);
 	}
 
 	private static void validateCertificate(BinarySecurityToken securityToken, RelyingParty relyingParty) {
 			log.debug("Received tokenType={} securityToken={}", securityToken.getValueType(), securityToken.getValue());
-			if (securityToken.getValue() == null) {
-				throw new RequestDeniedException(String.format(
-						"RSTR with requestType='%s' contains security token with valueType='%s' without value",
-						RequestType.RENEW, securityToken.getValueType()));
-
-			}
 			X509Credential tokenCredential;
-			try (var inputStream = new ByteArrayInputStream(securityToken.getValue().getBytes(StandardCharsets.UTF_8))) {
+			try {
 				// returned value is always an X509Credential
-				tokenCredential = (X509Credential) CredentialReader.getPemCredential(inputStream, WSSConstants.VALUE_X509_V3);
+				tokenCredential = (X509Credential) CredentialReader.getDerOrPemCredential(
+						securityToken.getValue(), WSSConstants.VALUE_X509_V3);
 			}
-			catch (TechnicalException | IOException ex) {
+			catch (RuntimeException ex) { // including TechnicalException
 				throw new RequestDeniedException(String.format(
 						"RSTR with requestType='%s' contains security token with valueType='%s' - could not parse certificate",
-						RequestType.RENEW, securityToken.getValueType()), ex);
+						REQUEST_TYPE, securityToken.getValueType()), ex);
 			}
 			log.debug("Received tokenType={} certificateType={}", securityToken.getValueType(),
 					tokenCredential.getCredentialType());
@@ -233,6 +295,6 @@ public class WsTrustRenewValidator extends WsTrustBaseValidator {
 			}
 			throw new RequestDeniedException(String.format(
 					"RSTR with requestType='%s' contains security token with valueType='%s' not matching any of the trust credentials of rpIssuerId=%s",
-					RequestType.RENEW, securityToken.getValueType(), relyingParty.getId()));
+					REQUEST_TYPE, securityToken.getValueType(), relyingParty.getId()));
 	}
 }

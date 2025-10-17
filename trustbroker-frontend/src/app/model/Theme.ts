@@ -20,10 +20,6 @@ export class Theme {
 		readonly hasFooter: boolean,
 		readonly hasBackdrop: boolean,
 		readonly hasThemeSelector: boolean,
-		readonly hasLanguageSelector: boolean,
-		readonly fullLanguageName: boolean,
-		readonly hasHelp: boolean,
-		readonly hasHelpPanel: boolean,
-		readonly helpTabindex: number
+		readonly hasHelpPanel: boolean
 	) {}
 }

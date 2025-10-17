@@ -25,7 +25,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.opensaml.saml.saml2.core.AuthnRequest;
 import org.opensaml.saml.saml2.core.Response;
 import org.opensaml.saml.saml2.core.StatusCode;
-import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import swiss.trustbroker.api.announcements.service.AnnouncementService;
 import swiss.trustbroker.api.saml.service.OutputService;
@@ -122,7 +121,7 @@ public class AuthenticationService {
 		}
 
 		// find RP
-		var referer = WebUtil.getHeader(HttpHeaders.REFERER, httpRequest);
+		var referer = WebUtil.getReferer(httpRequest);
 		var rpIssuer = authnRequest.getIssuer().getValue();
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuer, referer);
 		if (relyingPartyDefinitions.isRpDisabled(relyingParty, httpRequest, trustBrokerProperties.getNetwork())) {

@@ -12,7 +12,7 @@
  You should have received a copy of the GNU Affero General Public License along with this program.
  If not, see <https://www.gnu.org/licenses/>.
 -->
-<main class="{{ theme.name }} errorPageContainer">
+<div class="{{ theme.name }} errorPageContainer">
 	<img src="{{ imageUrl('error.svg') }}" class="errorImage" alt="" aria-hidden="true" />
 	<app-error-box
 		[titleKey]="titleKey"
@@ -34,4 +34,4 @@
 		[theme]="theme"
 	>
 	</app-error-box>
-</main>
+</div>

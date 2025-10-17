@@ -68,6 +68,15 @@ public class WsTrustConfig {
 	private String wsBasePath = ApiSupport.WSTRUST_API;
 
 	/**
+	 * Enable ISSUE request.
+	 * <br/>
+	 * Default: true
+	 * @since 1.12.0
+	 */
+	@Builder.Default
+	private boolean issueEnabled = true;
+
+	/**
 	 * Enable RENEW request.
 	 * <br/>
 	 * Default: false
@@ -93,6 +102,15 @@ public class WsTrustConfig {
 	 */
 	@Builder.Default
 	private boolean renewRequiresSecurityToken = true;
+
+	/**
+	 * Lifetime expiration in minutes.
+	 * <br/>
+	 * Default: 480 (8 hours)
+	 * @since 1.12.0
+	 */
+	@Builder.Default
+	private long lifetimeMin = 480;
 
 	/**
 	 * SOAP version.

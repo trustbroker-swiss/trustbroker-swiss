@@ -35,6 +35,7 @@ import swiss.trustbroker.federation.xmlconfig.OidcClaimsSource;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.Scope;
 import swiss.trustbroker.mapping.dto.QoaSpec;
+import swiss.trustbroker.oidc.cache.service.OidcMetadataCacheService;
 import swiss.trustbroker.oidc.client.dto.AuthorizationCodeFlowRequest;
 import swiss.trustbroker.oidc.client.dto.OpenIdProviderConfiguration;
 import swiss.trustbroker.saml.dto.CpResponse;

@@ -593,7 +593,7 @@ class ResponseFactoryTest extends SamlTestBase {
 		doReturn(relyingParty).when(relyingPartySetupService)
 					.getRelyingPartyByIssuerIdOrReferrer(rpIssuerId, null);
 		doReturn(new QoaConfig(null, rpIssuerId))
-				.when(relyingPartySetupService).getQoaConfiguration(spStateData, relyingParty, trustBrokerProperties);
+				.when(qoaMappingService).getQoaConfiguration(spStateData, relyingParty);
 
 		// manipulated CP response
 		Map<Definition, List<String>> cpAttributes = new LinkedHashMap<>();
@@ -675,8 +675,8 @@ class ResponseFactoryTest extends SamlTestBase {
 		var federationServiceIssuerId = "federation.trustbroker.swiss"; // global setting
 		doReturn(rp).when(relyingPartySetupService)
 					.getRelyingPartyByIssuerIdOrReferrer(rpIssuerId, null);
-		doReturn(new QoaConfig(null, rpIssuerId)).when(relyingPartySetupService)
-												 .getQoaConfiguration(spStateData, rp, trustBrokerProperties);
+		doReturn(new QoaConfig(null, rpIssuerId)).when(qoaMappingService)
+												 .getQoaConfiguration(spStateData, rp);
 		doReturn(cp).when(relyingPartySetupService)
 					.getClaimsProviderSetupByIssuerId(cpIssuerId, null);
 		doReturn(clientName).when(relyingPartySetupService).getRpClientName(rp);

@@ -1,7 +1,30 @@
 # Unreleased Versions
 
 
-## 1.12.0
+## 1.13.0
+
+### Dependency upgrades
+
+### Features
+
+### Improvements
+- OIDC:
+  - Restrict default OIDC metadata grant_types_supported, revocation_endpoint_auth_methods_supported, introspection_endpoint_auth_methods_supported to the ones officially supported in XTB.
+- DB:
+  - Improve transaction boundaries for DB state access.
+- IDM:
+  - LDAP improvements and documentation.
+
+### Bugfixes
+- SSO:
+  - Fix SSO join issue with CP that responds with another ID than requested (e.g. SamlMock).
+  - Fix too strict subject name check issue for CP with SubjectNameMapping.
+  - Fix QoA check with OIDC using RP config QoA instead of QoA from state.
+
+
+# Released Versions
+
+## 1.12.0.20251003T122936Z
 
 ### Dependency upgrades
 
@@ -57,10 +80,6 @@
   - Logout notifications are now enabled by default when the configuration contains SloResponse entries for notifications
 - QoA:
   - Use correct QoA config for OIDC side CP check
-
-
-# Released Versions
-
 
 ## 1.11.0.20250911T090750Z
 

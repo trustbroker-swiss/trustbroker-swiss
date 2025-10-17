@@ -64,6 +64,13 @@ public class AccessRequestConfig {
 	private String interactiveServiceParameters;
 
 	/**
+	 * Global default for interactive Access Request service parameters (multi tenant mode).
+	 *
+	 * @since 1.12.0
+	 */
+	private String interactiveMultiServiceParameters;
+
+	/**
 	 * Global default for optional request parameter added to URLs.
 	 */
 	private String centralCICD;

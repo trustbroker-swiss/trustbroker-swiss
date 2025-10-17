@@ -32,6 +32,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.federation.xmlconfig.Certificates;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
+import swiss.trustbroker.oidc.OidcHttpClientProvider;
+import swiss.trustbroker.oidc.OidcMockTestData;
 import swiss.trustbroker.oidc.client.dto.OpenIdProviderConfiguration;
 
 @SpringBootTest(classes = { OidcTokenService.class })

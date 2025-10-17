@@ -58,8 +58,6 @@ import org.opensaml.saml.saml2.metadata.SPSSODescriptor;
 import org.opensaml.security.credential.Credential;
 import org.opensaml.xmlsec.signature.support.SignatureConstants;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.common.exception.RequestDeniedException;
@@ -77,6 +75,7 @@ import swiss.trustbroker.common.saml.util.SamlIoUtil;
 import swiss.trustbroker.common.saml.util.SamlUtil;
 import swiss.trustbroker.common.saml.util.SoapUtil;
 import swiss.trustbroker.common.util.StringUtil;
+import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.samlmock.SamlMockProperties;
 import swiss.trustbroker.samlmock.dto.SamlMockCpResponse;
 import swiss.trustbroker.samlmock.dto.SamlMockMessage;
@@ -568,7 +567,7 @@ public class SamlMockMessageService {
 					peer, signatureParameters, SignatureValidationParameters.of(false, Collections.emptyList()),
 					Optional.empty());
 		}
-		if (request.getMethod().equals(HttpMethod.GET.name()) && OpenSamlUtil.isSamlRedirectRequest(request)) {
+		if (OpenSamlUtil.isSamlRedirectRequest(request)) {
 			log.info("Decoding received SAML REDIRECT message");
 			return OpenSamlUtil.decodeSamlRedirectMessage(request);
 		}
@@ -666,7 +665,7 @@ public class SamlMockMessageService {
 
 	private static String calculateEndpoint(HttpServletRequest request, MessageContext messageContext) {
 		var endpoint = OpenSamlUtil.getEndpoint(messageContext);
-		var endpointUrl = request.getHeader(HttpHeaders.REFERER);
+		var endpointUrl = WebUtil.getReferer(request);
 		log.debug("Request referrerUrl={}", endpointUrl);
 		if (endpoint != null) {
 			endpointUrl = endpoint.getLocation();

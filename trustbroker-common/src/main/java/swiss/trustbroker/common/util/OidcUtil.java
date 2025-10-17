@@ -15,7 +15,6 @@
 
 package swiss.trustbroker.common.util;
 
-import java.security.interfaces.RSAPrivateKey;
 import java.text.ParseException;
 import java.util.Arrays;
 import java.util.Collections;
@@ -33,7 +32,6 @@ import com.nimbusds.jose.JWEHeader;
 import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jose.Payload;
 import com.nimbusds.jose.crypto.ECDSAVerifier;
-import com.nimbusds.jose.crypto.RSADecrypter;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.JWK;
@@ -311,8 +309,12 @@ public class OidcUtil {
 
 	public static List<String> getAcrValues(HttpServletRequest request) {
 		var messageAcrValues = request != null ? request.getParameter(OidcUtil.OIDC_ACR_VALUES) : null;
+		return convertAcrToContextClasses(messageAcrValues);
+	}
+
+	public static List<String> convertAcrToContextClasses(String messageAcrValues) {
 		if (StringUtils.isNotEmpty(messageAcrValues)) {
-			return Arrays.asList(messageAcrValues.split("\\s"));
+			return Arrays.asList(messageAcrValues.split(" "));
 		}
 		return Collections.emptyList();
 	}
@@ -479,7 +481,7 @@ public class OidcUtil {
 		try {
 			JWT jwt = JwtUtil.parseJWT(token);
 			if (jwt instanceof EncryptedJWT) {
-				var decryptJWT = decryptJWT(token, credential, clientId);
+				var decryptJWT = JwtUtil.decryptJwt(token, credential, clientId);
 				return OidcUtil.verifyJwtToken(decryptJWT.getPayload().toString(), keySupplier, clientId);
 			} else {
 				return OidcUtil.verifyJwtToken(token, keySupplier, clientId);
@@ -489,32 +491,6 @@ public class OidcUtil {
 		} catch (JOSEException e) {
 			throw new TechnicalException("Unexpected JOSE exception", e);
 		}
-	}
-
-	public static EncryptedJWT decryptJWT(String token, Credential credential, String clientId) throws ParseException, JOSEException {
-		var parse = EncryptedJWT.parse(token);
-
-		if (credential == null) {
-			throw new TechnicalException(String.format("No credential found for id=%s", clientId));
-		}
-		var key = (RSAPrivateKey) credential.getPrivateKey();
-		if (key == null) {
-			throw new TechnicalException(String.format("No PrivateKey found for id=%s in credential=%s", clientId, credential));
-		}
-		// BASE64URL(UTF8(JWE Protected Header)) '.' BASE64URL(JWE Encrypted Key) '.' BASE64URL(JWE Initialization Vector) '.'   BASE64URL(JWE Ciphertext) '.'  BASE64URL(JWE Authentication Tag)
-		var decrypter = new RSADecrypter(key);
-		parse.decrypt(decrypter);
-
-		// Header
-		log.debug("Decrypted JWT Header: {}", parse.getHeader().toJSONObject());
-		// Encrypted Key
-		log.debug("Decrypted JWT Content Encrypted Key: {}", parse.getEncryptedKey());
-		// Initialization vector
-		log.debug("Decrypted JWT Initialization vector: {}", parse.getIV());
-		// Authentication Tag
-		log.debug("Decrypted JWT Authentication Tag: {}", parse.getAuthTag());
-
-		return parse;
 	}
 
 	public static Payload getAndSignPayload(JWTClaimsSet jwtClaimsSet, boolean singToken, JwsHeader jwsHeader,
@@ -535,8 +511,10 @@ public class OidcUtil {
 	public static JWEHeader getJWEHeader(boolean requireTokenSignedEncryption, String encryptionAlgorithm,
 										 String encryptionMethod, String kid) {
 		var jweHeaderType = requireTokenSignedEncryption ? OidcUtil.OIDC_HEADER_TYPE_JWT : OidcUtil.OIDC_HEADER_TYPE_JWE;
-		JWEHeader.Builder builder = new JWEHeader.Builder(JWEAlgorithm.parse(encryptionAlgorithm), EncryptionMethod.parse(encryptionMethod))
-				.contentType(jweHeaderType);
+		JWEHeader.Builder builder = new JWEHeader.Builder(EncryptionMethod.parse(encryptionMethod)).contentType(jweHeaderType);
+		if (encryptionAlgorithm != null) {
+			builder.alg(JWEAlgorithm.parse(encryptionAlgorithm));
+		}
 		if (kid != null) {
 			builder.keyID(kid);
 		}

@@ -15,7 +15,10 @@
 
 import { Pipe, PipeTransform } from '@angular/core';
 
-@Pipe({ name: 'environmentDisplay' })
+@Pipe({
+	name: 'environmentDisplay',
+	standalone: false
+})
 export class EnvironmentDisplayPipe implements PipeTransform {
 	transform(env: string): string {
 		// parse XTB/VERSION@STAGE

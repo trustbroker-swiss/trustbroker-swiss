@@ -27,7 +27,8 @@ import { Theme } from '../model/Theme';
 	selector: 'app-hrd-cards-banner',
 	templateUrl: './hrd-banner.component.html',
 	styleUrl: './hrd-banner.component.scss',
-	changeDetection: ChangeDetectionStrategy.OnPush
+	changeDetection: ChangeDetectionStrategy.OnPush,
+	standalone: false
 })
 export class HrdBannerComponent {
 	baseUrl: string = environment.apiUrl;

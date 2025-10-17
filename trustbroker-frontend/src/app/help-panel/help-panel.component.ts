@@ -26,7 +26,8 @@ import { Observable } from 'rxjs';
 	selector: 'app-help-panel',
 	templateUrl: './help-panel.component.html',
 	styleUrls: ['./help-panel.component.scss'],
-	encapsulation: ViewEncapsulation.None
+	encapsulation: ViewEncapsulation.None,
+	standalone: false
 })
 export class HelpPanelComponent implements OnInit {
 	sortedIdpObjects$: Observable<IdpObject[]>;

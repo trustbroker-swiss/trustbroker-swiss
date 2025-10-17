@@ -25,7 +25,10 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 // Markdown support:
 // - newline: \r\n \r \n
 // - links: [label](url) [label](target|url)
-@Pipe({ name: 'safeMarkup' })
+@Pipe({
+	name: 'safeMarkup',
+	standalone: false
+})
 export class SafeMarkupPipe implements PipeTransform {
 	constructor(private readonly sanitizer: DomSanitizer) {}
 

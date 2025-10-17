@@ -576,6 +576,10 @@ public class StateCacheService {
 	private long reapExpiredSessions(Instant currentTime) {
 		var currentTimestamp = Timestamp.from(currentTime);
 		var deleted = stateCacheRepository.deleteAllInBatchByExpirationTimestampBefore(currentTimestamp);
+		if (deleted == null) {
+			log.debug("DB deleteAllInBatchByExpirationTimestampBefore returned null");
+			deleted = 0;
+		}
 		log.debug("Deleted {} records expired {}", deleted, currentTimestamp);
 		return deleted;
 	}

@@ -97,6 +97,10 @@ public class SamlTestBase {
 
 	public static final String TEST_IDP_MOCK_KEYSTORE_PEM = "test-idp-mock-keystore.pem";
 
+	public static final String TEST_IDP_MOCK_CERTIFICATE_PEM = "test-idp-mock-cert.pem";
+
+	public static final String TEST_IDP_MOCK_CERTIFICATE_DER_BASE64 = "test-idp-mock-keystore.der.base64";
+
 	@SuppressWarnings("java:S2068") // (test JKS password)
 	public static final String TEST_KEYSTORE_PW = "testit";
 

@@ -33,6 +33,28 @@ public class ProfileSelectionData {
 
 	private final String exchangeId;
 
+	private final String applicationName;
+
 	private final String oidcClientId;
+
+	public boolean isSortRoleEnabled() {
+		return 	profileSelectionProperties != null && profileSelectionProperties.isSortRoleEnabled();
+	}
+
+	public boolean isFilterRoleEnabled() {
+		return 	profileSelectionProperties != null && profileSelectionProperties.isFilterRoleEnabled();
+	}
+
+	public boolean isFilterRoleOutput() {
+		return 	profileSelectionProperties != null && profileSelectionProperties.isFilterRoleOutput();
+	}
+
+	public String getApplicationFilterRegexp() {
+		var filter = profileSelectionProperties == null
+				|| "false".equalsIgnoreCase(profileSelectionProperties.getFilterRoleConfiguration())
+				|| applicationName == null
+				? ".*" : profileSelectionProperties.getFilterRoleConfiguration();
+		return applicationName != null && "true".equalsIgnoreCase(filter) ? ".*" + applicationName + ".*" : filter;
+	}
 
 }

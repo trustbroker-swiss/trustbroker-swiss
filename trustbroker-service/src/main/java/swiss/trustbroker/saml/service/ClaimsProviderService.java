@@ -46,6 +46,7 @@ import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.SsoSessionIdPolicy;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.ClaimsProvider;
+import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.mapping.dto.QoaSpec;
 import swiss.trustbroker.mapping.service.QoaMappingService;
@@ -79,7 +80,7 @@ public class ClaimsProviderService {
 
 	private final AuthorizationCodeFlowService authorizationCodeFlowService;
 
-	private AuthnRequest createAndSignCpAuthnRequest(StateData stateData, String rpIssuer, String rpReferrer,
+	private AuthnRequest createAndSignCpAuthnRequest(StateData stateData, RelyingParty relyingParty,
 			SamlBinding requestedResponseBinding, QoaSpec qoaSpec, ClaimsParty claimsProvider, boolean delegateOrigin) {
 		var cpIssuer = claimsProvider.getId();
 		var ssoUrl = claimsProvider.getSsoUrl();
@@ -97,7 +98,8 @@ public class ClaimsProviderService {
 		log.debug("Using authnRequestIssuerId={} for cpIssuerId={}", authnRequestIssuerId, cpIssuer);
 		authnRequest.setIssuer(SamlFactory.createIssuer(authnRequestIssuerId));
 		authnRequest.setNameIDPolicy(SamlFactory.createNameIdPolicy(NameIDType.UNSPECIFIED));
-		if (requestedResponseBinding != null && claimsProvider.isValidInboundBinding(requestedResponseBinding)) {
+		if (relyingParty.forwardRpProtocolBinding() && claimsProvider.forwardRpProtocolBinding() &&
+				requestedResponseBinding != null && claimsProvider.isValidInboundBinding(requestedResponseBinding)) {
 			log.debug("Passing on protocolBinding={} requested by RP and supported for cpIssuerId={}",
 				requestedResponseBinding, cpIssuer);
 			authnRequest.setProtocolBinding(requestedResponseBinding.getBindingUri());
@@ -108,8 +110,8 @@ public class ClaimsProviderService {
 
 		// scopes support
 		if (delegateOrigin) {
-			authnRequest.setScoping(SamlFactory.createScoping(rpIssuer));
-			log.debug("Setting rpIssuerId={} as Scoping", rpIssuer);
+			authnRequest.setScoping(SamlFactory.createScoping(relyingParty.getId()));
+			log.debug("Setting rpIssuerId={} as Scoping", relyingParty.getId());
 		}
 
 		// forcing login
@@ -118,9 +120,8 @@ public class ClaimsProviderService {
 		// OnRequest hook
 		scriptService.processCpOnRequest(cpIssuer, authnRequest);
 
-		var credential = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuer, rpReferrer).getRpSigner();
 		var signatureParameters = claimsProvider.getSignatureParametersBuilder()
-				.credential(credential)
+				.credential(relyingParty.getRpSigner())
 				.skinnyAssertionNamespaces(trustBrokerProperties.getSkinnyAssertionNamespaces())
 				.build();
 		SamlFactory.signSignableObject(authnRequest, signatureParameters);
@@ -272,7 +273,7 @@ public class ClaimsProviderService {
 
 		// Compute CP side qoa to be checked when IDP returns resulting Qoa
 		// Do not use any RP related settings for this because RP requirements are checked AfterProvisioning.
-		var rpQoaConfig = relyingPartySetupService.getQoaConfiguration(spStateData, relyingParty, trustBrokerProperties);
+		var rpQoaConfig = qoaMappingService.getQoaConfiguration(spStateData, relyingParty);
 		var qoaSpec = qoaMappingService.mapRequestQoasToOutbound(rpRequest.getComparisonType(), rpRequest.getContextClasses(),
 				rpQoaConfig, cpQoaConfig);
 
@@ -280,11 +281,10 @@ public class ClaimsProviderService {
 		var deviceId = WebSupport.getDeviceId(request);
 		// forward using SAML protocol depending on binding
 		if (claimsParty.useSaml()) {
-			var authnRequest = createAndSignCpAuthnRequest(stateData, rpIssuer, rpReferrer, requestedResponseBinding,
+			var authnRequest = createAndSignCpAuthnRequest(stateData, relyingParty, requestedResponseBinding,
 				qoaSpec, claimsProvider, delegateOrigin(cpIssuer));
 			saveCorrelatedStateDataWithState(cpIssuer, deviceId, stateData);
-			var credential = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpIssuer, rpReferrer).getRpSigner();
-			redirectUserWithRequest(authnRequest, credential, response, claimsParty, stateData, samlOutputService);
+			redirectUserWithRequest(authnRequest, relyingParty.getRpSigner(), response, claimsParty, stateData, samlOutputService);
 
 			// audit
 			auditAuthnRequestToCp(authnRequest, null, request, stateData);

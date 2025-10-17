@@ -315,6 +315,24 @@ class WebSupportTest {
 		assertThat(result, containsInAnyOrder(SAML_PATH, OIDC_PATH, OIDC_IFRAME_PATH));
 	}
 
+	@ParameterizedTest
+	@CsvSource(value = {
+			"null,false",
+			",false",
+			OIDC_HOST + ",true",
+			OIDC_HOST + "/,true",
+			OIDC_URL + ",true",
+			OIDC_HOST + ".attack,false",
+			TEST_URL + ",false",
+			TEST_URL_WITH_QUERY + ",false",
+			SAML_HOST + ",false",
+			SAML_URL + ",false"
+	}, nullValues = "null")
+	void isInternalOidcRequest(String referer, boolean expected) {
+		var properties = givenProperties();
+		assertThat(WebSupport.isInternalOidcRequest(properties, referer), is(expected));
+	}
+
 	private static TrustBrokerProperties givenProperties() {
 		var properties = new TrustBrokerProperties();
 		// ignored:OIDC_LOGOUT_PATH

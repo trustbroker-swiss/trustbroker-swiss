@@ -37,6 +37,7 @@ import java.util.Collections;
 import java.util.List;
 
 import jakarta.servlet.http.Cookie;
+import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -81,6 +82,7 @@ import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.mapping.service.QoaMappingService;
 import swiss.trustbroker.saml.dto.ResponseData;
 import swiss.trustbroker.saml.dto.UiBanner;
+import swiss.trustbroker.saml.dto.UiDisableReason;
 import swiss.trustbroker.saml.test.util.ServiceSamlTestUtil;
 import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.sessioncache.dto.StateData;
@@ -475,7 +477,8 @@ class AssertionConsumerServiceTest {
 
 	@ParameterizedTest
 	@MethodSource
-	void filterDisplayedClaimsProviders(List<ClaimsProvider> claimsProviders, List<ClaimsProvider> expectedResult) {
+	void filterDisplayedClaimsProviders(List<Pair<ClaimsProvider, UiDisableReason>> claimsProviders,
+			List<Pair<ClaimsProvider, UiDisableReason>> expectedResult) {
 		var result = AssertionConsumerService.filterDisplayedClaimsProviders("requestId1", claimsProviders);
 		assertThat(result, is(expectedResult));
 	}
@@ -490,14 +493,27 @@ class AssertionConsumerServiceTest {
 
 		return new Object[][] {
 				{ Collections.emptyList(), Collections.emptyList() },
-				{ List.of(cp2, cpMinus2, cpNull, cp0, cp1, cpMinus1), List.of(cp2, cpNull, cp1) }, // all null/positive
-				// highest negative/zero
-				{ List.of(cpMinus2, cpMinus1), List.of(cpMinus1) },
-				{ List.of(cpMinus2, cp0, cpMinus1), List.of(cp0) },
+				{ List.of(Pair.of(cp2, UiDisableReason.INSUFFICIENT), Pair.of(cpMinus2, null), Pair.of(cpNull, null),
+						Pair.of(cp0, null), Pair.of(cp1, null), Pair.of(cpMinus1, null)),
+					List.of(Pair.of(cp2, UiDisableReason.INSUFFICIENT), Pair.of(cpNull, null), Pair.of(cp1, null)) },
+				// all
+				// null/positive
+				// highest negative/zero that is enabled
+				{ List.of(Pair.of(cpMinus2, null), Pair.of(cpMinus1, null)),
+						List.of(Pair.of(cpMinus1, null)) },
+				{ List.of(Pair.of(cpMinus2, null), Pair.of(cpMinus1, null), Pair.of(cp0, UiDisableReason.INSUFFICIENT)),
+						List.of(Pair.of(cpMinus1, null)) },
+				{ List.of(Pair.of(cpMinus2, null), Pair.of(cp0, null), Pair.of(cpMinus1, null)),
+						List.of(Pair.of(cp0, null)) },
+				// all hidden and disabled
+				{ List.of(Pair.of(cp0, UiDisableReason.INSUFFICIENT), Pair.of(cpMinus2, UiDisableReason.UNAVAILABLE)),
+						List.of(Pair.of(cp0, UiDisableReason.INSUFFICIENT), Pair.of(cpMinus2, UiDisableReason.UNAVAILABLE)) },
 				// single CP
-				{ List.of(cp1), List.of(cp1) },
-				{ List.of(cpNull), List.of(cpNull) },
-				{ List.of(cpMinus2), List.of(cpMinus2) }
+				{ List.of(Pair.of(cp1, null)), List.of(Pair.of(cp1, null)) },
+				{ List.of(Pair.of(cp1, UiDisableReason.INSUFFICIENT)), List.of(Pair.of(cp1, UiDisableReason.INSUFFICIENT)) },
+				{ List.of(Pair.of(cpNull, null)), List.of(Pair.of(cpNull, null)) },
+				{ List.of(Pair.of(cpMinus2, UiDisableReason.UNAVAILABLE)), List.of(Pair.of(cpMinus2, UiDisableReason.UNAVAILABLE)) },
+				{ List.of(Pair.of(cpMinus2, null)), List.of(Pair.of(cpMinus2, null)) }
 		};
 	}
 

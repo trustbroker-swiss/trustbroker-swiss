@@ -236,9 +236,9 @@ public class ClaimsMapperService {
 	public void applyProfileSelection(CpResponse cpResponse, ProfileSelectionResult psResult) {
 		if (psResult != null) {
 			var filteredAttributes = psResult.getFilteredAttributes();
-			if (filteredAttributes.isPresent()) {
+			if (!filteredAttributes.isEmpty()) {
 				Map<Definition, List<String>> responseAttrs = new HashMap<>();
-				for (Map.Entry<AttributeName, List<String>> entry : filteredAttributes.get().entrySet()) {
+				for (Map.Entry<AttributeName, List<String>> entry : filteredAttributes.entrySet()) {
 					responseAttrs.put(new Definition(entry.getKey()), entry.getValue());
 				}
 				cpResponse.setUserDetails(responseAttrs);

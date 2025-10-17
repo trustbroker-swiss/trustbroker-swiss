@@ -15,9 +15,7 @@
 
 package swiss.trustbroker.util;
 
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,7 +24,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.cors.CorsUtils;
-import swiss.trustbroker.common.util.UrlAcceptor;
 import swiss.trustbroker.common.util.WebUtil;
 import swiss.trustbroker.config.dto.CorsPolicies;
 
@@ -40,7 +37,7 @@ public class CorsSupport {
 
 	public static final String ALL_ORIGINS = "*";
 
-	public static final List<String> DEFAULT_ORIGINS = List.of(ALL_ORIGINS);
+	public static final Set<String> DEFAULT_ORIGINS = Set.of(ALL_ORIGINS);
 
 	public static final String DEFAULT_METHODS = "GET, HEAD, OPTIONS"; // sufficient for /userinfo, configuration
 
@@ -83,17 +80,17 @@ public class CorsSupport {
 		}
 	}
 
-	private static List<String> getAllowedOrigins(CorsPolicies corsPolicies, Set<String> ownOrigins) {
+	private static Set<String> getAllowedOrigins(CorsPolicies corsPolicies, Set<String> ownOrigins) {
 		if (corsPolicies == null) {
 			return DEFAULT_ORIGINS;
 		}
-		List<String> result = null;
+		Set<String> result = null;
 		if (CollectionUtils.isNotEmpty(ownOrigins)) {
-			result = new ArrayList<>(ownOrigins);
+			result = new HashSet<>(ownOrigins);
 		}
 		if (CollectionUtils.isNotEmpty(corsPolicies.getAllowedOrigins())) {
 			if (result == null) {
-				result = new ArrayList<>(corsPolicies.getAllowedOrigins());
+				result = new HashSet<>(corsPolicies.getAllowedOrigins());
 			}
 			else {
 				result.addAll(corsPolicies.getAllowedOrigins());
@@ -108,7 +105,7 @@ public class CorsSupport {
 	 * @param allowedOrigins may be null
 	 * @return request's origin header if in allowedOrigins (truncated to scheme, host, port)
 	 */
-	public static String getAllowedOrigin(HttpServletRequest request, List<String> allowedOrigins) {
+	public static String getAllowedOrigin(HttpServletRequest request, Set<String> allowedOrigins) {
 		// agent needs to send its address
 		var origin = WebUtil.getOriginOrReferer(request);
 		if (origin == null) {
@@ -131,7 +128,7 @@ public class CorsSupport {
 
 		// check against explicitly configured origins (global defaults or later per Oidc Client if needed)
 		if (allowedOrigins != null && !allowedOrigins.contains(ALL_ORIGINS) &&
-				!isAllowedOrigin(allowedOrigins, origin, validatedOrigin)) {
+				!WebUtil.isAllowedOriginOrReferer(allowedOrigins, origin, validatedOrigin)) {
 			log.warn("Agent sent {}={} not accepted by allowedOrigins={}, rely on global defaults, browser might block",
 					HttpHeaders.ORIGIN, origin, allowedOrigins);
 			return null;
@@ -140,12 +137,6 @@ public class CorsSupport {
 		log.debug("Returning url={} for accepted {}={} matching allowedOrigins={}",
 				validatedOrigin, HttpHeaders.ORIGIN, origin, allowedOrigins);
 		return validatedOrigin;
-	}
-
-	private static boolean isAllowedOrigin(List<String> allowedOrigins, String origin, String validatedOrigin) {
-		var allowedOriginSet = new HashSet<>(allowedOrigins);
-		return UrlAcceptor.isTrustedOrigin(validatedOrigin, allowedOriginSet) ||
-				UrlAcceptor.isTrustedOrigin(origin, allowedOriginSet);
 	}
 
 }

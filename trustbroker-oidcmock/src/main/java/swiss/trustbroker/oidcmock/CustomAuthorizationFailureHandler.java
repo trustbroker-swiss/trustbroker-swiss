@@ -21,7 +21,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.server.ServletServerHttpResponse;
@@ -30,6 +29,7 @@ import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.http.converter.OAuth2ErrorHttpMessageConverter;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
+import swiss.trustbroker.common.util.WebUtil;
 
 @Slf4j
 public class CustomAuthorizationFailureHandler implements AuthenticationFailureHandler {
@@ -47,7 +47,7 @@ public class CustomAuthorizationFailureHandler implements AuthenticationFailureH
 	public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response,
 			AuthenticationException exception) throws IOException, ServletException {
 		var clientId = request.getParameter("client_id");
-		var referrer = request.getHeader(HttpHeaders.REFERER);
+		var referrer = WebUtil.getReferer(request);
 
 		String errMsg;
 		if (exception instanceof OAuth2AuthenticationException authException) {

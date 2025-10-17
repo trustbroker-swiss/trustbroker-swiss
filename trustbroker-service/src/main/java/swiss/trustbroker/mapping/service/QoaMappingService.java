@@ -29,13 +29,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import swiss.trustbroker.config.TrustBrokerProperties;
+import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.xmlconfig.AcClass;
 import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.QoaComparison;
+import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.mapping.dto.CustomQoa;
 import swiss.trustbroker.mapping.dto.QoaConfig;
 import swiss.trustbroker.mapping.dto.QoaSpec;
 import swiss.trustbroker.mapping.util.QoaMappingUtil;
+import swiss.trustbroker.sessioncache.dto.StateData;
+import swiss.trustbroker.util.WebSupport;
 
 /**
  * Service for mapping and handling Qoa values from/to RP and CP.
@@ -46,6 +50,8 @@ import swiss.trustbroker.mapping.util.QoaMappingUtil;
 public class QoaMappingService {
 
 	private final TrustBrokerProperties trustBrokerProperties;
+
+	private final RelyingPartyDefinitions relyingPartiesMapping;
 
 	public CustomQoa extractQoaLevel(String qoa, QoaConfig qoaConfig) {
 		if (qoa == null || CustomQoa.UNDEFINED_QOA.getName().equals(qoa)) {
@@ -353,5 +359,33 @@ public class QoaMappingService {
 			comparisonType = QoaComparison.EXACT; // default according to SAML2, explicit on CP side
 		}
 		return comparisonType;
+	}
+
+	public QoaConfig getQoaConfiguration(StateData spStateData, RelyingParty relyingParty) {
+		if (spStateData != null && spStateData.getOidcClientId() != null) {
+			var oidcQoa = getOidcQoa(spStateData.getOidcClientId());
+			if (oidcQoa != null) return oidcQoa;
+		}
+		return relyingParty.getQoaConfig();
+	}
+
+	private QoaConfig getOidcQoa(String clientId) {
+		var oidcClientConfigById =
+				relyingPartiesMapping.getOidcClientConfigById(clientId, trustBrokerProperties);
+		if (oidcClientConfigById.isPresent()) {
+			var oidcQoa = oidcClientConfigById.get().getQoaConfig();
+			if (oidcQoa.hasConfig()) {
+				return oidcQoa;
+			}
+		}
+		return null;
+	}
+
+	public Qoa getQoaConfiguration(String providerName, String referer, RelyingParty relyingParty) {
+		if (WebSupport.isInternalOidcRequest(trustBrokerProperties, referer) && providerName != null) {
+			var oidcQoa = getOidcQoa(providerName);
+			if (oidcQoa != null) return oidcQoa.config();
+		}
+		return relyingParty.getQoa();
 	}
 }

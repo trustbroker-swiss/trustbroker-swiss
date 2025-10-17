@@ -18,7 +18,8 @@ import { Component, Input } from '@angular/core';
 @Component({
 	selector: 'app-mat-footer',
 	templateUrl: './material-footer.component.html',
-	styleUrls: ['./material-footer.component.scss']
+	styleUrls: ['./material-footer.component.scss'],
+	standalone: false
 })
 export class MaterialFooterComponent {
 	@Input() version: string;

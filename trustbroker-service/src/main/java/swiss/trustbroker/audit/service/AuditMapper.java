@@ -164,7 +164,7 @@ public abstract class AuditMapper {
 			var clientHost = WebUtil.getHeader(HTTP_HEADER_X_FORWARDED_HOST, request);
 			setIfNotNull(builder::entryId, clientHost == null ? directHost : clientHost);
 			setIfNotNull(builder::url, request.getRequestURL().toString());
-			var httpReferer = extractReferrer(WebUtil.getHeader(HttpHeaders.REFERER, request));
+			var httpReferer = extractReferrer(WebUtil.getReferer(request));
 			setIfNotNull(builder::referrer, httpReferer);
 		}
 		return mapIps(WebUtil.getClientIp(request), WebUtil.getGatewayIp(request, true));

@@ -53,6 +53,7 @@ import org.springframework.security.oauth2.server.authorization.config.annotatio
 import org.springframework.security.oauth2.server.authorization.oidc.OidcProviderConfiguration;
 import org.springframework.security.oauth2.server.authorization.oidc.OidcProviderMetadataClaimNames;
 import org.springframework.security.oauth2.server.authorization.oidc.authentication.OidcUserInfoAuthenticationContext;
+import org.springframework.security.oauth2.server.authorization.oidc.authentication.OidcUserInfoAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationProvider;
@@ -76,6 +77,14 @@ import swiss.trustbroker.script.service.ScriptService;
 @AllArgsConstructor
 @Slf4j
 public class OidcServerConfiguration {
+
+	private static final String ID_TOKEN_ENCRYPTION_ALG = "id_token_encryption_alg_values_supported";
+
+	private static final String ID_TOKEN_ENCRYPTION_METHOD = "id_token_encryption_enc_values_supported";
+
+	private static final String USERINFO_ENCRYPTION_ALG = "userinfo_encryption_alg_values_supported";
+
+	private static final String USERINFO_ENCRYPTION_METHOD = "userinfo_encryption_enc_values_supported";
 
 	private final OidcProperties oidcProperties;
 
@@ -146,7 +155,8 @@ public class OidcServerConfiguration {
 			authServerConfigurer.oidc(oidc -> oidc
 					.userInfoEndpoint(userInfoEndpoint -> userInfoEndpoint
 							.userInfoMapper(createUserInfoMapper())
-							.authenticationProvider(new CustomUserInfoAuthenticationProvider(authorizationService, new JwtAuthenticationProvider(jwtDecoder)))
+							.authenticationProvider(new CustomUserInfoAuthenticationProvider(
+									authorizationService, new JwtAuthenticationProvider(jwtDecoder), new OidcUserInfoAuthenticationProvider(authorizationService)))
 							.userInfoResponseHandler(
 									new CustomUserInfoResponseHandler(relyingPartyDefinitions, trustBrokerProperties, objectMapper, jwkSource, encryptionKeystoreService))
 							.errorResponseHandler(new CustomFailureHandler(
@@ -257,6 +267,15 @@ public class OidcServerConfiguration {
 			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
 					OAuth2AuthorizationServerMetadataClaimNames.DPOP_SIGNING_ALG_VALUES_SUPPORTED,
 					oidcProperties.getDPoPSigningAlgValuesSupported());
+			// encryption
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					ID_TOKEN_ENCRYPTION_ALG, oidcProperties.getIdTokenEncryptionAlgorithms());
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					ID_TOKEN_ENCRYPTION_METHOD, oidcProperties.getIdTokenEncryptionMethods());
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					USERINFO_ENCRYPTION_ALG, oidcProperties.getUserInfoEncryptionAlgorithms());
+			OidcConfigurationUtil.addOptionalClaimToProviderConfiguration(providerConfiguration,
+					USERINFO_ENCRYPTION_METHOD, oidcProperties.getUserInfoEncryptionMethods());
 		};
 	}
 

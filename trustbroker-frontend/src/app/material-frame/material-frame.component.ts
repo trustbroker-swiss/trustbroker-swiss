@@ -23,7 +23,8 @@ import { FocusOrigin } from '@angular/cdk/a11y';
 	selector: 'app-mat-frame',
 	templateUrl: './material-frame.component.html',
 	styleUrls: ['./material-frame.component.scss'],
-	encapsulation: ViewEncapsulation.None
+	encapsulation: ViewEncapsulation.None,
+	standalone: false
 })
 export class MaterialFrameComponent {
 	opened: boolean;

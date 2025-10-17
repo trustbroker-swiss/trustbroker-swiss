@@ -51,6 +51,9 @@ import swiss.trustbroker.util.WebSupport;
 
 /**
  * This is the main controller for SAML POST and federation metadata related interaction.
+ * <br/>
+ * Note that we offer the /trustbroker alternative for backward
+ * compat and to possibly get out of the ADFS's way for migration if running on same host name.
  */
 @Controller
 public class AppController extends AbstractSamlController {
@@ -91,11 +94,10 @@ public class AppController extends AbstractSamlController {
 	}
 
 	/**
-	 * Web traffic dispatcher handling SAML POST and UI interaction. Note that we offer the /trustbroker alternative for backward
-	 * compat and to possibly get out of the ADFS's way for migration if running on same host name
+	 * Web traffic dispatcher handling SAML POST and UI interaction.
 	 *
-	 * @param request  is the web input according to servlet spec 3.x
-	 * @param response is the web response according to servlet spec 3.x
+	 * @param request  is the web input according to servlet spec
+	 * @param response is the web response according to servlet spec
 	 * @return redirect routing or null when no redirect is needed.
 	 */
 	@PostMapping(path = { ApiSupport.SAML_API, ApiSupport.ADFS_ENTRY_URL,
@@ -103,24 +105,40 @@ public class AppController extends AbstractSamlController {
 			consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
 	@Transactional
 	public String handleIncomingPostMessages(HttpServletRequest request, HttpServletResponse response) {
-		return handleIncomingMessage(request, response, false);
+		return handleIncomingMessage(request, response, SamlBinding.POST);
 	}
 
 	/**
-	 * Web traffic dispatcher handling SAML Redirect and UI interaction. Note that we offer the /trustbroker alternative for
-	 * backward compat and to possibly get out of the ADFS's way for migration if running on same host name
+	 * Web traffic dispatcher handling SAML Redirect and UI interaction.
 	 *
-	 * @param request  is the web input according to servlet spec 3.x
-	 * @param response is the web response according to servlet spec 3.x
+	 * @param request  is the web input according to servlet spec
+	 * @param response is the web response according to servlet spec
 	 * @return redirect routing or null when no redirect is needed.
 	 */
-	@GetMapping(path = { ApiSupport.SAML_API, ApiSupport.ADFS_ENTRY_URL, ApiSupport.XTB_LEGACY_ENTRY_URL })
+	@GetMapping(path = { ApiSupport.SAML_API, ApiSupport.ADFS_ENTRY_URL,
+			ApiSupport.ADFS_ENTRY_URL_TRAILING_SLASH, ApiSupport.XTB_LEGACY_ENTRY_URL })
 	@Transactional
 	public String handleIncomingGetMessages(HttpServletRequest request, HttpServletResponse response) {
-		return handleIncomingMessage(request, response, true);
+		return handleIncomingMessage(request, response, SamlBinding.REDIRECT);
 	}
 
-	private String handleIncomingMessage(HttpServletRequest request, HttpServletResponse response, boolean isGet) {
+	/**
+	 * Web traffic dispatcher handling SAML SOAP <strong>without</strong> UI interaction.
+	 * Only <code>LogoutRequest</code> is supported at the moment.
+	 *
+	 * @param request  is the web input according to servlet spec
+	 * @param response is the web response according to servlet spec
+	 * @return redirect routing or null when no redirect is needed.
+	 */
+	@PostMapping(path = { ApiSupport.SAML_API, ApiSupport.ADFS_ENTRY_URL,
+			ApiSupport.ADFS_ENTRY_URL_TRAILING_SLASH, ApiSupport.XTB_LEGACY_ENTRY_URL },
+			consumes = { MediaType.TEXT_XML_VALUE, WebUtil.MEDIA_TYPE_SOAP_12 })
+	@Transactional
+	public String handleIncomingSoapMessages(HttpServletRequest request, HttpServletResponse response) {
+		return handleIncomingMessage(request, response, SamlBinding.SOAP);
+	}
+
+	private String handleIncomingMessage(HttpServletRequest request, HttpServletResponse response, SamlBinding expectedBinding) {
 		MessageContext messageContext;
 		SignatureContext signatureContext;
 		if (OpenSamlUtil.isSamlArtifactRequest(request)) {
@@ -128,7 +146,7 @@ public class AppController extends AbstractSamlController {
 			messageContext = artifactResolutionService.decodeSamlArtifactRequest(request);
 			signatureContext = SignatureContext.forArtifactBinding();
 		}
-		else if (isGet) {
+		else if (expectedBinding == SamlBinding.REDIRECT) {
 			validateBinding(SamlBinding.REDIRECT);
 			if (!OpenSamlUtil.isSamlRedirectRequest(request)) {
 				throw new RequestDeniedException(String.format(
@@ -137,8 +155,17 @@ public class AppController extends AbstractSamlController {
 			messageContext = OpenSamlUtil.decodeSamlRedirectMessage(request);
 			signatureContext = SignatureContext.forRedirectBinding(WebUtil.getUrlWithQuery(request));
 		}
+		else if (expectedBinding == SamlBinding.SOAP) {
+			validateBinding(SamlBinding.SOAP);
+			messageContext = OpenSamlUtil.decodeSamlSoapMessage(request);
+			signatureContext = SignatureContext.forSoapBinding();
+		}
 		else {
 			validateBinding(SamlBinding.POST);
+			if (!OpenSamlUtil.isSamlPostRequest(request)) {
+				throw new RequestDeniedException(String.format(
+						"POST %s without any SAML message dropped", request.getRequestURI()));
+			}
 			messageContext = OpenSamlUtil.decodeSamlPostMessage(request);
 			signatureContext = SignatureContext.forPostBinding();
 		}
@@ -153,10 +180,20 @@ public class AppController extends AbstractSamlController {
 		}
 	}
 
+	private void validateBindingForMessage(SAMLObject message, SamlBinding binding) {
+		// other request types require redirects and don't work with SOAP binding
+		if (binding == SamlBinding.SOAP && !(message instanceof LogoutRequest)) {
+			throw new RequestDeniedException(
+					String.format("Binding=%s not supported for message=%s",
+							binding, message.getClass().getName()));
+		}
+	}
+
 	private String processMessageContext(MessageContext messageContext, HttpServletResponse response,
 			HttpServletRequest request, SignatureContext signatureContext) {
 
-		SAMLObject message = decodeAndValidateMessage(messageContext);
+		var message = decodeAndValidateMessage(messageContext);
+		validateBindingForMessage(message, signatureContext.getBinding());
 
 		if (message instanceof AuthnRequest authnRequest) {
 			var redirectUrl = authenticationService.handleAuthnRequest(samlOutputService, authnRequest, request, response,

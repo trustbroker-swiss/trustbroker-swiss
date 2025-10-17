@@ -19,9 +19,12 @@ import javax.xml.namespace.QName;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.opensaml.core.xml.io.MarshallingException;
 import org.opensaml.core.xml.util.XMLObjectSupport;
 import org.opensaml.soap.wstrust.RequestSecurityToken;
+import org.opensaml.soap.wstrust.RequestSecurityTokenResponse;
 import org.opensaml.soap.wstrust.RequestSecurityTokenResponseCollection;
+import org.opensaml.soap.wstrust.WSTrustObject;
 import org.springframework.ws.server.endpoint.annotation.Endpoint;
 import org.springframework.ws.server.endpoint.annotation.PayloadRoot;
 import org.springframework.ws.server.endpoint.annotation.RequestPayload;
@@ -60,13 +63,9 @@ public class WsTrustEndpoint {
 			RequestSecurityToken requestSecurityToken = SoapUtil.unmarshallDomElement(requestSecurityTokenType);
 
 			// service entry point
-			var response = wsTrustService.processSecurityTokenRequest(requestSecurityToken,
-					soapContext.getAssertion(), soapContext.getSecurityToken());
+			var response = wsTrustService.processSecurityTokenRequest(requestSecurityToken, soapContext);
 
-			var marshaller = XMLObjectSupport.getMarshaller(new QName(WSSConstants.WST_NS_05_12,
-					RequestSecurityTokenResponseCollection.ELEMENT_LOCAL_NAME));
-
-			return marshaller.marshall(response);
+			return marshalResponse(response);
 		}
 		catch (TrustBrokerException e) {
 			throw e;
@@ -77,6 +76,23 @@ public class WsTrustEndpoint {
 			throw new TechnicalException(String.format("Handling RST request failed with error '%s': RST: %s SAML assertion: %s",
 					e.getMessage(), rstString, samlString), e);
 		}
+	}
+
+	private static Element marshalResponse(WSTrustObject response) throws MarshallingException {
+		var marshaller = XMLObjectSupport.getMarshaller(new QName(WSSConstants.WST_NS_05_12,
+				getElementLocalName(response)));
+
+		return marshaller.marshall(response);
+	}
+
+	private static String getElementLocalName(WSTrustObject response) {
+		if (response instanceof RequestSecurityTokenResponseCollection) {
+			return RequestSecurityTokenResponseCollection.ELEMENT_LOCAL_NAME;
+		}
+		if (response instanceof RequestSecurityTokenResponse) {
+			return RequestSecurityTokenResponse.ELEMENT_LOCAL_NAME;
+		}
+		throw new TechnicalException(String.format("Response type of un expected class=%s", response.getClass().getName()));
 	}
 
 }

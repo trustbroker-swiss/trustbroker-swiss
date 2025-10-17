@@ -15,7 +15,7 @@
 
 @if (theme$ | async; as theme) {
 	<div class="main">
-		<h1 class="sr-only">{{ "trustbroker.hrd.main.title" | translate }}</h1>
+		<h2 class="sr-only">{{ "trustbroker.hrd.main.title" | translate }}</h2>
 		<p class="sr-only" [innerHTML]="'trustbroker.hrd.main.subtitle' | translate | safeMarkup"></p>
 
 		@for (banner of idpObjects().banners; track banner) {
@@ -23,7 +23,7 @@
 		}
 
 		<section class="cards">
-			<h2 class="sr-only">{{ "trustbroker.hrd.cards.title" | translate }}</h2>
+			<h3 class="sr-only">{{ "trustbroker.hrd.cards.title" | translate }}</h3>
 			@for (idpObjects of idpObjects().tiles | bucketizeIdpObjects: 1; track idpObjects; let bucketIndex = $index) {
 				<div class="card-section" [ngClass]="{ 'expandable-to-half-size': bucketIndex < 2 }">
 					@for (idpObject of idpObjects; track idpObject.urn) {

@@ -32,6 +32,7 @@ import com.nimbusds.jose.proc.SecurityContext;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
+import org.opensaml.saml.saml2.core.Assertion;
 import org.opensaml.saml.saml2.core.AuthnStatement;
 import org.opensaml.saml.saml2.core.NameIDType;
 import org.opensaml.saml.saml2.core.Response;
@@ -55,6 +56,7 @@ import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.oidc.JwkUtil;
 import swiss.trustbroker.common.saml.util.CoreAttributeName;
 import swiss.trustbroker.common.saml.util.SamlIoUtil;
+import swiss.trustbroker.common.saml.util.SamlUtil;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.StringUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
@@ -119,8 +121,9 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 			var saml2Response = saml2Authentication.getSaml2Response();
 			var response = getResponse(saml2Response);
 			conversationId = response.getInResponseTo();
-			addAuthTimeClaim(cpResponse, response); // from original SAML Response Assertion
-			addAcrClaim(cpResponse, response, client, relyingParty); // from original SAML Response Assertion
+			var assertions = getResponseAssertion(response, relyingParty, conversationId);
+			addAuthTimeClaim(cpResponse, assertions, response.getIssueInstant()); // from original SAML Response Assertion
+			addAcrClaim(cpResponse, assertions, client, relyingParty); // from original SAML Response Assertion
 			addSidClaim(context.getPrincipal(), cpResponse);
 		}
 
@@ -165,6 +168,16 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 
 		// audit
 		auditTokenClaims(clientId, context, kid, cpResponse, conversationId);
+	}
+
+	private List<Assertion> getResponseAssertion(Response response, RelyingParty relyingParty, String conversationId) {
+		var rpSigner = relyingParty.getRpSigner();
+		boolean requireEncryptedAssertion =  properties.getOidc().isSamlEncrypt();
+		var responseAssertions = SamlUtil.getResponseAssertions(response, List.of(rpSigner), requireEncryptedAssertion);
+		if (responseAssertions.isEmpty()) {
+			throw new TechnicalException(String.format("Missing assertion for response=%s", conversationId));
+		}
+		return responseAssertions;
 	}
 
 	private static boolean isAccessTokenOpaque(Optional<OidcClient> client, JwtEncodingContext context) {
@@ -407,11 +420,11 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		return response;
 	}
 
-	private void addAcrClaim(CpResponse cpResponse, Response response, Optional<OidcClient> oidcClient, RelyingParty relyingParty) {
+	private void addAcrClaim(CpResponse cpResponse, List<Assertion> assertions, Optional<OidcClient> oidcClient, RelyingParty relyingParty) {
 		if (!isEnabledTokenClaim(IdTokenClaimNames.ACR)) {
 			return;
 		}
-		if (CollectionUtils.isEmpty(response.getAssertions())) {
+		if (CollectionUtils.isEmpty(assertions)) {
 			return;
 		}
 
@@ -419,7 +432,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		var qoaConfig = getClientQoaConfig(oidcClient, relyingParty);
 
 		var authnContextClassRefs = new HashSet<String>();
-		for (var assertion : response.getAssertions()) {
+		for (var assertion : assertions) {
 			for (var authnStatement : assertion.getAuthnStatements()) {
 				addContextClassRef(useLegacyQoa, authnContextClassRefs, authnStatement, qoaConfig);
 			}
@@ -456,6 +469,7 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		var authContext = authnStatement.getAuthnContext();
 		if (authContext == null || authContext.getAuthnContextClassRef() == null ||
 				authContext.getAuthnContextClassRef().getURI() == null) {
+			log.debug("Missing authentication context class");
 			return;
 		}
 
@@ -496,31 +510,32 @@ class JwtTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 		return null;
 	}
 
-	private void addAuthTimeClaim(CpResponse cpResponse, Response response) {
+	private void addAuthTimeClaim(CpResponse cpResponse, List<Assertion> assertions, Instant issueInstant) {
 		if (!isEnabledTokenClaim(IdTokenClaimNames.AUTH_TIME)) {
 			return;
 		}
-		var authTime = getAuthTimeFromResponse(response);
+		var authTime = getAuthTimeFromResponse(assertions, issueInstant);
 		if (authTime != null) {
 			long epochSecond = authTime.getEpochSecond();
 			cpResponse.setClaim(IdTokenClaimNames.AUTH_TIME, epochSecond);
 		}
 	}
 
-	private static Instant getAuthTimeFromResponse(Response response) {
-		if (CollectionUtils.isEmpty(response.getAssertions())) {
+	private static Instant getAuthTimeFromResponse(List<Assertion> assertions, Instant issueInstant) {
+		if (CollectionUtils.isEmpty(assertions)) {
 			return null;
 		}
-		for (var assertion : response.getAssertions()) {
+		for (var assertion : assertions) {
 			for (var authnStatement : assertion.getAuthnStatements()) {
 				if (authnStatement.getAuthnInstant() != null) {
 					return authnStatement.getAuthnInstant();
 				}
 			}
 			if (assertion.getIssueInstant() != null) {
-				return response.getIssueInstant();
+				return issueInstant;
 			}
 		}
+		log.debug("No AuthnInstant found in response");
 		return null;
 	}
 

@@ -48,8 +48,7 @@ public class AccessRequest implements Serializable {
 	 * Enable this configuration.
 	 */
 	@XmlAttribute(name = "enabled")
-	@Builder.Default
-	private Boolean enabled = Boolean.FALSE;
+	private Boolean enabled;
 
 	/**
 	 * Authorized applications for the AccessRequest.
@@ -58,17 +57,21 @@ public class AccessRequest implements Serializable {
 	@Builder.Default
 	private AuthorizedApplications authorizedApplications = new AuthorizedApplications();
 
-	public boolean isEnabled() {
+	public boolean enabled() {
 		return Boolean.TRUE.equals(enabled);
 	}
 
+	// duplicated values are merged with "|" as separator so far (used for logging only)
 	public Map<String, String> getAllTriggerRoles() {
 		var config = authorizedApplications.getAuthorizedApplicationList();
 		if (config == null) {
 			return Collections.emptyMap();
 		}
 		return config.stream().map(app -> Pair.of(app.getName(), app.getTriggerRole()))
-					   .collect(Collectors.toMap(Pair::getKey, Pair::getValue));
+					   .collect(Collectors.toMap(Pair::getKey, Pair::getValue, AccessRequest::mergeRoles));
 	}
 
+	private static String mergeRoles(String role1, String role2) {
+		return role1 + "|" + role2;
+	}
 }

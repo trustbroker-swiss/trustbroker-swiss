@@ -26,12 +26,14 @@ import { Observable, filter } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { HeaderButton } from '../../shared/enums/HeaderButton';
 
 @Component({
 	selector: 'app-mat-header',
 	templateUrl: './material-header.component.html',
 	styleUrls: ['./material-header.component.scss'],
-	encapsulation: ViewEncapsulation.None
+	encapsulation: ViewEncapsulation.None,
+	standalone: false
 })
 export class MaterialHeaderComponent {
 	@Input() appName: string;
@@ -50,9 +52,10 @@ export class MaterialHeaderComponent {
 	languageDropdownVisible: boolean;
 
 	readonly languages: string[];
+	readonly headerButtons: HeaderButton[] = this.apiService.getConfiguration().buttons;
 
 	pageTitle$: Observable<string | undefined>;
-	isMobile = toSignal(this.breakpointObserver.observe('(max-width: 511px)').pipe(map(({ matches }) => matches)));
+	isMobile = toSignal(this.breakpointObserver.observe('(max-width: 600px)').pipe(map(({ matches }) => matches)));
 
 	constructor(
 		public readonly languageService: LanguageService,
@@ -88,10 +91,6 @@ export class MaterialHeaderComponent {
 		}
 		if (this.theme.hasHelpPanel) {
 			this.helpPanel.emit(focusOrigin);
-		} else {
-			const helpLink = this.languageService.translate('trustbroker.header.help.link');
-			const helpTarget = this.languageService.translate('trustbroker.header.help.target');
-			window.open(helpLink, helpTarget);
 		}
 	}
 

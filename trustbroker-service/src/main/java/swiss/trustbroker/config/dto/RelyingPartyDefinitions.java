@@ -157,7 +157,7 @@ public class RelyingPartyDefinitions {
 		var newConfigurations = new HashMap<String, Pair<RelyingParty, AuthorizedApplication>>();
 		for (RelyingParty relyingParty : relyingParties) {
 			var accessRequest = relyingParty.getAccessRequest();
-			if (accessRequest != null && accessRequest.isEnabled() &&
+			if (accessRequest != null && accessRequest.enabled() &&
 					accessRequest.getAuthorizedApplications() != null &&
 					accessRequest.getAuthorizedApplications().getAuthorizedApplicationList() != null) {
 

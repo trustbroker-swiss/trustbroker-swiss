@@ -17,7 +17,10 @@ import { Pipe, PipeTransform } from '@angular/core';
 
 import { Constant } from '../shared/constants';
 
-@Pipe({ name: 'nativeLanguageDisplay' })
+@Pipe({
+	name: 'nativeLanguageDisplay',
+	standalone: false
+})
 export class NativeLanguageDisplayPipe implements PipeTransform {
 	transform(lang: string): string {
 		return Constant.NativeLanguageDisplayLabels[lang];

@@ -15,9 +15,9 @@
 
 package swiss.trustbroker.api.profileselection.dto;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import lombok.Builder;
 import lombok.Data;
@@ -35,7 +35,7 @@ public class ProfileSelectionResult {
 	private String selectedProfileId;
 
 	@Builder.Default
-	private Optional<Map<AttributeName, List<String>>> filteredAttributes = Optional.empty();
+	private Map<AttributeName, List<String>> filteredAttributes = Collections.emptyMap();
 
 	public static ProfileSelectionResult empty() {
 		return ProfileSelectionResult.builder()

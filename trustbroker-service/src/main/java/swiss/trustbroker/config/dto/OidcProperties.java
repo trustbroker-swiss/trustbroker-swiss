@@ -242,12 +242,32 @@ public class OidcProperties {
 	private boolean opaqueRefreshTokenEnabled = false;
 
 	/**
-	 * Use refresh token for Public Clients
-	 * <br/>
-	 * Default: false
-	 * @since 1.11.0
+	 * Enabled ID token encryption algorithms.
+	 *
+	 * @since 1.12.0
 	 */
-	private boolean refreshTokenForPKCEEnabled = false;
+	private List<String> idTokenEncryptionAlgorithms;
+
+	/**
+	 * Enabled ID token encryption methods.
+	 *
+	 * @since 1.12.0
+	 */
+	private List<String> idTokenEncryptionMethods;
+
+	/**
+	 * Enabled UserInfo encryption algorithms.
+	 *
+	 * @since 1.12.0
+	 */
+	private List<String> userInfoEncryptionAlgorithms;
+
+	/**
+	 * Enabled UserInfo encryption methods.
+	 *
+	 * @since 1.12.0
+	 */
+	private List<String> userInfoEncryptionMethods;
 
 	/**
 	 * Global default QoA.

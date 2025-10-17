@@ -57,7 +57,7 @@ public class AnnouncementRpConfig implements Serializable, AnnouncementsRpData {
 
 	@JsonIgnore
 	@Override
-	public boolean isEnabled() {
+	public boolean isAnnouncementEnabled() {
 		return Boolean.TRUE.equals(enabled);
 	}
 }

@@ -13,62 +13,20 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-@import "variables";
+@use "src/styles/variables";
 
 .high-emphasis {
-	color: $high-emphasis-color !important;
+	color: variables.$high-emphasis-color !important;
 }
 
 .medium-emphasis {
-	color: $medium-emphasis-color !important;
+	color: variables.$medium-emphasis-color !important;
 }
 
 .disabled {
-	color: $disabled-color !important;
+	color: variables.$disabled-color !important;
 }
 
-// Oblique 5.04 overrides this with default bottom margin which causes layout issues for us
-h1, h2, h3, h4, h5, h6, p {
-	margin: 0 !important;
-}
-
-.header, .h1, h1 {
-	font-size: 28px !important;
-	letter-spacing: 0.1pt !important;
-	line-height: 32px !important;
-	font-weight: $font-weight-light !important;
-}
-
-.h2, h2, h3 {
-	font-size: 18px !important;
-	letter-spacing: 0.2pt !important;
-	line-height: 24px !important;
-	font-weight: $font-weight-bold !important;
-}
-
-.body-1 {
-	font-size: 16px !important;
-	letter-spacing: 0.5pt !important;
-	line-height: 24px !important;
-}
-
-.body-2 {
-	font-size: 14px !important;
-	letter-spacing: 0.25pt !important;
-	line-height: 20px !important;
-}
-
-.button-text {
-	font-size: 14px;
-	letter-spacing: 1.25pt;
-	font-weight: $font-weight-normal;
-	//we let the line-height set by material, the 20px in the guideline should be applied by a new class if an edge case
-	//will come up (a button with multiline text).
-}
-
-.body-3 {
-	font-size: 14px !important;
-	text-align: left !important;
-	line-height: 20px !important;
-	font-style: normal !important;
+.strong {
+	font-weight: variables.$font-weight-bold;
 }

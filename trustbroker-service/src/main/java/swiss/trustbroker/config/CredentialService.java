@@ -15,6 +15,7 @@
 
 package swiss.trustbroker.config;
 
+import java.io.File;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -66,7 +67,7 @@ public class CredentialService {
 
 	private void resolveStorePaths(SignerStore store, String subPath) {
 		var basePath = resolvePath(store.getCertPath(), subPath);
-		var resolvedCertPath = basePath + store.getCertPath();
+		var resolvedCertPath = new File(basePath, store.getCertPath()).getPath();
 		store.setResolvedCertPath(resolvedCertPath);
 		if (store.getKeyPath() != null) {
 			// key is always loaded from the same path as cert

@@ -12,30 +12,35 @@
  You should have received a copy of the GNU Affero General Public License along with this program.
  If not, see <https://www.gnu.org/licenses/>.
 -->
-<main class="accessRequestContainer">
+<div class="accessRequestContainer">
 	<div class="title-container">
-		<h1 class="high-emphasis mb-2">{{ "trustbroker.accessrequest.title" | translate }}</h1>
+		<h2 class="mb-2">{{ "trustbroker.accessrequest.title" | translate }}</h2>
 	</div>
-	<div class="body-1 medium-emphasis mb-2">
+	<div class="body-1 mb-2">
 		<div class="ob-alert ob-alert-info">
-			<p [innerHTML]="'trustbroker.accessrequest.message.' + this.state | translate | safeMarkup"></p>
+			@if (this.infoKey | hasTranslation | async) {
+				<p [innerHTML]="this.infoKey | translate | safeMarkup"></p>
+			} @else {
+				{{ "trustbroker.accessrequest.title" | translate }}
+			}
 		</div>
-		<div>
+
+		<div class="button-container">
 			@if (this.showContinueButton) {
-				<button mat-flat-button color="accent" (click)="initiateAccessRequest()" tabindex="1" type="submit" class="button-text">
+				<button mat-flat-button color="accent" (click)="initiateAccessRequest()" type="submit" class="button-text">
 					<span>{{ "trustbroker.accessrequest.continue" | translate }}</span>
 				</button>
 			}
 			@if (this.showAbortButton) {
-				<button mat-flat-button (click)="abortAccessRequest()" tabindex="1" type="submit" class="button-text mr-1">
-					<span>{{ "trustbroker.accessrequest.abort" | translate }}</span>
+				<button mat-button [obButton]="this.showContinueButton ? 'secondary' : 'primary'" (click)="abortAccessRequest()" type="submit">
+					{{ "trustbroker.accessrequest.abort" | translate }}
 				</button>
 			}
 			@if (this.showLoginButton) {
-				<button mat-flat-button color="accent" (click)="completeAccessRequest()" tabindex="1" type="submit" class="button-text">
-					<span>{{ "trustbroker.accessrequest.login" | translate }}</span>
+				<button mat-button obButton="primary" type="button" (click)="completeAccessRequest()" type="submit">
+					{{ "trustbroker.accessrequest.login" | translate }}
 				</button>
 			}
 		</div>
 	</div>
-</main>
+</div>

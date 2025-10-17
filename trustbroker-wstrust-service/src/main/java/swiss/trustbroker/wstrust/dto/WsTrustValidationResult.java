@@ -15,8 +15,29 @@
 
 package swiss.trustbroker.wstrust.dto;
 
+import lombok.Builder;
+import lombok.Data;
 import org.opensaml.saml.saml2.core.Assertion;
 
-public record WsTrustValidationResult(Assertion validatedAssertion, boolean recomputeAttributes, String recipientIssuerId) {
+@Data
+@Builder
+public class WsTrustValidationResult {
+
+	private String requestType;
+
+	private Assertion validatedAssertion;
+
+	// trigger recomputation of assertion attributes?
+	private boolean recomputeAttributes;
+
+	private String recipientIssuerId;
+
+	// override response Lifetime:
+	private boolean useAssertionLifetime;
+
+	private boolean createResponseCollection;
+
+	// session index to return
+	private String sessionIndex;
 
 }

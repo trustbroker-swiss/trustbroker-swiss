@@ -16,15 +16,18 @@
 package swiss.trustbroker.federation.xmlconfig;
 
 import java.io.Serializable;
+import java.util.List;
 
 import jakarta.xml.bind.annotation.XmlAccessType;
 import jakarta.xml.bind.annotation.XmlAccessorType;
+import jakarta.xml.bind.annotation.XmlAttribute;
 import jakarta.xml.bind.annotation.XmlElement;
 import jakarta.xml.bind.annotation.XmlRootElement;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import swiss.trustbroker.common.saml.dto.SamlBinding;
 
 /**
  * SAML configuration for CP/RP.
@@ -50,6 +53,17 @@ public class Saml implements Serializable {
 	private ArtifactBinding artifactBinding;
 
 	/**
+	 * List of supported inbound SAML bindings.
+	 * <br/>
+	 * If empty list / null, all bindings are accepted.
+	 * <br/>
+	 * Default: null
+	 * @since 1.12.0
+	 */
+	@XmlElement(name = "SupportedBinding")
+	private List<SamlBinding> supportedBindings;
+
+	/**
 	 * SAML encryption configuration.
 	 */
 	@XmlElement(name = "Encryption")
@@ -60,6 +74,17 @@ public class Saml implements Serializable {
 	 */
 	@XmlElement(name = "Signature")
 	private Signature signature;
+
+
+	/**
+	 * Forward <code>ProtocolBinding</code> from RP tp CP.
+	 * <br/>
+	 * Default: true
+	 * @since 1.12.0
+	 */
+	@Builder.Default
+	@XmlAttribute(name="forwardRpProtocolBinding")
+	private Boolean forwardRpProtocolBinding = Boolean.TRUE;
 
 	public Signature initializedSignature() {
 		if (signature == null) {

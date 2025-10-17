@@ -13,12 +13,11 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { HttpClient, HttpClientModule } from '@angular/common/http';
+import { HttpClient, provideHttpClient } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { RouterTestingModule } from '@angular/router/testing';
 import { TranslateLoader, TranslateModule } from '@ngx-translate/core';
 import { of } from 'rxjs';
-import { mock, when } from 'ts-mockito';
+import { anything, mock, when } from 'ts-mockito';
 
 import { TranslationService } from '../app.module';
 import { HrdCardsComponent } from './hrd-cards.component';
@@ -27,19 +26,22 @@ import { SafeMarkupPipe } from '../pipes/safe-markup.pipe';
 import { ComponentRef } from '@angular/core';
 import { LanguageService } from '../services/language.service';
 import { ThemeService } from '../services/theme-service';
+import { ValidationService } from '../services/validation-service';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
+import { Configuration } from '../model/Configuration';
 
 describe('HrdCardsComponent', () => {
 	let component: HrdCardsComponent;
 	let componentRef: ComponentRef<HrdCardsComponent>;
 	let fixture: ComponentFixture<HrdCardsComponent>;
 	let mockApiService: ApiService;
+	let mockValidationService: ValidationService;
 
 	beforeEach(async () => {
 		await TestBed.configureTestingModule({
 			declarations: [HrdCardsComponent, SafeMarkupPipe],
 			imports: [
-				HttpClientModule,
-				RouterTestingModule,
 				TranslateModule.forRoot({
 					loader: {
 						provide: TranslateLoader,
@@ -47,21 +49,24 @@ describe('HrdCardsComponent', () => {
 						deps: [HttpClient]
 					}
 				})
-			]
+			],
+			providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])]
 		}).compileComponents();
 	});
 
 	beforeEach(() => {
 		// mock services
 		mockApiService = mock(ApiService);
-		when(mockApiService.getConfiguration()).thenReturn(of());
+		when(mockApiService.getConfiguration()).thenReturn(new Configuration());
+		mockValidationService = mock(ValidationService);
+		when(mockValidationService.getValidParameter(anything(), anything(), anything(), anything())).thenReturn('param');
 		const mockLanguageService = mock(LanguageService);
-		const mockThemeService = mock(ThemeService);
 		TestBed.configureTestingModule({
 			providers: [
 				{ provide: ApiService, useValue: mockApiService },
 				{ provide: LanguageService, useValue: mockLanguageService },
-				{ provide: ThemeService, useValue: mockThemeService }
+				{ provide: ThemeService, useValue: { theme$: of() } as Partial<ThemeService> },
+				{ provide: ValidationService, useValue: mockValidationService }
 			]
 		});
 

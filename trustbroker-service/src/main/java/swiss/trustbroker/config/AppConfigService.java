@@ -52,7 +52,7 @@ import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
 import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.oidc.ClientConfigInMemoryRepository;
 import swiss.trustbroker.oidc.OidcEncryptionKeystoreService;
-import swiss.trustbroker.oidc.client.service.OidcMetadataCacheService;
+import swiss.trustbroker.oidc.cache.service.OidcMetadataCacheService;
 import swiss.trustbroker.script.service.ScriptService;
 
 @Service
@@ -282,7 +282,7 @@ public class AppConfigService {
 		}
 
 		if (claimsParty.getOidc() != null) {
-			oidcEncryptionKeystoreService.loadClientsEncKeystore(claimsParty.getId(), claimsParty.getSubPath(), claimsParty.getOidc().getClients());
+			oidcEncryptionKeystoreService.loadClientsDecryptionKeystore(claimsParty.getId(), claimsParty.getSubPath(), claimsParty.getOidc().getClients());
 		}
 
 	}
@@ -341,6 +341,14 @@ public class AppConfigService {
 				}
 				relyingParty.setRpEncryptionTrustCredential(truststoreCredentials.get(0));
 			}
+		}
+
+		var encryptionKeystore = relyingParty.getCertificates().getEncryptionKeystore();
+		if (encryptionKeystore != null) {
+			var keystoreCredential = credentialService.checkAndLoadCert(encryptionKeystore, relyingParty.getId(), relyingParty.getSubPath());
+			List<Credential> decryptionCredentials = new ArrayList<>();
+			decryptionCredentials.add(keystoreCredential);
+			relyingParty.setRpDecryptionCredentials(decryptionCredentials);
 		}
 
 		loadOidcEncKeystores(relyingParty);

@@ -36,6 +36,7 @@ import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
@@ -43,6 +44,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
@@ -51,20 +53,24 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.saml.util.SamlContextClass;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.QualityOfAuthenticationConfig;
+import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.federation.xmlconfig.AcClass;
+import swiss.trustbroker.federation.xmlconfig.OidcClient;
 import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.QoaComparison;
+import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.mapping.dto.CustomQoa;
 import swiss.trustbroker.mapping.dto.QoaConfig;
 import swiss.trustbroker.mapping.dto.QoaSpec;
 import swiss.trustbroker.mapping.util.QoaMappingUtil;
+import swiss.trustbroker.sessioncache.dto.StateData;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
 
-@SpringBootTest(classes = { QoaMappingService.class })
+@SpringBootTest(classes = {QoaMappingService.class})
 class QoaMappingServiceTest {
 
 	private static final String RP_ID = "rp1";
@@ -87,6 +93,9 @@ class QoaMappingServiceTest {
 	@MockitoBean
 	private TrustBrokerProperties trustBrokerProperties;
 
+	@MockitoBean
+	private RelyingPartyDefinitions relyingPartiesMapping;
+
 	@Test
 	void extractQoaLevel() {
 		mockGlobalQoaMap();
@@ -96,7 +105,7 @@ class QoaMappingServiceTest {
 		assertThat(qoaMappingService.extractQoaLevel(null, qoaConfig).getOrder(),
 				Matchers.is(SamlTestBase.Qoa.UNSPECIFIED_LEVEL));
 		qoaConfig.config().setEnforce(true);
-		assertThrows(TechnicalException.class, () -> qoaMappingService.extractQoaLevel("bar", qoaConfig));
+		assertThrows(RequestDeniedException.class, () -> qoaMappingService.extractQoaLevel("bar", qoaConfig));
 		assertThat(qoaMappingService.extractQoaLevel(SamlTestBase.Qoa.UNSPECIFIED.getName(), qoaConfig).getOrder(),
 				Matchers.is(SamlTestBase.Qoa.UNSPECIFIED_LEVEL));
 		assertThat(qoaMappingService.extractQoaLevel(SamlTestBase.Qoa.MOBILE_ONE_FACTOR_UNREGISTERED.getName(), qoaConfig).getOrder(),
@@ -113,7 +122,7 @@ class QoaMappingServiceTest {
 		assertThat(qoaMappingService.extractQoaLevelFromAuthLevel(null, qoaConfig).getOrder(),
 				Matchers.is(SamlTestBase.Qoa.UNSPECIFIED_LEVEL));
 		qoa.setEnforce(true);
-		assertThrows(TechnicalException.class, () -> qoaMappingService.extractQoaLevelFromAuthLevel("whatever", qoaConfig));
+		assertThrows(RequestDeniedException.class, () -> qoaMappingService.extractQoaLevelFromAuthLevel("whatever", qoaConfig));
 	}
 
 	@Test
@@ -136,29 +145,29 @@ class QoaMappingServiceTest {
 	@Test
 	void mapInboundToOutboundQoasTest() {
 		List<String> contextClasses = List.of("class1", "class2", "class3");
-		var inboundQoa =  Qoa.builder().enforce(true).build();
+		var inboundQoa = Qoa.builder().enforce(true).build();
 		var inboundQoaConf = new QoaConfig(inboundQoa, "inbound1");
 		Map<String, Integer> globalMapping = Map.of("class1", 1, "class2", 2, "class3", 3);
 		when(trustBrokerProperties.getQoaMap()).thenReturn(globalMapping);
 		var outboundIssuer = "outbound1";
 
 		assertEquals(contextClasses, qoaMappingService.mapInboundToOutboundQoas(
-				contextClasses, inboundQoaConf, QoaComparison.EXACT, new QoaConfig(null, outboundIssuer),
+						contextClasses, inboundQoaConf, QoaComparison.EXACT, new QoaConfig(null, outboundIssuer),
 						Collections.emptyList()),
 				"Should return the original context classes if outbound config is null.");
 
 		assertEquals(contextClasses, qoaMappingService.mapInboundToOutboundQoas(
-				contextClasses, inboundQoaConf, QoaComparison.EXACT, new QoaConfig(Qoa.builder().build(), outboundIssuer),
+						contextClasses, inboundQoaConf, QoaComparison.EXACT, new QoaConfig(Qoa.builder().build(), outboundIssuer),
 						Collections.emptyList()),
 				"Should return the original context classes if outbound classes are empty.");
 
 		var outBoundQoa1 = Qoa.builder()
-								 .mapOutbound(false)
-								 .classes(List.of(
-										 AcClass.builder().order(1).contextClass("test").build()))
-								 .build();
+							  .mapOutbound(false)
+							  .classes(List.of(
+									  AcClass.builder().order(1).contextClass("test").build()))
+							  .build();
 		assertEquals(contextClasses, qoaMappingService.mapInboundToOutboundQoas(
-				contextClasses, inboundQoaConf, QoaComparison.EXACT, new QoaConfig(outBoundQoa1, outboundIssuer),
+						contextClasses, inboundQoaConf, QoaComparison.EXACT, new QoaConfig(outBoundQoa1, outboundIssuer),
 						Collections.emptyList()),
 				"Should return the original context classes if MapOutBound is false.");
 
@@ -173,7 +182,7 @@ class QoaMappingServiceTest {
 									 AcClass.builder().order(1).contextClass(mappedClass1).build(),
 									 AcClass.builder().order(2).contextClass(mappedClass2).build(),
 									 AcClass.builder().order(3).contextClass(mappedClass3).build()))
-							.build();
+							 .build();
 		var outBoundQoaConf = new QoaConfig(outBoundQoa, outboundIssuer);
 		List<String> result = qoaMappingService.mapInboundToOutboundQoas(
 				contextClasses, inboundQoaConf, QoaComparison.EXACT, outBoundQoaConf, Collections.emptyList());
@@ -215,25 +224,25 @@ class QoaMappingServiceTest {
 
 		outBoundQoaConf.config().setMapOutbound(false);
 		assertEquals(contextClasses, qoaMappingService.mapInboundToOutboundQoas(
-				contextClasses, inboundQoaConf, QoaComparison.EXACT, outBoundQoaConf, Collections.emptyList()),
+						contextClasses, inboundQoaConf, QoaComparison.EXACT, outBoundQoaConf, Collections.emptyList()),
 				"Should return original context classes if enforce is false.");
 	}
 
 	@Test
 	void mapInboundToOutboundQoasDropUnmappableTest() {
 		List<String> contextClasses = List.of("class1", "class2", "class3");
-		var inboundQoa =  Qoa.builder().enforce(true).build();
+		var inboundQoa = Qoa.builder().enforce(true).build();
 		var inboundQoaConf = new QoaConfig(inboundQoa, "inbound1");
 		var mappedClass1 = "mappedClass1";
 		var mappedClass2 = "mappedClass2";
 		var outBoundQoa = Qoa.builder()
-				.enforce(true)
-				.mapOutbound(true)
-				.singleQoaResponse(true) // ignored
-				.classes(List.of(
-						AcClass.builder().order(1).contextClass(mappedClass1).build(),
-						AcClass.builder().order(2).contextClass(mappedClass2).build()))
-				.build();
+							 .enforce(true)
+							 .mapOutbound(true)
+							 .singleQoaResponse(true) // ignored
+							 .classes(List.of(
+									 AcClass.builder().order(1).contextClass(mappedClass1).build(),
+									 AcClass.builder().order(2).contextClass(mappedClass2).build()))
+							 .build();
 		var outBoundQoaConf = new QoaConfig(outBoundQoa, "outboundIssuer");
 		Map<String, Integer> globalMapping = Map.of("class1", 1, "class2", 2, "class3", 3);
 		when(trustBrokerProperties.getQoaMap()).thenReturn(globalMapping);
@@ -284,10 +293,10 @@ class QoaMappingServiceTest {
 		var comparison = QoaComparison.EXACT;
 
 		var cpQoa = Qoa.builder()
-				.mapOutbound(true)
-				.singleQoaResponse(true) // ignored
-				.classes(List.of(AcClass.builder().contextClass(CP_QOA_10).order(10).build()))
-				.build();
+					   .mapOutbound(true)
+					   .singleQoaResponse(true) // ignored
+					   .classes(List.of(AcClass.builder().contextClass(CP_QOA_10).order(10).build()))
+					   .build();
 		var cpQoaConfig = new QoaConfig(cpQoa, CP_ID);
 
 		// no inbound classes
@@ -343,13 +352,13 @@ class QoaMappingServiceTest {
 					   .build();
 		var cpQoaConfig = new QoaConfig(cpQoa, CP_ID);
 		var rpQoa = Qoa.builder()
-							   .classes(
-									   List.of(
-											   AcClass.builder().contextClass(RP_QOA_10).order(10).build(),
-											   AcClass.builder().contextClass(RP_QOA_20).order(20).build()
-									   )
+					   .classes(
+							   List.of(
+									   AcClass.builder().contextClass(RP_QOA_10).order(10).build(),
+									   AcClass.builder().contextClass(RP_QOA_20).order(20).build()
 							   )
-							   .build();
+					   )
+					   .build();
 		var rpQoaConfig = new QoaConfig(rpQoa, RP_ID);
 
 		// no mapping with empty RP Qoa
@@ -359,7 +368,7 @@ class QoaMappingServiceTest {
 
 		// RP required max picks min from CP (ignoring RP list)
 		assertThat(qoaMappingService.mapResponseQoasToOutbound(
-				inboundClasses, cpQoaConfig, QoaComparison.MAXIMUM, List.of(RP_QOA_20), rpQoaConfig),
+						inboundClasses, cpQoaConfig, QoaComparison.MAXIMUM, List.of(RP_QOA_20), rpQoaConfig),
 				is(List.of(RP_QOA_10)));
 
 		// RP required min/better pick max from CP (ignoring RP list)
@@ -403,7 +412,7 @@ class QoaMappingServiceTest {
 	}
 
 	static Object[][] determineComparisonTypeWithDefaultTest() {
-		return new Object[][] {
+		return new Object[][]{
 				// default:
 				{ null, null, QoaComparison.EXACT },
 				// one source:
@@ -417,10 +426,10 @@ class QoaMappingServiceTest {
 	@ParameterizedTest
 	@MethodSource
 	void canCpFulfillRequestQoasTest(QoaComparison comparison, List<String> requestedContextClasses,
-			Qoa rpQoa, Qoa cpQoa, boolean expected) {
+									 Qoa rpQoa, Qoa cpQoa, boolean expected) {
 		mockGlobalQoaMap();
 		assertThat(qoaMappingService.canCpFulfillRequestQoas(comparison, requestedContextClasses,
-				new QoaConfig(rpQoa, RP_ID), new QoaConfig(cpQoa, CP_ID)),
+						new QoaConfig(rpQoa, RP_ID), new QoaConfig(cpQoa, CP_ID)),
 				is(expected));
 	}
 
@@ -428,61 +437,61 @@ class QoaMappingServiceTest {
 		var defaultQoaEnforced = givenQoaConfig(true);
 		var defaultQoaNotEnforced = givenQoaConfig(false);
 		var acClassesMax50 = List.of(AcClass.builder()
-									   .order(59)
-									   .contextClass(SamlContextClass.SOFTWARE_PKI)
-									   .build());
+											.order(59)
+											.contextClass(SamlContextClass.SOFTWARE_PKI)
+											.build());
 		var cpQoaMax50NotEnforced = Qoa.builder()
-						  .classes(acClassesMax50)
-						  .build();
-		return new Object[][] {
+									   .classes(acClassesMax50)
+									   .build();
+		return new Object[][]{
 				// missing values
-				{ QoaComparison.EXACT, List.of(SamlContextClass.KERBEROS), null, null, true }, // no CP config
-				{ QoaComparison.EXACT, List.of(SamlContextClass.KERBEROS), defaultQoaEnforced, null, true }, // no CP config
-				{ QoaComparison.EXACT, List.of(SamlContextClass.KERBEROS), null, defaultQoaEnforced, false }, // CP config blocks
-				{ QoaComparison.EXACT, List.of(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED), null, defaultQoaEnforced, true },
-				{ QoaComparison.EXACT, List.of(SamlContextClass.KERBEROS), defaultQoaEnforced,
-						Qoa.builder().enforce(true).build(), true }, // CP config has no context classes
-				{ null, null, defaultQoaEnforced, defaultQoaEnforced, true },
-				{ null, null, null, defaultQoaEnforced, true }, // no context classes requested
+				{QoaComparison.EXACT, List.of(SamlContextClass.KERBEROS), null, null, true}, // no CP config
+				{QoaComparison.EXACT, List.of(SamlContextClass.KERBEROS), defaultQoaEnforced, null, true}, // no CP config
+				{QoaComparison.EXACT, List.of(SamlContextClass.KERBEROS), null, defaultQoaEnforced, false}, // CP config blocks
+				{QoaComparison.EXACT, List.of(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED), null, defaultQoaEnforced, true},
+				{QoaComparison.EXACT, List.of(SamlContextClass.KERBEROS), defaultQoaEnforced,
+						Qoa.builder().enforce(true).build(), true}, // CP config has no context classes
+				{null, null, defaultQoaEnforced, defaultQoaEnforced, true},
+				{null, null, null, defaultQoaEnforced, true}, // no context classes requested
 				// enforced, EXACT, matching
-				{ null, List.of(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, SamlContextClass.PASSWORD_PROTECTED_TRANSPORT),
+				{null, List.of(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, SamlContextClass.PASSWORD_PROTECTED_TRANSPORT),
 						defaultQoaEnforced, defaultQoaEnforced, true
 				},
-				{ null, List.of(SamlContextClass.SOFTWARE_TIME_SYNC_TOKEN, SamlContextClass.SOFTWARE_PKI),
+				{null, List.of(SamlContextClass.SOFTWARE_TIME_SYNC_TOKEN, SamlContextClass.SOFTWARE_PKI),
 						defaultQoaEnforced, defaultQoaEnforced, true
 				},
 				// enforced, EXACT, missing
-				{ null, List.of(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, SamlContextClass.PASSWORD_PROTECTED_TRANSPORT),
+				{null, List.of(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, SamlContextClass.PASSWORD_PROTECTED_TRANSPORT),
 						defaultQoaEnforced, cpQoaMax50NotEnforced, false
 				},
-				{ null, List.of(SamlContextClass.PASSWORD_PROTECTED_TRANSPORT, SamlContextClass.SOFTWARE_TIME_SYNC_TOKEN,
+				{null, List.of(SamlContextClass.PASSWORD_PROTECTED_TRANSPORT, SamlContextClass.SOFTWARE_TIME_SYNC_TOKEN,
 						SamlContextClass.KERBEROS),
 						defaultQoaEnforced, defaultQoaEnforced, false
 				},
-				{ null, List.of(SamlContextClass.PASSWORD_PROTECTED_TRANSPORT, SamlContextClass.SOFTWARE_TIME_SYNC_TOKEN,
+				{null, List.of(SamlContextClass.PASSWORD_PROTECTED_TRANSPORT, SamlContextClass.SOFTWARE_TIME_SYNC_TOKEN,
 						SamlContextClass.KERBEROS),
 						defaultQoaNotEnforced, defaultQoaEnforced, false
 				},
 				// enforced, MINIMUM, within max cpQoa
-				{ QoaComparison.MINIMUM, List.of(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED,
+				{QoaComparison.MINIMUM, List.of(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED,
 						SamlContextClass.PASSWORD_PROTECTED_TRANSPORT),
 						defaultQoaEnforced, defaultQoaEnforced, true
 				},
-				{ QoaComparison.MINIMUM, List.of(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, SamlContextClass.SOFTWARE_TIME_SYNC_TOKEN),
+				{QoaComparison.MINIMUM, List.of(SamlContextClass.MOBILE_ONE_FACTOR_UNREGISTERED, SamlContextClass.SOFTWARE_TIME_SYNC_TOKEN),
 						defaultQoaEnforced, defaultQoaEnforced, true
 				},
-				{ QoaComparison.MINIMUM, List.of(SamlContextClass.SOFTWARE_PKI),
+				{QoaComparison.MINIMUM, List.of(SamlContextClass.SOFTWARE_PKI),
 						defaultQoaEnforced, defaultQoaEnforced, true
 				},
-				{ QoaComparison.MINIMUM, List.of(SamlContextClass.SOFTWARE_PKI),
+				{QoaComparison.MINIMUM, List.of(SamlContextClass.SOFTWARE_PKI),
 						defaultQoaEnforced, cpQoaMax50NotEnforced, true
 				},
 				// enforced, MINIMUM, above max cpQoa
-				{ QoaComparison.MINIMUM, List.of(DEFAULT_QOA_70),
+				{QoaComparison.MINIMUM, List.of(DEFAULT_QOA_70),
 						defaultQoaEnforced, cpQoaMax50NotEnforced, false
 				},
 				// not enforced, MINIMUM, above max cpQoa
-				{ QoaComparison.MINIMUM, List.of(DEFAULT_QOA_70),
+				{QoaComparison.MINIMUM, List.of(DEFAULT_QOA_70),
 						defaultQoaNotEnforced, cpQoaMax50NotEnforced, true
 				},
 		};
@@ -500,19 +509,42 @@ class QoaMappingServiceTest {
 		var classesWithReplaceTrue = givenRpAcClasses();
 		var classesWithReplaceFalse = new ArrayList<AcClass>();
 		givenRpAcClasses().forEach(acClass -> {
-			acClass.setReplaceInbound(Boolean.FALSE);
-			classesWithReplaceFalse.add(acClass);}
+					acClass.setReplaceInbound(Boolean.FALSE);
+					classesWithReplaceFalse.add(acClass);
+				}
 		);
 		var classes = givenRpAcClasses();
 		classes.get(0).setReplaceInbound(Boolean.FALSE);
-		return new Object[][] {
+		return new Object[][]{
 				{Qoa.builder().classes(classesWithReplaceTrue).build(), 3},
 				{Qoa.builder().classes(classesWithReplaceFalse).build(), 0},
 				{Qoa.builder().classes(classes).build(), 2}
 		};
 	}
 
-	private static Qoa givenQoaConfig(Boolean enforce)  {
+	@Test
+	void getQoaConfigurationTest() {
+		var qoaRp = "urn:test:MOCKRP-QOA";
+		var oidcClient = OidcClient.builder()
+								   .id("client1")
+								   .clientSecret("secret1")
+								   .build();
+		when(relyingPartiesMapping.getOidcClientConfigById(any(), any())).thenReturn(Optional.of(oidcClient));
+		var stateData = StateData.builder().id("any").oidcClientId(qoaRp).build();
+		var qoa = Qoa.builder().build();
+		var relyingParty = givenRelyingParty(qoa);
+
+		assertEquals(qoa, qoaMappingService.getQoaConfiguration(stateData, relyingParty).config());
+	}
+
+	private static RelyingParty givenRelyingParty(Qoa qoa) {
+		return RelyingParty.builder()
+						   .id("RELYING_PARTY_ID")
+						   .qoa(qoa)
+						   .build();
+	}
+
+	private static Qoa givenQoaConfig(Boolean enforce) {
 		return Qoa.builder()
 				  .classes(givenRpAcClasses())
 				  .enforce(enforce)
@@ -538,7 +570,7 @@ class QoaMappingServiceTest {
 
 	private static QualityOfAuthenticationConfig givenGlobalQoa() {
 		return QualityOfAuthenticationConfig.builder()
-				.strongestPossible(SamlTestBase.Qoa.STRONGEST_POSSIBLE.getName())
+											.strongestPossible(SamlTestBase.Qoa.STRONGEST_POSSIBLE.getName())
 											.build();
 	}
 

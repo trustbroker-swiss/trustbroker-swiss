@@ -19,9 +19,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -58,6 +60,14 @@ public class CollectionUtil {
 			return (Map<String, Object>) map;
 		}
 		return Map.of(name, value);
+	}
+
+	// returns value if a Set or else converts value to set
+	public static Set<String> collectionAsSet(Collection<String> value) {
+		if (value instanceof Set<String> set) {
+			return set;
+		}
+		return new HashSet<>(value);
 	}
 
 	// returns value converted to (empty if null) collection if needed

@@ -44,7 +44,7 @@ import swiss.trustbroker.federation.xmlconfig.RelyingPartySetup;
 import swiss.trustbroker.homerealmdiscovery.service.WebResourceProvider;
 import swiss.trustbroker.homerealmdiscovery.util.ClaimsProviderUtil;
 import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
-import swiss.trustbroker.oidc.client.service.OidcMetadataCacheService;
+import swiss.trustbroker.oidc.cache.service.OidcMetadataCacheService;
 import swiss.trustbroker.script.service.ScriptService;
 
 /**

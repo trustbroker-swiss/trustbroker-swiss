@@ -18,24 +18,27 @@ import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 
 import { DeviceInfoService } from '../services/deviceinfo.service';
+import { ValidationService } from '../services/validation-service';
 
 @Component({
 	selector: 'app-device-info',
 	templateUrl: './device-info.component.html',
-	styleUrls: ['./device-info.component.scss']
+	styleUrls: ['./device-info.component.scss'],
+	standalone: false
 })
 export class DeviceInfoComponent implements OnInit {
 	constructor(
 		private readonly deviceInfoService: DeviceInfoService,
+		private readonly validation: ValidationService,
 		private readonly route: ActivatedRoute,
 		private readonly router: Router
 	) {}
 
 	ngOnInit(): void {
 		this.route.params.subscribe((params: Params) => {
-			const cpUrn = params['cpUrn'];
-			const rpUrn = params['rpUrn'];
-			const id = params['id'];
+			const cpUrn = this.validation.getValidParameter(params, 'cpUrn', ValidationService.ID, '');
+			const rpUrn = this.validation.getValidParameter(params, 'rpUrn', ValidationService.ID, '');
+			const id = this.validation.getValidParameter(params, 'id', ValidationService.ID, '');
 			this.deviceInfoService.sendDeviceInfo(cpUrn, rpUrn, id).subscribe({
 				next: resp => {
 					this.handleDeviceInfoResponse(resp);

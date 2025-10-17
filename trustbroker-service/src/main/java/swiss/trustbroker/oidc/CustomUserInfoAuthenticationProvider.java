@@ -48,6 +48,8 @@ public class CustomUserInfoAuthenticationProvider implements AuthenticationProvi
 
 	private final JwtAuthenticationProvider jwtAuthenticationProvider;
 
+	private final OidcUserInfoAuthenticationProvider userInfoAuthenticationProvider;
+
 	@Override
 	public Authentication authenticate(Authentication authentication) throws AuthenticationException {
 		var tokenValue = (String) authentication.getCredentials();
@@ -55,14 +57,14 @@ public class CustomUserInfoAuthenticationProvider implements AuthenticationProvi
 			throw new RequestDeniedException("Missing UserInfo endpoint Authorization token");
 		}
 
-		JwtUtil.validateToken(tokenValue);
-
 		if (JwtUtil.isJwt(tokenValue)) {
 			if (authentication instanceof BearerTokenAuthenticationToken) {
 				return jwtAuthenticationProvider.authenticate(authentication);
 			}
-			return new OidcUserInfoAuthenticationProvider(authorizationService).authenticate(authentication);
+			return userInfoAuthenticationProvider.authenticate(authentication);
 		}
+
+		JwtUtil.validateToken(tokenValue);
 
 		// Opaque oidcIdToken
 		var auth2Authorization = authorizationService.findByToken(tokenValue, OAuth2TokenType.ACCESS_TOKEN);

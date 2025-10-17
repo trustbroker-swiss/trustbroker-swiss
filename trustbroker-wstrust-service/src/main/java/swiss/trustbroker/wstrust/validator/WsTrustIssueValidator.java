@@ -19,14 +19,16 @@ import java.time.Clock;
 import java.util.Optional;
 
 import lombok.extern.slf4j.Slf4j;
-import org.opensaml.saml.saml2.core.Assertion;
-import org.opensaml.soap.wssecurity.BinarySecurityToken;
+import org.opensaml.soap.wstrust.KeyType;
 import org.opensaml.soap.wstrust.RequestSecurityToken;
 import org.opensaml.soap.wstrust.RequestType;
 import org.springframework.stereotype.Component;
+import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
+import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
 import swiss.trustbroker.wstrust.dto.WsTrustValidationResult;
+import swiss.trustbroker.wstrust.util.WsTrustUtil;
 
 /**
  * Validator for WS-Trust ISSUE requests.
@@ -35,6 +37,8 @@ import swiss.trustbroker.wstrust.dto.WsTrustValidationResult;
 @Slf4j
 public class WsTrustIssueValidator extends WsTrustBaseValidator {
 
+	private static final String REQUEST_TYPE = RequestType.ISSUE;
+
 	public WsTrustIssueValidator(
 			TrustBrokerProperties trustBrokerProperties, RelyingPartySetupService relyingPartySetupService, Clock clock) {
 		super(trustBrokerProperties, relyingPartySetupService, clock);
@@ -42,17 +46,47 @@ public class WsTrustIssueValidator extends WsTrustBaseValidator {
 
 	@Override
 	public boolean applies(RequestType requestType) {
-		return RequestType.ISSUE.equals(requestType.getURI());
+		if (!REQUEST_TYPE.equals(requestType.getURI())) {
+			return false;
+		}
+		if (!enabled()) {
+			log.error("RequestType in RSTR requestType='{}' but ISSUE disabled in configuration", requestType.getURI());
+			return false;
+		}
+		return true;
+	}
+
+	private boolean enabled() {
+		var properties = getTrustBrokerProperties();
+		return properties.getWstrust() != null && properties.getWstrust().isIssueEnabled();
 	}
 
 	@Override
-	public WsTrustValidationResult validate(RequestSecurityToken requestSecurityToken, Assertion headerAssertion,
-			BinarySecurityToken securityToken) {
+	public WsTrustValidationResult validate(RequestSecurityToken requestSecurityToken, SoapMessageHeader requestHeader) {
+		WsTrustHeaderValidator.validateHeaderElements(requestHeader, getTrustBrokerProperties().getIssuer());
+
 		log.debug("RSTR ISSUE request - assertion is in header");
-		if (securityToken != null) {
-			log.info("RSTR with requestType='{}' ignoring header security token", RequestType.ISSUE);
+		if (requestHeader.getSecurityToken() != null) {
+			log.info("RSTR with requestType='{}' ignoring header security token", REQUEST_TYPE);
 		}
+		var headerAssertion = requestHeader.getAssertion();
 		validateAssertion(headerAssertion, null, Optional.empty());
-		return new WsTrustValidationResult(headerAssertion, true, null);
+
+		var keyType = WsTrustUtil.getKeyTypeFromRequest(requestSecurityToken);
+		if (!KeyType.BEARER.equals(keyType)) {
+			throw new RequestDeniedException(String.format(
+					"Wrong KeyType in RSTR with assertionID='%s' keyType='%s' expectedKeyType='%s'",
+					headerAssertion != null ? headerAssertion.getID() : null, keyType, KeyType.BEARER));
+		}
+		var addressFromRequest = WsTrustUtil.getAddressFromRequest(requestSecurityToken);
+
+		return WsTrustValidationResult.builder()
+									  .requestType(REQUEST_TYPE)
+									  .validatedAssertion(headerAssertion)
+									  .recomputeAttributes(true)
+									  .recipientIssuerId(addressFromRequest)
+									  .useAssertionLifetime(false)
+									  .createResponseCollection(true)
+									  .build();
 	}
 }

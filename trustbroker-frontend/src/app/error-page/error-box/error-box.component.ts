@@ -25,7 +25,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 @Component({
 	selector: 'app-error-box',
 	templateUrl: './error-box.component.html',
-	styleUrls: ['./error-box.component.scss']
+	styleUrls: ['./error-box.component.scss'],
+	standalone: false
 })
 export class ErrorBoxComponent implements OnInit {
 	@Input()

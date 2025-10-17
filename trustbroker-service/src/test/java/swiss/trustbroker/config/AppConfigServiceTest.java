@@ -50,7 +50,7 @@ import swiss.trustbroker.homerealmdiscovery.util.RelyingPartySetupUtil;
 import swiss.trustbroker.metrics.service.MetricsService;
 import swiss.trustbroker.oidc.ClientConfigInMemoryRepository;
 import swiss.trustbroker.oidc.OidcEncryptionKeystoreService;
-import swiss.trustbroker.oidc.client.service.OidcMetadataCacheService;
+import swiss.trustbroker.oidc.cache.service.OidcMetadataCacheService;
 import swiss.trustbroker.script.service.ScriptService;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
 

@@ -35,6 +35,7 @@ import swiss.trustbroker.common.util.HttpUtil;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.federation.xmlconfig.Certificates;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
+import swiss.trustbroker.oidc.OidcHttpClientProvider;
 import swiss.trustbroker.oidc.client.dto.OpenIdProviderConfiguration;
 
 /**

@@ -141,7 +141,6 @@ public class AssertionValidator {
 
 	/**
 	 * the check 'require signed AuthnRequest' is based on signatureContext (not SecurityPolicies)
-	 * @return true if a signature is present and has been successfully validated
 	 */
 	public static MessageValidationResult validateAuthnRequest(AuthnRequest authnRequest, List<Credential> credentials,
 											AcWhitelist acWhiteList, TrustBrokerProperties properties, SecurityPolicies securityPolicies,
@@ -193,7 +192,8 @@ public class AssertionValidator {
 	}
 
 	/**
-	 * @return true if for the response and all assertions, a signature is present and has been successfully validated
+	 * @return signatureValidated true if for the response and all assertions, a signature is present and has been successfully
+	 * validated
  	 */
 	public static MessageValidationResult validateResponse(ResponseData<Response> responseData, List<Assertion> assertions,
 			List<Credential> credentials, TrustBrokerProperties properties, ClaimsParty claimsParty,
@@ -236,7 +236,7 @@ public class AssertionValidator {
 		return validationResult;
 	}
 
-	// returns true if for all assertions a signature is present and has been successfully validated
+	// returns signatureValidated true if for all assertions a signature is present and has been successfully validated
 	static MessageValidationResult validateResponseAssertions(List<Assertion> assertions, Response response, List<Credential> credentials,
 			TrustBrokerProperties properties, ClaimsParty claimsParty, Qoa qoa, ExpectedAssertionValues expectedValues) {
 
@@ -250,7 +250,7 @@ public class AssertionValidator {
 		return validateAssertions(assertions, credentials, properties, claimsParty, qoa, response, expectedValues);
 	}
 
-	// returns true if for all assertions a signature is present and has been successfully validated
+	// returns signatureValidated true if for all assertions a signature is present and has been successfully validated
 	static MessageValidationResult validateAssertions(List<Assertion> assertions, List<Credential> credentials,
 			TrustBrokerProperties properties, ClaimsParty claimsParty, Qoa qoa, XMLObject xmlObject,
 			ExpectedAssertionValues expectedValues) {
@@ -279,7 +279,7 @@ public class AssertionValidator {
 	 * @param now current time if null
 	 * @param expectedValues default ExpectedAssertionValues if null
 	 * @param signatureValidationCredentials signature checked if present
-	 * @return true if a signature is present and has been successfully validated - only performed if credentials are provided
+	 * @return validation result
 	 */
 	public static MessageValidationResult validateRstAssertion(Assertion assertion, TrustBrokerProperties properties,
 			ClaimsParty claimsParty, SecurityPolicies securityPolicies, Instant now, ExpectedAssertionValues expectedValues,
@@ -297,6 +297,10 @@ public class AssertionValidator {
 		log.debug("Start Assertion validation ID={} now={} excluding signature check (wss4j case)", assertion.getID(), now);
 
 		// message checks (stateless)
+		var validationResult = MessageValidationResult.unvalidated();
+		if (signatureValidationCredentials.isPresent()) {
+			validationResult = validateAssertionSignature(assertion, signatureValidationCredentials.get(), properties);
+		}
 		validateAssertionId(assertion);
 		validateAssertionIssueInstant(assertion, now, expectedValues.renew, properties, securityPolicies);
 		validateAssertionIssuer(assertion, expectedValues.expectedIssuer, properties);
@@ -307,19 +311,12 @@ public class AssertionValidator {
 		validateAssertionAuthnStatements(assertion, now, claimsParty, new QoaConfig(null, null), properties,
 				expectedValues.expectedCpContextClasses, null, expectedValues.renew);
 		validateAssertionAttributeStatements(assertion);
-		var validationResult = MessageValidationResult.unvalidated();
-		if (signatureValidationCredentials.isPresent()) {
-			validationResult = validateAssertionSignature(assertion, signatureValidationCredentials.get(), properties);
-		}
 
 		log.debug("RST assertion validation was successful for ID={} validationResult={}",
 				assertion.getID(), validationResult);
 		return validationResult;
 	}
 
-	/**
-	 * @return true if a signature is present and has been successfully validated
-	 */
 	public static MessageValidationResult validateAssertion(Assertion assertion, Instant now, List<Credential> credentials,
 			TrustBrokerProperties properties, ClaimsParty claimsParty, Qoa qoa, ExpectedAssertionValues expectedValues) {
 		var securityPolicies = claimsParty != null ? claimsParty.getSecurityPolicies(): null;
@@ -435,9 +432,6 @@ public class AssertionValidator {
 		}
 	}
 
-	/**
-	 * @return true if a signature is present and has been successfully validated
-	 */
 	public static MessageValidationResult validateRequestSignature(RequestAbstractType request, List<Credential> credentials,
 			TrustBrokerProperties properties, SignatureContext signatureContext) {
 		var signed = request.isSigned();
@@ -570,7 +564,6 @@ public class AssertionValidator {
 		return signature != null && signatureAlgorithm != null;
 	}
 
-	// returns true if a signature is present and has been successfully validated
 	static MessageValidationResult validateSignature(Signature signature, List<Credential> credentials, XMLObject xmlObject,
 			SignatureContext signatureContext) {
 		try {
@@ -1124,9 +1117,6 @@ public class AssertionValidator {
 		}
 	}
 
-	/**
-	 * @return true if a signature is present and has been successfully validated
-	 */
 	public static MessageValidationResult validateArtifactResolve(ArtifactResolve artifactResolve, TrustBrokerProperties properties,
 			List<Credential> trustCredentials) {
 		if (artifactResolve == null) {

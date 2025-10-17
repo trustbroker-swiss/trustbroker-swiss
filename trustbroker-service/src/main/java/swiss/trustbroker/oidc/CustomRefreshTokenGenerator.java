@@ -36,14 +36,15 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.keygen.Base64StringKeyGenerator;
 import org.springframework.security.crypto.keygen.StringKeyGenerator;
+import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.OAuth2RefreshToken;
 import org.springframework.security.oauth2.core.oidc.endpoint.OidcParameterNames;
-import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
-import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2ClientAuthenticationToken;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2RefreshTokenGenerator;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator;
@@ -58,12 +59,14 @@ import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 @Slf4j
 public final class CustomRefreshTokenGenerator implements OAuth2TokenGenerator<OAuth2RefreshToken> {
 
-	private final StringKeyGenerator refreshTokenGenerator = new Base64StringKeyGenerator(
+	private final StringKeyGenerator stringKeyGenerator = new Base64StringKeyGenerator(
 			Base64.getUrlEncoder().withoutPadding(), 96);
 
 	private final JwtEncoder jwtEncoder;
 
 	private final JWKSource<SecurityContext> jwkSource;
+
+	private final OAuth2RefreshTokenGenerator refreshTokenGenerator;
 
 	private final TrustBrokerProperties properties;
 
@@ -72,7 +75,6 @@ public final class CustomRefreshTokenGenerator implements OAuth2TokenGenerator<O
 	@Override
 	public OAuth2RefreshToken generate(OAuth2TokenContext context) {
 		var opaqueRefreshTokenEnabled = properties.getOidc().isOpaqueRefreshTokenEnabled();
-		var refreshTokenForPKCEEnabled = properties.getOidc().isRefreshTokenForPKCEEnabled();
 
 		if (context == null || !OAuth2TokenType.REFRESH_TOKEN.equals(context.getTokenType())) {
 			return null;
@@ -87,13 +89,13 @@ public final class CustomRefreshTokenGenerator implements OAuth2TokenGenerator<O
 		}
 
 		if (opaqueRefreshTokenEnabled) {
-			// Opaque Refresh token is not recommended for Public clients
-			if (!refreshTokenForPKCEEnabled) {
-				return new OAuth2RefreshTokenGenerator().generate(context);
+			// Refresh token is not recommended for Public clients
+			if (isPublicClient(context)) {
+				Instant issuedAt = Instant.now();
+				Instant expiresAt = issuedAt.plus(context.getRegisteredClient().getTokenSettings().getRefreshTokenTimeToLive());
+				return new OAuth2RefreshToken(this.stringKeyGenerator.generateKey(), issuedAt, expiresAt);
 			}
-			Instant issuedAt = Instant.now();
-			Instant expiresAt = issuedAt.plus(context.getRegisteredClient().getTokenSettings().getRefreshTokenTimeToLive());
-			return new OAuth2RefreshToken(this.refreshTokenGenerator.generateKey(), issuedAt, expiresAt);
+			return refreshTokenGenerator.generate(context);
 		}
 
 		// track via session that was established during the federation
@@ -107,7 +109,7 @@ public final class CustomRefreshTokenGenerator implements OAuth2TokenGenerator<O
 		var expiresAt = computeRefreshTokenExpiration(context, issuedAt);
 
 		// build
-		var jwsHeader = buildHeader();
+		var jwsHeader = JwkUtil.buildJwsHeader(jwkSource);
 		var claims = buildClaims(context, issuedAt, expiresAt, sessionId, nonce);
 		var jwt = this.jwtEncoder.encode(JwtEncoderParameters.from(jwsHeader, claims));
 		var refreshToken = new OAuth2RefreshToken(jwt.getTokenValue(), issuedAt, expiresAt);
@@ -115,14 +117,12 @@ public final class CustomRefreshTokenGenerator implements OAuth2TokenGenerator<O
 		return refreshToken;
 	}
 
-	private JwsHeader buildHeader() {
-		var jwsAlgorithm = SignatureAlgorithm.RS256;
-		var jwsHeaderBuilder = JwsHeader.with(jwsAlgorithm);
-		var kid = JwkUtil.getKeyIdFromJwkSource(jwkSource);
-		if (kid != null) {
-			jwsHeaderBuilder.keyId(kid);
+	private static boolean isPublicClient(OAuth2TokenContext context) {
+		if (AuthorizationGrantType.AUTHORIZATION_CODE.equals(context.getAuthorizationGrantType()) &&
+				(context.getAuthorizationGrant().getPrincipal() instanceof OAuth2ClientAuthenticationToken clientPrincipal)) {
+			return clientPrincipal.getClientAuthenticationMethod().equals(ClientAuthenticationMethod.NONE);
 		}
-		return jwsHeaderBuilder.build();
+		return false;
 	}
 
 	private static JwtClaimsSet buildClaims(OAuth2TokenContext context,
@@ -130,8 +130,7 @@ public final class CustomRefreshTokenGenerator implements OAuth2TokenGenerator<O
 		var claimsBuilder = JwtClaimsSet.builder();
 		String issuer = null;
 		if (context.getAuthorizationServerContext() != null) {
-			issuer = context.getAuthorizationServerContext()
-							.getIssuer();
+			issuer = context.getAuthorizationServerContext().getIssuer();
 		}
 		if (StringUtils.hasLength(issuer)) {
 			claimsBuilder.issuer(issuer);

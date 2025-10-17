@@ -71,6 +71,7 @@ import org.opensaml.xmlsec.encryption.support.EncryptionConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -581,25 +582,41 @@ class OpenSamlUtilTest {
 	@Test
 	void isSamlArtifactRequest() {
 		var request = new MockHttpServletRequest();
+		request.setMethod(HttpMethod.POST.name());
 		request.setParameter(SamlIoUtil.SAML_ARTIFACT_NAME, "myArtifactId");
 		assertThat(OpenSamlUtil.isSamlArtifactRequest(request), is (true));
 		assertThat(OpenSamlUtil.isSamlRedirectRequest(request), is (false));
+		assertThat(OpenSamlUtil.isSamlPostRequest(request), is (false));
+	}
+
+	@Test
+	void isSamlPostRequest() {
+		var request = new MockHttpServletRequest();
+		request.setMethod(HttpMethod.POST.name());
+		request.setParameter(SamlIoUtil.SAML_REQUEST_NAME, "myRequest");
+		assertThat(OpenSamlUtil.isSamlPostRequest(request), is (true));
+		assertThat(OpenSamlUtil.isSamlRedirectRequest(request), is (false));
+		assertThat(OpenSamlUtil.isSamlArtifactRequest(request), is (false));
 	}
 
 	@Test
 	void isSamlRedirectRequest() {
 		var request = new MockHttpServletRequest();
+		request.setMethod(HttpMethod.GET.name());
 		request.setParameter(SamlIoUtil.SAML_REQUEST_NAME, "myRequest");
 		assertThat(OpenSamlUtil.isSamlRedirectRequest(request), is (true));
 		assertThat(OpenSamlUtil.isSamlArtifactRequest(request), is (false));
+		assertThat(OpenSamlUtil.isSamlPostRequest(request), is (false));
 	}
 
 	@Test
 	void isSamlRedirectResponse() {
 		var request = new MockHttpServletRequest();
+		request.setMethod(HttpMethod.GET.name());
 		request.setParameter(SamlIoUtil.SAML_RESPONSE_NAME, "myResponse");
 		assertThat(OpenSamlUtil.isSamlRedirectRequest(request), is (true));
 		assertThat(OpenSamlUtil.isSamlArtifactRequest(request), is (false));
+		assertThat(OpenSamlUtil.isSamlPostRequest(request), is (false));
 	}
 
 	@Test

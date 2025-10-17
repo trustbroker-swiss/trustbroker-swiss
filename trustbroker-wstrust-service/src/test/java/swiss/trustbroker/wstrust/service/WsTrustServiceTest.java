@@ -18,6 +18,7 @@ package swiss.trustbroker.wstrust.service;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
@@ -70,6 +71,7 @@ import swiss.trustbroker.common.saml.util.SoapUtil;
 import swiss.trustbroker.common.util.WSSConstants;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.SecurityChecks;
+import swiss.trustbroker.config.dto.WsTrustConfig;
 import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
@@ -78,9 +80,11 @@ import swiss.trustbroker.mapping.service.ClaimsMapperService;
 import swiss.trustbroker.saml.dto.CpResponse;
 import swiss.trustbroker.saml.service.RelyingPartyService;
 import swiss.trustbroker.script.service.ScriptService;
-import swiss.trustbroker.sessioncache.service.StateCacheService;
+import swiss.trustbroker.sso.service.SsoService;
 import swiss.trustbroker.test.saml.util.SamlTestBase;
+import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
 import swiss.trustbroker.wstrust.dto.WsTrustValidationResult;
+import swiss.trustbroker.wstrust.util.WsTrustTestUtil;
 import swiss.trustbroker.wstrust.validator.WsTrustIssueValidator;
 import swiss.trustbroker.wstrust.validator.WsTrustRenewValidator;
 
@@ -149,7 +153,7 @@ class WsTrustServiceTest {
 	private ClaimsMapperService claimsMapperService;
 
 	@MockitoBean
-	private StateCacheService stateCacheService;
+	private SsoService ssoService;
 
 	@MockitoBean
 	private Clock clock;
@@ -171,70 +175,63 @@ class WsTrustServiceTest {
 
 	@Test
 	void processSecurityTokenNullTest() {
-		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(null, null, null);
-		});
+		var requestHeader = new SoapMessageHeader();
+		assertThrows(RequestDeniedException.class, () -> wsTrustService.processSecurityToken(null, requestHeader));
 	}
 
 	@Test
 	void processSecurityTokenKeyTypeNullTest() {
+		var requestHeader = new SoapMessageHeader();
 		var requestSecTokenType = givenRequestSecToken(null, null, null);
-		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, null, null);
-		});
+		assertThrows(RequestDeniedException.class, () -> wsTrustService.processSecurityToken(requestSecTokenType, requestHeader));
 	}
 
 	@Test
 	void processSecurityTokenKeyTypeInvalidTest() {
+		var requestHeader = new SoapMessageHeader();
 		var requestSecTokenType = givenRequestSecToken(givenKeyType("InvalidKeyType"),
 				givenTokenType("invalidType"), null);
-		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, null, null);
-		});
+		assertThrows(RequestDeniedException.class, () -> wsTrustService.processSecurityToken(requestSecTokenType, requestHeader));
 	}
 
 	@Test
 	void processSecurityTokenRequestTypeNullTest() {
+		var requestHeader = new SoapMessageHeader();
 		var requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER),
 				givenTokenType(WSSConstants.WSS_SAML2_TOKEN_TYPE), null);
-		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, null, null);
-		});
+		assertThrows(RequestDeniedException.class, () -> wsTrustService.processSecurityToken(requestSecTokenType, requestHeader));
 	}
 
 	@Test
 	void processSecurityTokenRequestTypeInvalidTest() {
+		var requestHeader = new SoapMessageHeader();
 		var requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER),
 				givenTokenType(WSSConstants.WSS_SAML2_TOKEN_TYPE), givenInvalidRequestType("InvalidRequestType"));
-		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, null, null);
-		});
+		assertThrows(RequestDeniedException.class, () -> wsTrustService.processSecurityToken(requestSecTokenType, requestHeader));
 	}
 
 	@Test
 	void processSecurityTokenTokenTypeNullTest() {
+		var requestHeader = new SoapMessageHeader();
 		var requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER), null,
 				givenInvalidRequestType(RequestType.ISSUE));
 		when(trustBrokerProperties.getSecurity())
 				.thenReturn(SecurityChecks.builder()
 										  .validateSubjectConfirmationInResponseTo(true)
 										  .build());
-		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, null, null);
-		});
+		assertThrows(RequestDeniedException.class, () -> wsTrustService.processSecurityToken(requestSecTokenType, requestHeader));
 	}
 
 	@Test
 	void processSecurityTokenTokenTypeInvalidTest() {
+		var requestHeader = new SoapMessageHeader();
 		var requestSecTokenType = givenRequestSecToken(givenKeyType(KeyType.BEARER),
 				givenTokenType("invalidType"), givenInvalidRequestType(RequestType.ISSUE));
 		when(trustBrokerProperties.getSecurity())
 				.thenReturn(SecurityChecks.builder()
 										  .validateSubjectConfirmationInResponseTo(true)
 										  .build());
-		assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, null, null);
-		});
+		assertThrows(RequestDeniedException.class, () -> wsTrustService.processSecurityToken(requestSecTokenType, requestHeader));
 	}
 
 	@Test
@@ -245,9 +242,15 @@ class WsTrustServiceTest {
 				.thenReturn(SecurityChecks.builder()
 										  .validateSubjectConfirmationInResponseTo(false)
 										  .build());
+		when(trustBrokerProperties.getWstrust())
+				.thenReturn(WsTrustConfig.builder().issueEnabled(true).build());
+		when(trustBrokerProperties.getIssuer())
+				.thenReturn(WsTrustTestUtil.TEST_TO);
 		var assertion = OpenSamlUtil.buildAssertionObject(null);
+		var requestHeader = WsTrustTestUtil.givenRequestHeader();
+		requestHeader.setAssertion(assertion);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
-			wsTrustService.processSecurityToken(requestSecTokenType, assertion, null);
+			wsTrustService.processSecurityToken(requestSecTokenType, requestHeader);
 		});
 		assertThat(ex.getInternalMessage(), containsString("Assertion.ID missing"));
 	}
@@ -280,7 +283,8 @@ class WsTrustServiceTest {
 		int initialUserDetailsSize = cpResponse.getUserDetails().size();
 		var cpAttributes = givenCpAttributesWithDuplicates();
 		var requestHeaderAssertion = givenRequestAssertion();
-		String addressFromRequest = "addressFromRequest";
+		var addressFromRequest = "addressFromRequest";
+		var sessionId = "sso-1234";
 		when(relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(addressFromRequest, null))
 				.thenReturn(givenRp());
 		when(trustBrokerProperties.getSecurity())
@@ -288,13 +292,22 @@ class WsTrustServiceTest {
 						SecurityChecks.builder()
 									  .doSignAssertions(true)
 									  .build());
-		var validationResult = new WsTrustValidationResult(requestHeaderAssertion, true, null);
-		var assertion = wsTrustService.createAssertion(cpAttributes, cpResponse, "anyId", validationResult, addressFromRequest);
+		var validationResult = WsTrustValidationResult.builder()
+													  .requestType(RequestType.ISSUE)
+													  .validatedAssertion(requestHeaderAssertion)
+													  .recomputeAttributes(true)
+													  .recipientIssuerId(addressFromRequest)
+													  .sessionIndex(sessionId) // test , otherwise set for RENEW only
+													  .build();
+		var assertion = wsTrustService.createAssertion(cpAttributes, cpResponse, "anyId", validationResult);
 		var attributeStatements = assertion.getAttributeStatements();
 		assertTrue(attributeStatements.get(0).getAttributes().size() < initialUserDetailsSize + cpAttributes.size());
 		assertEquals(requestHeaderAssertion.getSubject().getNameID().getValue(), assertion.getSubject().getNameID().getValue());
 		assertEquals(1, attributeOccurrenceInList(attributeStatements.get(0).getAttributes(),
 				CoreAttributeName.CLAIMS_NAME.getName(), "claimName", "CP1"));
+		var authnStatements = assertion.getAuthnStatements();
+		assertThat(authnStatements, is(not(empty())));
+		assertThat(authnStatements.get(0).getSessionIndex(), is(sessionId));
 	}
 
 	private static RelyingParty givenRp() {
@@ -310,10 +323,13 @@ class WsTrustServiceTest {
 
 	private Assertion givenRequestAssertion() {
 		var assertion = OpenSamlUtil.buildAssertionObject();
-		assertion.setIssueInstant(Instant.now());
+		var now = Instant.now();
+		assertion.setIssueInstant(now);
 		assertion.setID(UUID.randomUUID().toString());
 		assertion.setIssuer(OpenSamlUtil.buildSamlObject(Issuer.class));
 		assertion.getIssuer().setValue("TEST_AUDIENCE");
+		var authnStatements = SamlFactory.createAuthnStatements(List.of("qoa20"), null, now, now.plusSeconds(120));
+		assertion.getAuthnStatements().addAll(authnStatements);
 		var nameId = SamlFactory.createNameId("name1@localhost", NameIDType.EMAIL, null);
 		assertion.setSubject(SamlFactory.createSubject(nameId, "RELAY_STATE", "rpIssuerId", 100, null));
 		return assertion;

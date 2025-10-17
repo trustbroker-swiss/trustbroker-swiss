@@ -26,6 +26,6 @@ import swiss.trustbroker.sessioncache.dto.ArtifactCacheEntity;
 public interface ArtifactCacheRepository extends CrudRepository<ArtifactCacheEntity, String> {
 
 	@Transactional
-	int deleteAllInBatchByExpirationTimestampBefore(Timestamp currentTimeStamp);
+	Integer deleteAllInBatchByExpirationTimestampBefore(Timestamp currentTimeStamp);
 
 }

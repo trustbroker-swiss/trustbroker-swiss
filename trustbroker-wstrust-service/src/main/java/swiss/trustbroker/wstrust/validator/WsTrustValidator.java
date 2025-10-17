@@ -15,10 +15,10 @@
 
 package swiss.trustbroker.wstrust.validator;
 
-import org.opensaml.saml.saml2.core.Assertion;
-import org.opensaml.soap.wssecurity.BinarySecurityToken;
 import org.opensaml.soap.wstrust.RequestSecurityToken;
 import org.opensaml.soap.wstrust.RequestType;
+import swiss.trustbroker.common.exception.RequestDeniedException;
+import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
 import swiss.trustbroker.wstrust.dto.WsTrustValidationResult;
 
 /**
@@ -38,11 +38,10 @@ public interface WsTrustValidator {
 	 * Perform validation of the RST request.
 	 *
 	 * @param requestSecurityToken request
-	 * @param headerAssertion      assertion from the header or null
-	 * @param securityToken        security token from the header or null
+	 * @param requestHeader        stored data from header (not null)
 	 * @return Processed assertion (i.e. headerAssertion or one from the body) plus additional parameters.
+	 * @throws RequestDeniedException if validation fails
 	 */
-	WsTrustValidationResult validate(RequestSecurityToken requestSecurityToken, Assertion headerAssertion,
-					BinarySecurityToken securityToken);
+	WsTrustValidationResult validate(RequestSecurityToken requestSecurityToken, SoapMessageHeader requestHeader);
 
 }

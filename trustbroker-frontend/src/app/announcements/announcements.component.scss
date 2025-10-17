@@ -13,30 +13,36 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-@import "/src/styles/variables.scss";
-@import "/src/styles/spacing.scss";
-@import "/src/styles/material/_mixins";
+@use "src/styles/variables";
+@use "src/styles/spacing";
+@use "src/styles/material/_mixins";
 
 .announcementsContainer {
-  margin: 0 auto;
+	margin: 0 auto;
+	padding-top: 1rem;
+	display: flex;
+	flex-direction: column;
 
-  padding-top: 1rem;
+	@media(min-width: variables.$small-page-size) {
+		#continueButton {
+			width: unset;
+		}
+	}
 
-  @media(min-width: $small-page-size) {
-    width: 80%;
-  }
-  @media(min-width: $medium-page-size) {
-    width: 80%;
-  }
-  @media(min-width: $large-page-size) {
-    width: 60%;
-  }
+	@media(min-width: variables.$medium-page-size) {
+		width: 80%;
+	}
+
+	@media(min-width: variables.$large-page-size) {
+		width: 60%;
+	}
 }
 
 #continueButton {
 	margin-top: 1rem;
 	margin-bottom: 1rem;
 	float: right;
+	width: 100%;
 }
 
 #announcementsBody {

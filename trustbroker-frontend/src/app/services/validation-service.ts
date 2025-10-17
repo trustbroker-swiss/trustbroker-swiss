@@ -12,9 +12,20 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-import { ResolveFn } from '@angular/router';
-import { ApiService } from './services/api.service';
-import { Configuration } from './model/Configuration';
-import { inject } from '@angular/core';
 
-export const configResolver: ResolveFn<Configuration> = () => inject(ApiService).getConfiguration();
+import { Params } from '@angular/router';
+
+export class ValidationService {
+	public static TEXT_KEY = '^[0-9A-Za-z]*$';
+
+	public static ID = '^[0-9A-Za-z_.-]*$';
+
+	public getValidParameter(params: Params, key: string, pattern: string, defaultValue: string): string {
+		const value = params[key];
+		if (!!value && !value.match(pattern)) {
+			console.error('Invalid value for parameter:', key);
+			return defaultValue;
+		}
+		return value;
+	}
+}

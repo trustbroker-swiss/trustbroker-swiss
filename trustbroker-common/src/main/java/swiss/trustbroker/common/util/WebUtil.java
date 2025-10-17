@@ -22,8 +22,10 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 
 import com.google.common.net.InternetDomainName;
@@ -53,6 +55,8 @@ public class WebUtil {
 	public static final String HTTP_HEADER_X_REAL_IP = "X-Real-Ip"; // direct client
 
 	public static final String HTTP_REMOTE_USER = "X-Remote-User";
+
+	public static final String MEDIA_TYPE_SOAP_12 = "application/soap+xml";
 
 
 	// Same site values
@@ -194,8 +198,12 @@ public class WebUtil {
 		if (origin != null) {
 			return origin;
 		}
-		var referer = request.getHeader(HttpHeaders.REFERER);
+		var referer = getReferer(request);
 		return getValidOrigin(referer);
+	}
+
+	public static String getReferer(HttpServletRequest request) {
+		return request.getHeader(HttpHeaders.REFERER);
 	}
 
 	public static void addCookies(HttpServletResponse response, List<Cookie> cookies) {
@@ -282,10 +290,10 @@ public class WebUtil {
 	}
 
 	/**
-	 * @boolean isSameSite e.g. result of isSameSite(URI, URI)
+	 * @param isSameSite e.g. result of isSameSite(URI, URI)
 	 * @return sameSite flag - has to be NONE if RPs that are cross site to XTB, STRICT if they are same site
 	 * (LAX does not work in the former case for SAML posts, and is not as restrictive as possible in the latter case)
- 	 */
+	 */
 	public static String getSameSite(boolean isSameSite) {
 		return isSameSite ? COOKIE_SAME_SITE_STRICT : COOKIE_SAME_SITE_NONE;
 	}
@@ -320,11 +328,12 @@ public class WebUtil {
 	}
 
 	/**
-	 * 	Site extraction based on InternetDomainName, returns the full host name if it cannot be extracted
-	 * 	(e.g. for localhost, localdomain)
+	 * Site extraction based on InternetDomainName, returns the full host name if it cannot be extracted
+	 * (e.g. for localhost, localdomain)
+	 *
 	 * @return site of URI with the restriction above or null if it cannot be extracted
 	 * @see com.google.common.net.InternetDomainName
- 	 */
+	 */
 	public static String getSite(URI uri) {
 		if (uri == null || uri.getHost() == null) {
 			return null;
@@ -394,6 +403,17 @@ public class WebUtil {
 		return resultUrl;
 	}
 
+	// Referer without path is scheme://host[:port]/
+	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referer
+	public static String getValidRefererWithoutPath(String referer) {
+		var uri = getValidatedUri(referer);
+		var origin = getValidOrigin(uri);
+		if (origin == null) {
+			return null;
+		}
+		return origin + '/';
+	}
+
 	// Origin is scheme://host[:port] or "null"
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin
 	public static String getValidOrigin(String origin) {
@@ -412,20 +432,24 @@ public class WebUtil {
 		if (uri == null || uri.getScheme() == null || uri.getHost() == null) {
 			return null;
 		}
-		var originBuilder = new StringBuilder().append(uri.getScheme()).append("://").append(uri.getHost());
+		var originBuilder = new StringBuilder().append(uri.getScheme())
+											   .append("://")
+											   .append(uri.getHost());
 		if (uri.getPort() != -1) {
-			originBuilder.append(':').append(uri.getPort());
+			originBuilder.append(':')
+						 .append(uri.getPort());
 		}
 		return originBuilder.toString();
 	}
 
 	/**
-	 *	"etag" must contain leading and trailing quotes
+	 * "etag" must contain leading and trailing quotes
+	 *
 	 * @see <a hef="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/ETag">ETag</a>
 	 * @see <a hef="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control">Cache-Control</a>
 	 * @see <a hef="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Expires">Expires</a>
 	 * @see <a hef="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Pragma">Pragma</a>
- 	 */
+	 */
 	public static void addCacheHeaders(HttpServletResponse response, int maxAgeSecs, String etag, Instant lastModified,
 			Instant now) {
 		if (maxAgeSecs <= 0) {
@@ -449,6 +473,7 @@ public class WebUtil {
 	/**
 	 * Returns true if the resource has not been modified based on the browser headers If-None-Match/If-Modified-Since.
 	 * "etag" must contain leading and trailing quotes
+	 *
 	 * @see <a hef="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/If-None-Match">If-None-Match</a>
 	 * @see <a hef="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/If-Modified-Since">If-Modified-Since</a>
 	 */
@@ -462,4 +487,42 @@ public class WebUtil {
 		}
 		return false;
 	}
+
+	/**
+	 * Validate origin/referer against allow list.
+	 * @param allowedUrls allowed URLs (AC whitelist etc.)
+	 * @param originOrReferer original URL from request
+	 * @param validatedOriginOrReferer optional validated variant from <code>getValidOrigin</code> or <code>getValidatedUri</code>
+	 * @return true if the URL is in the allowed list, ignoring the path (which origin would not have, and for referer we do
+	 * not care about).
+	 */
+	public static boolean isAllowedOriginOrReferer(Collection<String> allowedUrls, String originOrReferer,
+			String validatedOriginOrReferer) {
+		var allowedUrlSet = CollectionUtil.collectionAsSet(allowedUrls);
+		return UrlAcceptor.isTrustedOrigin(validatedOriginOrReferer, allowedUrlSet) ||
+				UrlAcceptor.isTrustedOrigin(originOrReferer, allowedUrlSet);
+	}
+
+	private static boolean isOriginOrRefererInSets(Collection<Collection<String>> allowedUrlSets,
+			String originOrReferer, String validatedOriginOrReferer) {
+		for (var allowedUrls : allowedUrlSets) {
+			if (isAllowedOriginOrReferer(allowedUrls, originOrReferer, validatedOriginOrReferer)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// convenience method with multiple sets of URLs
+	public static boolean isAllowedOrigin(Collection<Collection<String>> allowedUrlSets, String origin) {
+		var validOrigin = getValidOrigin(origin);
+		return isOriginOrRefererInSets(allowedUrlSets, origin, validOrigin);
+	}
+
+	// convenience method with multiple sets of URLs
+	public static boolean isAllowedReferer(Collection<Collection<String>> allowedUrlSets, String referer) {
+		var validReferer = Objects.toString(getValidatedUri(referer), null);
+		return isOriginOrRefererInSets(allowedUrlSets, referer, validReferer);
+	}
+
 }

@@ -19,6 +19,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Properties;
+import java.util.stream.Collectors;
 import javax.xml.XMLConstants;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerConfigurationException;
@@ -82,10 +83,19 @@ public class WebServiceConfiguration extends WsConfigurerAdapter {
 		var servlet = new MessageDispatcherServlet();
 		servlet.setApplicationContext(applicationContext);
 		servlet.setTransformWsdlLocations(true);
-		var wsTrustApiPath = ApiSupport.WSTRUST_API;
-		var wsTrustCompatPath = wsTrustConfig.getWsBasePath() + "/13/issuedtokenmixedsymmetricbasic256";
-		log.info("Serving WS-Trust token requests on: {}", wsTrustApiPath);
-		return new ServletRegistrationBean<>(servlet, wsTrustApiPath, wsTrustCompatPath);
+		var wsTrustConfigPath = wsTrustConfig.getWsBasePath();
+		var paths = List.of(
+				// configured value
+				wsTrustConfigPath,
+				// XTB default
+				ApiSupport.WSTRUST_API,
+				// ADFS compatibility
+				ApiSupport.ADFS_WS_TRUST_ENTRY_URL,
+				ApiSupport.ADFS_WS_TRUST_COMPAT_URL,
+				wsTrustConfigPath + ApiSupport.ADFS_WS_TRUST_COMPAT_PATH
+		).stream().collect(Collectors.toSet()); // Set.of does not allow duplicates
+		log.info("Serving WS-Trust token requests on: {}", paths);
+		return new ServletRegistrationBean<>(servlet, paths.toArray(String[]::new));
 	}
 
 	@Bean

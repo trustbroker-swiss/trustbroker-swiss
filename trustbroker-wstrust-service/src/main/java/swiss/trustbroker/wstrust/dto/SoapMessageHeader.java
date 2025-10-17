@@ -27,6 +27,9 @@ import org.opensaml.soap.wssecurity.Timestamp;
 @Data
 public class SoapMessageHeader {
 
+	// action from SoapMessage (HTTP header for SOAP 1.1)
+	private String soapAction;
+
 	private Action action;
 
 	private MessageID messageId;

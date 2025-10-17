@@ -13,9 +13,8 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { HttpClient, HttpClientModule, HttpResponse } from '@angular/common/http';
+import { HttpClient, HttpResponse, provideHttpClient } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { RouterTestingModule } from '@angular/router/testing';
 import { TranslateLoader, TranslateModule } from '@ngx-translate/core';
 import { of } from 'rxjs';
 import { anything, mock, when } from 'ts-mockito';
@@ -25,7 +24,9 @@ import { HelpPanelComponent } from './help-panel.component';
 import { ApiService } from '../services/api.service';
 import { SafeMarkupPipe } from '../pipes/safe-markup.pipe';
 import { MatExpansionModule } from '@angular/material/expansion';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
 
 describe('HelpPanelComponent', () => {
 	let component: HelpPanelComponent;
@@ -36,10 +37,7 @@ describe('HelpPanelComponent', () => {
 		await TestBed.configureTestingModule({
 			declarations: [HelpPanelComponent, SafeMarkupPipe],
 			imports: [
-				HttpClientModule,
 				MatExpansionModule,
-				NoopAnimationsModule,
-				RouterTestingModule,
 				TranslateModule.forRoot({
 					loader: {
 						provide: TranslateLoader,
@@ -47,7 +45,8 @@ describe('HelpPanelComponent', () => {
 						deps: [HttpClient]
 					}
 				})
-			]
+			],
+			providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]), provideNoopAnimations()]
 		}).compileComponents();
 	});
 

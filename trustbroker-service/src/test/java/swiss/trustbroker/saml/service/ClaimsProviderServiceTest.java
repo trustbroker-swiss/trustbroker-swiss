@@ -231,7 +231,7 @@ class ClaimsProviderServiceTest {
 		var relyingParty = RelyingParty.builder().id(rpIssuer).rpSigner(credential).build();
 		doReturn(relyingParty).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(rpIssuer, referrer);
 		doReturn(new QoaConfig(null, rpIssuer))
-				.when(relyingPartySetupService).getQoaConfiguration(spstateData, relyingParty, trustBrokerProperties);
+				.when(qoaMappingService).getQoaConfiguration(spstateData, relyingParty);
 		doNothing().when(samlOutputService).sendRequest(requestCaptor.capture(),
 				eq(credential), eq(relayState), eq(ssoUrl), eq(response), eq(encodingParams), eq(DestinationType.CP));
 		var auditCaptor = ArgumentCaptor.forClass(AuditDto.class);

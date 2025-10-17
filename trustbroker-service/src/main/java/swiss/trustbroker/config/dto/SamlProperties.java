@@ -62,6 +62,14 @@ public class SamlProperties {
 
 	/**
 	 * List of exposed SAML protocols.
+	 * <br/>
+	 * Default:
+	 * <ul>
+	 *     <li>urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST</li>
+	 *     <li>urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect</li>
+	 *     <li>urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact</li>
+	 *     <li>urn:oasis:names:tc:SAML:2.0:bindings:SOAP (since 1.12.0 - only supported for LogoutRequest)</li>
+	 * </ul>
 	 *
 	 * @since 1.9.0
 	 */
@@ -69,7 +77,8 @@ public class SamlProperties {
 	private List<String> bindings = List.of(
 			SAMLConstants.SAML2_POST_BINDING_URI,
 			SAMLConstants.SAML2_REDIRECT_BINDING_URI,
-			SAMLConstants.SAML2_ARTIFACT_BINDING_URI);
+			SAMLConstants.SAML2_ARTIFACT_BINDING_URI,
+			SAMLConstants.SAML2_SOAP11_BINDING_URI);
 
 	/**
 	 * SAML SP-side metadata can be hidden setting this feature flag to false.

@@ -15,7 +15,7 @@
 
 import { HttpClient, HttpHeaders, HttpResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { Observable, shareReplay } from 'rxjs';
+import { EMPTY, Observable, catchError, switchMap, tap, throwError } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import { Configuration } from '../model/Configuration';
@@ -29,7 +29,7 @@ import { EncodeUtil } from '../shared/encode-util';
 })
 export class ApiService {
 	private readonly baseUrl = environment.apiUrl;
-	private readonly configuration$ = this.fetchConfiguration().pipe(shareReplay({ refCount: true }));
+	private configuration: Configuration | undefined;
 
 	constructor(private readonly http: HttpClient) {}
 
@@ -86,15 +86,25 @@ export class ApiService {
 		});
 	}
 
+	public initializeConfiguration(): Observable<never> {
+		return this.http.get<Configuration>(`${this.baseUrl}config/frontend`).pipe(
+			catchError(error => {
+				console.error('Failed to load configuration', error);
+				return throwError(() => error);
+			}),
+			tap(configuration => (this.configuration = configuration)),
+			switchMap(() => EMPTY)
+		);
+	}
+
 	getImageUrl(theme: Theme, image: string) {
 		return `${this.baseUrl}hrd/assets/images/${theme.name}/${image}`;
 	}
 
-	getConfiguration(): Observable<Configuration> {
-		return this.configuration$;
-	}
-
-	private fetchConfiguration(): Observable<Configuration> {
-		return this.http.get<Configuration>(`${this.baseUrl}config/frontend`);
+	getConfiguration(): Configuration {
+		if (this.configuration === undefined) {
+			console.error('Configuration is not loaded!');
+		}
+		return this.configuration;
 	}
 }

@@ -46,6 +46,7 @@ public abstract class WsTrustBaseValidator implements WsTrustValidator {
 	@Getter(AccessLevel.PROTECTED)
 	private final RelyingPartySetupService relyingPartySetupService;
 
+	@Getter(AccessLevel.PROTECTED)
 	private final Clock clock;
 
 	/**

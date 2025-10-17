@@ -39,7 +39,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ContextConfiguration;
 import swiss.trustbroker.common.exception.RequestDeniedException;
-import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.SamlContextClass;
 import swiss.trustbroker.config.dto.QualityOfAuthenticationConfig;
 import swiss.trustbroker.federation.xmlconfig.AcClass;
@@ -142,7 +141,7 @@ class QoaMappingUtilTest {
 
 		// qoa is in global but no matching config order
 		requestContextClasses.add(SamlTestBase.Qoa.SOFTWARE_PKI.getName());
-		assertThrows(TechnicalException.class, () ->
+		assertThrows(RequestDeniedException.class, () ->
 				QoaMappingUtil.isKnownQoaLevels(requestContextClasses, configQoa, globalMapping, null)
 		);
 	}
@@ -398,11 +397,11 @@ class QoaMappingUtilTest {
 		assertEquals(configOrder2, QoaMappingUtil.getMaxQoaOrder(List.of(classRef, mapClass), configQoa, globalMapping));
 
 		var unknownClass = "unknownClass";
-		assertThrows(TechnicalException.class, () ->
+		assertThrows(RequestDeniedException.class, () ->
 				QoaMappingUtil.getQoaOrders(unknownClass, configQoa, globalMapping, null)
 		);
 		List<String> unknownClasses = List.of(unknownClass);
-		assertThrows(TechnicalException.class, () ->
+		assertThrows(RequestDeniedException.class, () ->
 				QoaMappingUtil.getMaxQoaOrder(unknownClasses, configQoa, globalMapping)
 		);
 

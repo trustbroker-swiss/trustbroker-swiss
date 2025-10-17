@@ -24,6 +24,7 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,6 +33,7 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import swiss.trustbroker.common.exception.TechnicalException;
 
 class OidcUtilTest {
@@ -166,6 +168,21 @@ class OidcUtilTest {
 		var nonce = OidcUtil.generateNonce();
 		assertThat(nonce.length(), is(32));
 		assertThat(nonce, not(containsString("-")));
+	}
+
+	@ParameterizedTest
+	@MethodSource
+	void testConvertAcrToContextClasses(String acr, List<String> expectedClasses) {
+		assertThat(OidcUtil.convertAcrToContextClasses(acr), is(expectedClasses));
+	}
+
+	public static Object[][] testConvertAcrToContextClasses() {
+		return new Object[][] {
+				{ null, Collections.emptyList() },
+				{ "", Collections.emptyList() },
+				{ "qoa:10", List.of("qoa:10") },
+				{ "qoa:10 qoa:20 qoa:30", List.of("qoa:10", "qoa:20", "qoa:30") }
+		};
 	}
 
 }

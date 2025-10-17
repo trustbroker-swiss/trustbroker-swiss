@@ -162,6 +162,14 @@ public class SecurityPolicies implements Serializable {
 	private Boolean validateXmlSchema = Boolean.TRUE;
 
 	/**
+	 * Validate HTTP request headers. Currently <code>referer</code> and <code>origin</code> can be validated against the
+	 * AcWhitelist of an RP.
+	 * @since 1.12.0
+	 */
+	@XmlAttribute(name = "validateHttpHeaders")
+	private Boolean validateHttpHeaders;
+
+	/**
 	 * Control CP AuthnRequest scopes and RP Attribute OriginalIssuer.
 	 * Defaults to null as RP and CP side default behavior differs
 	 */

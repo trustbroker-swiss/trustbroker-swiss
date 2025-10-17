@@ -45,6 +45,7 @@ import org.springframework.security.oauth2.server.authorization.token.Delegating
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.JwtGenerator;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2AccessTokenGenerator;
+import org.springframework.security.oauth2.server.authorization.token.OAuth2RefreshTokenGenerator;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator;
 import org.springframework.security.saml2.core.Saml2ResponseValidatorResult;
@@ -226,7 +227,7 @@ public class OidcSecurityConfiguration {
 		var jwtGenerator = new JwtGenerator(jwtEncoder);
 		jwtGenerator.setJwtCustomizer(tokenCustomizer(jwkSource));
 		var accessTokenGenerator = new OAuth2AccessTokenGenerator();
-		var refreshTokenGenerator = new CustomRefreshTokenGenerator(jwtEncoder, jwkSource, properties, relyingPartyDefinitions);
+		var refreshTokenGenerator = new CustomRefreshTokenGenerator(jwtEncoder, jwkSource, new OAuth2RefreshTokenGenerator(), properties, relyingPartyDefinitions);
 		return new DelegatingOAuth2TokenGenerator(jwtGenerator, accessTokenGenerator, refreshTokenGenerator);
 	}
 

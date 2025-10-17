@@ -18,7 +18,7 @@ import { IdpObject, compareByOrder } from '../model/IdpObject';
 
 /**
  * Filters and bucketizes the given idpObjects by their order number as follows:
- * - items with an order number <= 0 are filtered out
+ * - items with an order number <= 0 are treated like items without order
  * - items are put into the bucket n where n = order / 100.
  * - inside the buckets, the items are sorted by the order
  * - items with an order number undefined are put in a last bucket
@@ -32,18 +32,16 @@ export class BucketizeIdpObjectsPipe implements PipeTransform {
 		if (objects === undefined) {
 			return undefined;
 		}
-		const cardsByCategory: Record<number, IdpObject[]> = objects
-			.filter(({ order }) => order === undefined || order > 0)
-			.reduce((acc, each) => {
-				const sanitizedOrder = each.order ?? 999;
-				const bucket = Math.floor(sanitizedOrder / 100);
-				const current = acc[bucket] ?? [];
-				current.push(each);
-				return {
-					...acc,
-					[bucket]: current
-				};
-			}, {});
+		const cardsByCategory: Record<number, IdpObject[]> = objects.reduce((acc, each) => {
+			const sanitizedOrder = each.order === undefined || each.order <= 0 ? 999 : each.order;
+			const bucket = Math.floor(sanitizedOrder / 100);
+			const current = acc[bucket] ?? [];
+			current.push(each);
+			return {
+				...acc,
+				[bucket]: current
+			};
+		}, {});
 
 		const bucketizedCards = Object.keys(cardsByCategory)
 			.sort((a, b) => a.localeCompare(b))

@@ -146,7 +146,7 @@ class FederationMetadataServiceTest {
 		var authDescriptor = entityDescriptor.getAuthnAuthorityDescriptor(SAMLConstants.SAML20P_NS);
 		assertThat(authDescriptor, is(not(nullValue())));
 		var authServices = authDescriptor.getAuthnQueryServices();
-		validateLocation(authServices, PERIMETER_URL + ApiSupport.ADFS_SERVICES_PATH);
+		validateLocation(authServices, PERIMETER_URL + ApiSupport.ADFS_WS_TRUST_COMPAT_URL);
 		validateBinding(authServices, SAMLConstants.SAML2_SOAP11_BINDING_URI, true);
 	}
 

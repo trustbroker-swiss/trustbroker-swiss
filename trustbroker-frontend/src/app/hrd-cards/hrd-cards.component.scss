@@ -13,9 +13,9 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-@import "/src/styles/variables";
-@import "/src/styles/spacing";
-@import "/src/styles/tile-layout";
+@use "src/styles/variables";
+@use "src/styles/spacing";
+@use "src/styles/tile-layout";
 
 // fix design issue in oblique 11.3
 [mat-card-image] {

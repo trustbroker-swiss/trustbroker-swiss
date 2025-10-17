@@ -20,7 +20,6 @@ import java.io.IOException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.converter.HttpMessageConverter;
@@ -73,7 +72,7 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 		var client = relyingPartyDefinitions.getRelyingPartyOidcClientByOidcClientId(clientId, null, trustBrokerProperties, true);
 		var rpIssuerId = client != null ? client.getLeft().getId() : null;
 		var oidcClient = client != null ? client.getRight() : null;
-		var referrer = WebUtil.getHeader(HttpHeaders.REFERER, request);
+		var referrer = WebUtil.getReferer(request);
 
 		// exception from sub-systems
 		String errMsg;

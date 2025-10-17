@@ -71,6 +71,7 @@
 		<ClientName>SAMPLERP</ClientName>
 		<ACWhitelist>
 			<ACUrl>https://referring-party-acs.localdomain:43443/auth/saml2/acs</ACUrl>
+			<ACUrl>https://referring-party-top.localdomain/caller</ACUrl>
 			<ACUrl>https://referring-party-top.localdomain/</ACUrl>
 		</ACWhitelist>
 		<Certificates/>

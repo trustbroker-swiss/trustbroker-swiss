@@ -22,6 +22,10 @@ XTB consists of the following modules:
 |``swiss.trustbroker.wstrust``
 |Service for integrating WS-Trust.
 
+|``trustbroker-store-ldap``
+|``swiss.trustbroker.ldap``
+|IDM service backed by an LDAP.
+
 |``trustbroker-service``
 |``swiss.trustbroker.*``
 |The core services of XTB.

@@ -19,12 +19,14 @@ import { ActivatedRoute, Params } from '@angular/router';
 import { Theme } from '../model/Theme';
 import { ApiService } from '../services/api.service';
 import { ThemeService } from '../services/theme-service';
+import { ValidationService } from '../services/validation-service';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
 	selector: 'app-error-page',
 	templateUrl: './error-page.component.html',
-	styleUrls: ['./error-page.component.scss']
+	styleUrls: ['./error-page.component.scss'],
+	standalone: false
 })
 export class ErrorPageComponent implements OnInit {
 	titleKey: string;
@@ -48,6 +50,7 @@ export class ErrorPageComponent implements OnInit {
 	constructor(
 		private readonly route: ActivatedRoute,
 		private readonly themeService: ThemeService,
+		private readonly validation: ValidationService,
 		private readonly apiService: ApiService,
 		private readonly destroyRef: DestroyRef
 	) {
@@ -62,17 +65,7 @@ export class ErrorPageComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.route.params.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params: Params) => {
-			let textKey = params['textKey'];
-			if (
-				!textKey ||
-				this.parameterInvalid('textKey', textKey, '^[0-9A-Za-z]*$') ||
-				this.parameterInvalid('reference', params['reference'], '^[0-9A-Za-z.-]*$') ||
-				this.parameterInvalid('sessionId', params['sessionId'], '^[0-9A-Za-z_-]*$')
-			) {
-				textKey = 'default';
-				return;
-			}
-			this.errorCode = textKey;
+			this.errorCode = this.validation.getValidParameter(params, 'textKey', ValidationService.TEXT_KEY, 'default');
 			this.titleKey = `trustbroker.error.main.title.${this.errorCode}`;
 			this.infoKey = `trustbroker.error.main.info.${this.errorCode}`;
 
@@ -85,9 +78,9 @@ export class ErrorPageComponent implements OnInit {
 			this.supportInfoText = `trustbroker.error.main.support.info.${this.errorCode}`;
 			this.supportContactText = `trustbroker.error.main.support.contact.${this.errorCode}`;
 
-			this.reference = params['reference'];
-			this.sessionId = params['sessionId'];
-			const buttonStr: string = params['button'];
+			this.reference = this.validation.getValidParameter(params, 'reference', ValidationService.ID, '');
+			this.sessionId = this.validation.getValidParameter(params, 'sessionId', ValidationService.ID, '');
+			const buttonStr: string = this.validation.getValidParameter(params, 'button', ValidationService.ID, '');
 			this.continueButton = buttonStr?.includes('continue');
 			this.reloginButton = buttonStr?.includes('relogin');
 			this.linkButton = buttonStr?.includes('link');
@@ -97,13 +90,5 @@ export class ErrorPageComponent implements OnInit {
 
 	imageUrl(image: string) {
 		return this.apiService.getImageUrl(this.theme, image);
-	}
-
-	private parameterInvalid(key: string, value: string, pattern: string): boolean {
-		if (!!value && !value.match(pattern)) {
-			console.error('Invalid parameter:', key);
-			return true;
-		}
-		return false;
 	}
 }

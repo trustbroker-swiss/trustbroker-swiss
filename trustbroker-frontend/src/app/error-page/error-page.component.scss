@@ -13,9 +13,9 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-@import "/src/styles/variables.scss";
-@import "/src/styles/spacing.scss";
-@import "/src/styles/material/_mixins";
+@use "src/styles/variables";
+@use "src/styles/spacing";
+@use "src/styles/material/_mixins";
 
 .errorPageContainer {
 	text-align: center;

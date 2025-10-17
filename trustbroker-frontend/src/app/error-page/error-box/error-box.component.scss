@@ -13,39 +13,63 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-@import "/src/styles/variables.scss";
-@import "/src/styles/spacing.scss";
-@import "/src/styles/material/_mixins";
+@use "src/styles/variables";
+@use "src/styles/spacing";
+@use "src/styles/material/_mixins";
+@use "src/styles/typography";
 
 .errorBoxContainer {
 	margin: 0 auto;
 
-	padding-top: 1rem;
+	.app-support {
+		display: flex;
+		flex-direction: column;
+		gap: variables.$ob-spacing-default;
 
-	@media(max-width: $small-page-size) {
+		.app-support-contact {
+			display: flex;
+			flex-direction: column;
+			gap: 0.5rem;
+		}
+	}
+
+	.button-container {
+		margin-top: 1rem;
+		display: flex;
+		flex-direction: row-reverse;
+		gap: variables.$ob-spacing-default;
+	}
+
+	@media(max-width: variables.$small-page-size) {
+		.button-container {
+			flex-direction: column;
+			align-items: stretch;
+		}
+	}
+
+	@media(min-width: variables.$small-page-size) {
+		width: 80%;
+		padding-top: 1rem;
+
+		button {
+			margin: 0 0.5rem 0 0.5rem;
+		}
+
+		.errorBoxTitleContainer {
+			// longer text would not fit on one line
+			margin-top: 3rem;
+		}
+	}
+
+	@media(min-width: variables.$medium-page-size) {
 		width: 80%;
 	}
 
-	@media(min-width: $small-page-size) {
-		width: 80%;
-	}
-	@media(min-width: $medium-page-size) {
-		width: 80%;
-	}
-	@media(min-width: $large-page-size) {
+	@media(min-width: variables.$large-page-size) {
 		width: 60%;
-	}
-
-	button {
-		margin: 0 0.5rem 0 0.5rem;
 	}
 }
 
 .errorReference {
 	margin-top: 2rem;
-}
-
-.errorBoxTitleContainer {
-	// longer text would not fit on one line
-	margin-top: 3rem;
 }

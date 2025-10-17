@@ -72,7 +72,6 @@ public class Lifecycle implements Serializable {
 		return reauthTime != null ? reauthTime : ssoEstablishedTime;
 	}
 
-	@JsonIgnore
 	public synchronized void incAccessCount() {
 		accessCount += 1;
 	}

@@ -807,6 +807,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 												.cpAttributes(originalAttributes)
 												.provisioningAttributes(provisionedAttributes)
 												.cpAuthenticationQoa(qoa)
+												.modes(Collections.emptyList())
 												.additionalData(additionalAttributes)
 												.build();
 		var provResult = IdmProvisioningResult.builder().status(IdmProvisioningStatus.CREATED).build();
@@ -960,7 +961,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 		doReturn(relyingParty).when(relyingPartySetupService).getRelyingPartyByIssuerIdOrReferrer(RP_ISSUER_ID, null);
 		doReturn(Optional.of(claimsParty)).when(relyingPartySetupService).getClaimsProviderSetupByIssuerId(CP_ISSUER_ID);
 		doReturn(new QoaConfig(rpQoa, "rpIssuerId"))
-				.when(relyingPartySetupService).getQoaConfiguration(state.getSpStateData(), relyingParty, trustBrokerProperties);
+				.when(qoaService).getQoaConfiguration(state.getSpStateData(), relyingParty);
 
 		// Rp request Qoas
 		state.getSpStateData().setComparisonType(QoaComparison.EXACT);

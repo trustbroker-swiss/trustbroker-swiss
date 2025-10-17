@@ -44,6 +44,16 @@ public class EncodingParameters {
 	private boolean useRedirectBinding = false;
 
 	/**
+	 * Use SOAP binding for SAML encoding.
+	 * <br/>
+	 * Default: false
+	 *
+	 * @since 1.12.0
+	 */
+	@Builder.Default
+	private boolean useSoapBinding = false;
+
+	/**
 	 * Optional signature algorithm for redirect encoding.
 	 *
 	 * @since 1.10.0

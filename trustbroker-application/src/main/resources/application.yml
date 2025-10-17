@@ -179,6 +179,7 @@ trustbroker:
       saveStateOnValidationFailure: false
       tokenLifetimeSec: 3600 # Assertion/Condition/Subject timestamp create/check, override on RP SecurityPolicies.notOnOrAfter
       validateAcs: true
+      validateHttpHeaders: false # backward compatibility - RP ACWhitelist may need to be adjusted when enabling this
       validateAssertionIssueInstant: true
       validateAudience: true
       validateAuthnRequest: true
@@ -247,6 +248,7 @@ trustbroker:
         - urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST
         - urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect
         - urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact
+        - urn:oasis:names:tc:SAML:2.0:bindings:SOAP
       spMetadataEnabled: false
       spLogoutMetadataEnabled: false
       spNameFormats:
@@ -296,10 +298,38 @@ trustbroker:
       revocationEnabled: true
       introspectionEnabled: true
       userInfoEnabled: true
-      # refresh token for PKCE
-      refreshTokenForPKCEEnabled: false
       # No acr_values in /authorize request? No Qoa element on RelyingParty or Oidc Client?
       defaultQoa: "urn:oasis:names:tc:SAML:2.0:ac:classes:unspecified"
+      idTokenEncryptionAlgorithms:
+        - ECDH-ES+A256KW
+        - ECDH-ES+A192KW
+        - ECDH-ES+A128KW
+        - RSA-OAEP
+        - RSA-OAEP-256
+        - RSA1_5
+        - ECDH-ES
+      idTokenEncryptionMethods:
+        - A256GCM
+        - A192GCM
+        - A128GCM
+        - A128CBC-HS256
+        - A192CBC-HS384
+        - A256CBC-HS512
+      userInfoEncryptionAlgorithms:
+        - ECDH-ES+A256KW
+        - ECDH-ES+A192KW
+        - ECDH-ES+A128KW
+        - RSA-OAEP
+        - RSA-OAEP-256
+        - RSA1_5
+        - ECDH-ES
+      userInfoEncryptionMethods:
+        - A256GCM
+        - A192GCM
+        - A128GCM
+        - A128CBC-HS256
+        - A192CBC-HS384
+        - A256CBC-HS512
       keycloakTransparencyModeOn: false
       # Name plus value and/or regex:
       jsonErrorPageHeaders:
@@ -340,9 +370,10 @@ trustbroker:
         - sid
       samlNamespacesMappedToOidcFormat:
         - namespace: urn:oasis:names:tc:SAML:2.0:status
-    # WSTrust is supported for clients sending our own assertions in the SOAP security header of w RST request to get a new one
+    # WSTrust is supported for clients sending our own assertions in the SOAP security header of an RST request to get a new one
     wstrust:
       enabled: true
+      issueEnabled: true
       renewEnabled: false
       renewRequiresSsoSession: true
       renewRequiresSecurityToken: true

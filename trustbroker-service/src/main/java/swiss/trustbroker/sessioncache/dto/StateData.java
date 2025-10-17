@@ -176,7 +176,6 @@ public class StateData implements Serializable, SessionState {
 		return lifecycle.isExpired();
 	}
 
-	@JsonIgnore
 	public void reInit() {
 		lifecycle.setLifecycleState(LifecycleState.INIT);
 		if (spStateData != null) {
@@ -204,7 +203,6 @@ public class StateData implements Serializable, SessionState {
 		return ssoState != null;
 	}
 
-	@JsonIgnore
 	public SsoState initializedSsoState() {
 		if (!hasSsoState()) {
 			ssoState = new SsoState();
@@ -220,7 +218,6 @@ public class StateData implements Serializable, SessionState {
 		completedAuthnRequests.add(authReqId);
 	}
 
-	@JsonIgnore
 	public void addSsoParticipant(SsoSessionParticipant ssoSessionParticipant) {
 		initializedSsoState().getSsoParticipants().add(ssoSessionParticipant);
 	}
@@ -230,7 +227,6 @@ public class StateData implements Serializable, SessionState {
 		return accessRequest != null;
 	}
 
-	@JsonIgnore
 	public AccessRequestSessionState initializedAccessRequest() {
 		if (!hasAccessRequest()) {
 			accessRequest = new AccessRequestSessionState();
@@ -243,6 +239,10 @@ public class StateData implements Serializable, SessionState {
 		return Boolean.TRUE.equals(forceAuthn);
 	}
 
+	@JsonIgnore
+	public boolean isAuthnRequestSigned() {
+		return Boolean.TRUE.equals(signedAuthnRequest);
+	}
 
 	/**
 	 * @return null if SSO is not established

@@ -34,19 +34,21 @@ public enum ProvisioningMode {
 	 * Detect and log required provisioning.
 	 */
 	@XmlEnumValue("detect")
-	DETECT(true),
+	DETECT(true, true),
 
 	/**
 	 * Detect and apply provisioning.
 	 */
 	@XmlEnumValue("true")
-	TRUE(true),
+	TRUE(true, false),
 
 	/**
 	 * No provisioning.
 	 */
 	@XmlEnumValue("false")
-	FALSE(false);
+	FALSE(false, false);
 
 	private final boolean enabled;
+
+	private final boolean detectOnly;
 }

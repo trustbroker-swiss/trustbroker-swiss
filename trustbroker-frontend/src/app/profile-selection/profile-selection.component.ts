@@ -21,27 +21,30 @@ import { Profile } from '../model/Profile';
 import { ProfileService } from '../services/profile.service';
 import { ProfileRequest } from '../services/profile-request';
 import { ProfileResponse } from '../services/profile-response';
+import { ValidationService } from '../services/validation-service';
 
 @Component({
 	selector: 'app-profile-selection',
 	templateUrl: './profile-selection.component.html',
-	styleUrls: ['./profile-selection.component.scss']
+	styleUrls: ['./profile-selection.component.scss'],
+	standalone: false
 })
 export class ProfileSelectionComponent implements OnInit {
-	selectedProfile: string;
+	readonly APPLICATIONS_PER_PROFILE = 5;
 	profileResponse: ProfileResponse;
 	profiles: Profile[];
 	stateId: string;
 
 	constructor(
 		private readonly profileService: ProfileService,
+		private readonly validation: ValidationService,
 		private readonly route: ActivatedRoute,
 		private readonly router: Router
 	) {}
 
 	ngOnInit(): void {
 		this.route.params.subscribe((params: Params) => {
-			const id = params['id'];
+			const id = this.validation.getValidParameter(params, 'id', ValidationService.ID, '');
 			this.profileService.getProfiles(id).subscribe({
 				next: resp => {
 					this.profileResponse = resp;

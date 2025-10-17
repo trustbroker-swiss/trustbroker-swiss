@@ -68,6 +68,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
@@ -91,6 +92,7 @@ import swiss.trustbroker.common.saml.util.SamlUtil;
 import swiss.trustbroker.common.setup.config.BootstrapProperties;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.GuiProperties;
+import swiss.trustbroker.config.dto.OidcProperties;
 import swiss.trustbroker.config.dto.QualityOfAuthenticationConfig;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.config.dto.SamlProperties;
@@ -221,6 +223,7 @@ class AppControllerTest {
 		this.mockMvc = MockMvcBuilders.webAppContextSetup(this.webApplicationContext).build();
 		when(trustBrokerProperties.getGui()).thenReturn(new GuiProperties());
 		when(trustBrokerProperties.getSaml()).thenReturn(new SamlProperties());
+		when(trustBrokerProperties.getOidc()).thenReturn(new OidcProperties());
 		doAnswer(invocation -> invocation.getArgument(1)).when(hrdService).adaptClaimsProviderMappings(any(), any());
 	}
 
@@ -443,11 +446,13 @@ class AppControllerTest {
 		doReturn(true).when(announcementService).showAnnouncements(any(), nullable(String.class), eq(Set.of()));
 		var authnRequest = prepareValidIncomingAuthnRequest();
 		var encodedMessage = SamlUtil.encode(authnRequest);
-		var referer = "https://localhost/caller";
+		var referer = "https://saml-test.localdomain/caller";
+		var origin = "https://saml-test.localdomain";
 		this.mockMvc.perform(post(URL_TEMPLATE)
 						.contentType(MediaType.APPLICATION_FORM_URLENCODED_VALUE)
 						.param(SamlIoUtil.SAML_REQUEST_NAME, encodedMessage)
 						.header(HttpHeaders.REFERER, referer)
+						.header(HttpHeaders.ORIGIN, origin)
 				)
 				.andExpect(status().isFound())
 				.andExpect(header().string(HttpHeaders.LOCATION, apiSupport.getAnnouncementsUrl(
@@ -940,8 +945,8 @@ class AppControllerTest {
 	}
 
 	@Test
-	void handleIncomingPTIResponseTest() {
-		var authnResponse = ServiceSamlTestUtil.loadPITResponse();
+	void handleIncomingSampleResponseTest() {
+		var authnResponse = ServiceSamlTestUtil.loadSampleResponse();
 		mockProperties();
 		assertDoesNotThrow(() -> appController.validateSamlSchema(authnResponse, null));
 	}
@@ -1020,7 +1025,6 @@ class AppControllerTest {
 				.thenReturn(ServiceSamlTestUtil.loadSsoGroups());
 	}
 
-
 	@Test
 	void handleIncomingPostLogoutRequest() throws Exception {
 		var request = prepareIncomingLogoutRequest();
@@ -1029,6 +1033,19 @@ class AppControllerTest {
 						.contentType(MediaType.APPLICATION_FORM_URLENCODED_VALUE)
 						.param(SamlIoUtil.SAML_REQUEST_NAME, encodedMessage))
 				.andExpect(status().isOk());
+		verify(relyingPartyService).handleLogoutRequest(any(), any(), any(), any(), any(), any());
+	}
+
+	@Test
+	void handleIncomingSoapLogoutRequest() throws Exception {
+		var request = prepareIncomingLogoutRequest();
+		var context = OpenSamlUtil.createMessageContext(request, null, URL_TEMPLATE, null);
+		var mockResponse = new MockHttpServletResponse();
+		OpenSamlUtil.encodeSamlSoapMessage(mockResponse, context);
+		this.mockMvc.perform(post(URL_TEMPLATE)
+							.contentType(mockResponse.getContentType())
+							.content(mockResponse.getContentAsByteArray()))
+					.andExpect(status().isOk());
 		verify(relyingPartyService).handleLogoutRequest(any(), any(), any(), any(), any(), any());
 	}
 

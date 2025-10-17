@@ -17,6 +17,7 @@ package swiss.trustbroker.util;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -109,10 +110,9 @@ public class HeaderBuilder {
 	}
 
 	private HeaderBuilder cspFrameOptions(String csp, String frameOptions, Set<String> ownOrigins) {
-		var frameAncestors = frameAncestorHandler.supportedFrameAncestors();
+		var frameAncestorList = frameAncestorHandler.supportedFrameAncestors();
+		Set<String> frameAncestors = new HashSet<>(frameAncestorList);
 		if (!CollectionUtils.isEmpty(ownOrigins)) {
-			// copy as it may be immutable
-			frameAncestors = new ArrayList<>(frameAncestors);
 			frameAncestors.addAll(ownOrigins);
 		}
 		var appliedFrameAncestors = new ArrayList<String>();
@@ -123,7 +123,7 @@ public class HeaderBuilder {
 	}
 
 	public HeaderBuilder oidc3pCookieOptions(String origin, String perimeterUrl) {
-		List<String> ancestors = origin != null ? List.of(origin) : List.of();
+		Set<String> ancestors = origin != null ? Set.of(origin) : Set.of();
 		var csp = appendFrameAncestors(null, ancestors, null);
 		csp = csp + " " + perimeterUrl;
 		setHeader(CONTENT_SECURITY_POLICY, csp);
@@ -145,10 +145,10 @@ public class HeaderBuilder {
 
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 	public HeaderBuilder defaultCsp() {
-		return csp(properties.getCsp().getFallback(), Collections.emptyList(), null);
+		return csp(properties.getCsp().getFallback(), Collections.emptySet(), null);
 	}
 
-	private HeaderBuilder csp(String csp, List<String> allowedFrameAncestors, List<String> appliedFrameAncestors) {
+	private HeaderBuilder csp(String csp, Set<String> allowedFrameAncestors, List<String> appliedFrameAncestors) {
 		if (StringUtils.isNotEmpty(csp) || !allowedFrameAncestors.isEmpty()) {
 			csp = appendFrameAncestors(csp, allowedFrameAncestors, appliedFrameAncestors);
 			setHeader(CONTENT_SECURITY_POLICY, csp);
@@ -156,7 +156,7 @@ public class HeaderBuilder {
 		return this;
 	}
 
-	private String appendFrameAncestors(String csp, List<String> allowedFrameAncestors, List<String> appliedFrameAncestors) {
+	private String appendFrameAncestors(String csp, Set<String> allowedFrameAncestors, List<String> appliedFrameAncestors) {
 		if (allowedFrameAncestors.isEmpty()) {
 			return csp;
 		}
@@ -179,11 +179,11 @@ public class HeaderBuilder {
 
 	//'unsafe-hashes' (for 'document.forms[0].submit();' in SAML POST binding
 	public HeaderBuilder samlCsp() {
-		return csp(properties.getCsp().getSaml(), Collections.emptyList(), null);
+		return csp(properties.getCsp().getSaml(), Collections.emptySet(), null);
 	}
 
 	public HeaderBuilder frontendCsp() {
-		return csp(properties.getCsp().getFrontend(), Collections.emptyList(), null);
+		return csp(properties.getCsp().getFrontend(), Collections.emptySet(), null);
 	}
 
 	private void setHeader(String name, String value) {

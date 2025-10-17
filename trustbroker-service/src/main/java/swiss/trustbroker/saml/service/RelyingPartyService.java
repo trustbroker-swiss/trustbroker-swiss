@@ -15,6 +15,7 @@
 
 package swiss.trustbroker.saml.service;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +40,6 @@ import org.opensaml.saml.saml2.core.StatusCode;
 import org.opensaml.saml.saml2.core.StatusResponseType;
 import org.opensaml.saml.saml2.encryption.Encrypter;
 import org.opensaml.security.credential.Credential;
-import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import swiss.trustbroker.api.accessrequest.dto.AccessRequestHttpData;
 import swiss.trustbroker.api.accessrequest.service.AccessRequestService;
@@ -76,7 +76,6 @@ import swiss.trustbroker.federation.xmlconfig.Definition;
 import swiss.trustbroker.federation.xmlconfig.Encryption;
 import swiss.trustbroker.federation.xmlconfig.EncryptionKeyInfo;
 import swiss.trustbroker.federation.xmlconfig.EncryptionKeyPlacement;
-import swiss.trustbroker.federation.xmlconfig.ProvisioningMode;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SloProtocol;
 import swiss.trustbroker.homerealmdiscovery.dto.ProfileRequest;
@@ -160,6 +159,8 @@ public class RelyingPartyService {
 		var cpIssuer = cpResponse.getIssuer();
 		var relyingPartyConfig = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(requestIssuer, null);
 		var callback = new DefaultIdmStatusPolicyCallback(cpResponse);
+		var originalUserDetailCount = 0;
+		var originalPropertiesCount = 0;
 		for (var idmService : idmQueryServices) {
 			log.debug("IDM call: issuer={} nameID={} requestIssuer={}", cpIssuer, cpResponse.getNameId(), requestIssuer);
 			var queryResponse = audited ?
@@ -167,12 +168,14 @@ public class RelyingPartyService {
 					idmService.getAttributes(relyingPartyConfig, cpResponse, cpResponse.getIdmLookup(), callback);
 			if (queryResponse.isPresent()) {
 				DefinitionUtil.mapAttributeList(queryResponse.get().getUserDetails(), cpResponse.getUserDetails());
-				cpResponse.setOriginalUserDetailsCount(queryResponse.get().getOriginalUserDetailsCount());
+				originalUserDetailCount += queryResponse.get().getOriginalUserDetailsCount();
 				DefinitionUtil.mapAttributeListIgnoringSource(queryResponse.get().getProperties(), cpResponse.getProperties());
-				cpResponse.setOriginalPropertiesCount(queryResponse.get().getOriginalPropertiesCount());
+				originalPropertiesCount += queryResponse.get().getOriginalPropertiesCount();
 				cpResponse.getAdditionalIdmData().putAll(queryResponse.get().getAdditionalData());
 			}
 		}
+		cpResponse.setOriginalUserDetailsCount(originalUserDetailCount);
+		cpResponse.setOriginalPropertiesCount(originalPropertiesCount);
 	}
 
 	public void setProperties(CpResponse cpResponse) {
@@ -288,8 +291,7 @@ public class RelyingPartyService {
 		Map<String, Integer> globalMapping = trustBrokerProperties.getQoaMap();
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(
 				requestIssuer, requestReferer);
-		var rpQoaConf = relyingPartySetupService.getQoaConfiguration(cpStateData.getSpStateData(),
-				relyingParty, trustBrokerProperties);
+		var rpQoaConf = qoaService.getQoaConfiguration(cpStateData.getSpStateData(), relyingParty);
 		rpQoaConf = rpQoaConf != null ? rpQoaConf : new QoaConfig(null, null);
 
 		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpResponse.getIssuerId()).orElseThrow(() ->
@@ -311,7 +313,7 @@ public class RelyingPartyService {
 	private boolean provisionIdm(CpResponse cpResponse) {
 		var claimsProvider = relyingPartySetupService.getClaimsProviderSetupByIssuerId(cpResponse.getIssuerId()).orElseThrow(() ->
 							 new TechnicalException(String.format("Could not find cpIssuerId=%s", cpResponse.getIssuer())));
-		if (!claimsProvider.isProvisioningEnabled()) {
+		if (!claimsProvider.getProvision().isEnabled()) {
 			return false;
 		}
 		String homeName = null;
@@ -319,6 +321,10 @@ public class RelyingPartyService {
 		if (claimsProvider.getHomeName() != null) {
 			homeName = claimsProvider.getHomeName().getName();
 			homeNameMigrationAlias = claimsProvider.getHomeName().getMigrationAlias();
+		}
+		String accountSource = null;
+		if (claimsProvider.getAccountSource() != null) {
+			accountSource = claimsProvider.getAccountSource().getValue();
 		}
 		var provisioningAttributes = CollectionUtil.findListByPredicate(
 				claimsProvider.getAttributesSelection() != null ?
@@ -329,16 +335,21 @@ public class RelyingPartyService {
 						claimsProvider.getAttributesSelection().getDefinitions() : null,
 				Definition::isProvisioningIdAttribute).orElse(null);
 		var qoa = qoaService.getMaxQoaOrder(cpResponse.getContextClasses(), claimsProvider.getQoaConfig());
+		List<String> modes = claimsProvider.getProvisioning() != null ?
+				Collections.unmodifiableList(claimsProvider.getProvisioning().getModes()) :
+				Collections.emptyList();
 		var provisioningRequest = IdmProvisioningRequest.builder()
 				.identifyingClaim(identifyingClaim)
 				.homeName(homeName)
 				.homeNameMigrationAlias(homeNameMigrationAlias)
+				.accountSource(accountSource)
 				.cpSubjectNameId(cpResponse.getNameId())
 				.cpAttributes(cpResponse.getOriginalAttributes())
 				.idmAttributes(cpResponse.getUserDetailMap())
 				.provisioningAttributes(provisioningAttributes)
 				.cpAuthenticationQoa(qoa)
-				.logOnly(claimsProvider.getProvision() == ProvisioningMode.DETECT)
+				.logOnly(claimsProvider.getProvision().isDetectOnly())
+				.modes(modes)
 				.additionalData(cpResponse.getAdditionalIdmData())
 				.build();
 		boolean result = false;
@@ -374,6 +385,7 @@ public class RelyingPartyService {
 			var profileSelectionData = ProfileSelectionData.builder()
 														   .profileSelectionProperties(relyingParty.getProfileSelection())
 														   .exchangeId(responseData.getRelayState())
+														   .applicationName(idpStateData.getRpApplicationName())
 														   .oidcClientId(idpStateData.getRpOidcClientId())
 														   .build();
 			psResult = profileSelectionService.doInitialProfileSelection(
@@ -436,8 +448,8 @@ public class RelyingPartyService {
 													   .profileSelectionProperties(relyingParty.getProfileSelection())
 													   .selectedProfileId(idpStateData.getSelectedProfileExtId())
 													   .enforceSingleProfile(true)
-													   .exchangeId(idpStateData.getSpStateData()
-																			   .getRelayState())
+													   .exchangeId(idpStateData.getSpStateData().getRelayState())
+													   .applicationName(idpStateData.getRpApplicationName())
 													   .oidcClientId(idpStateData.getRpOidcClientId())
 													   .build();
 		psResult = profileSelectionService.doFinalProfileSelection(profileSelectionData, relyingParty, cpResponse,
@@ -477,6 +489,7 @@ public class RelyingPartyService {
 		var profileSelectionData = ProfileSelectionData.builder()
 													   .profileSelectionProperties(relyingParty.getProfileSelection())
 													   .exchangeId(stateData.getRpRelayState())
+													   .applicationName(stateData.getRpApplicationName())
 													   .oidcClientId(stateData.getRpOidcClientId())
 													   .selectedProfileId(stateData.getSelectedProfileExtId())
 													   .build();
@@ -917,6 +930,7 @@ public class RelyingPartyService {
 		   		.profileSelectionProperties(relyingParty.getProfileSelection())
 				.selectedProfileId(ssoStateData.getSelectedProfileExtId())
 				.exchangeId(stateDataByAuthnReq.getSpStateData().getRelayState())
+				.applicationName(stateDataByAuthnReq.getRpApplicationName())
 				.oidcClientId(stateDataByAuthnReq.getRpOidcClientId())
 				.build();
 		var psResult = profileSelectionService.doSsoProfileSelection(
@@ -992,7 +1006,7 @@ public class RelyingPartyService {
 												   .setSessionIndex(true)
 												   .rpReferer(requestReferer);
 		if (stateData.isSsoEstablished()) {
-			responseParameterBuilder.sessionIndex(stateData.getId());
+			responseParameterBuilder.sessionIndex(stateData.getSsoSessionId());
 			if (stateData.getExpirationTimestamp() != null) {
 				var latestSessionEndTime = stateData.getLatestSsoSessionEndTime(trustBrokerProperties.getSsoSessionLifetimeSec());
 				responseParameterBuilder.sessionNotOnOrAfter(latestSessionEndTime);
@@ -1166,7 +1180,7 @@ public class RelyingPartyService {
 	public void handleLogoutRequest(OutputService outputService, LogoutRequest logoutRequest, String requestRelayState,
 			HttpServletRequest request, HttpServletResponse response, SignatureContext signatureContext) {
 		var issuer = logoutRequest.getIssuer().getValue();
-		var requestReferrer = WebUtil.getHeader(HttpHeaders.REFERER, request);
+		var requestReferrer = WebUtil.getReferer(request);
 		var relyingParties = ssoService.getRelyingPartiesForSamlSlo(issuer, requestReferrer);
 		validateLogoutRequest(logoutRequest, signatureContext, relyingParties);
 		var logoutParams = LogoutParams.of(request, response, logoutRequest, requestRelayState, requestReferrer,
@@ -1285,8 +1299,10 @@ public class RelyingPartyService {
 	private static EncodingParameters buildEncodingParameters(RelyingParty relyingParty, StateData idpStateData,
 			SamlBinding inboundSamlBinding) {
 		var useArtifactBinding = useArtifactBinding(relyingParty, idpStateData, inboundSamlBinding);
+		var useSoapBinding = inboundSamlBinding == SamlBinding.SOAP;
 		return EncodingParameters.builder()
 								 .useArtifactBinding(useArtifactBinding)
+								 .useSoapBinding(useSoapBinding)
 								 .build();
 	}
 
@@ -1384,6 +1400,7 @@ public class RelyingPartyService {
 													   .profileSelectionProperties(relyingParty.getProfileSelection())
 													   .selectedProfileId(idpStateData.getSelectedProfileExtId())
 													   .exchangeId(idpStateData.getSpStateData().getRelayState())
+													   .applicationName(idpStateData.getApplicationName())
 													   .oidcClientId(idpStateData.getRpOidcClientId())
 													   .build();
 		var psResult = profileSelectionService.doFinalProfileSelection(

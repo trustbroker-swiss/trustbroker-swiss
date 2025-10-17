@@ -12,7 +12,7 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-@import "/src/styles/variables";
+@use "src/styles/variables";
 
 :host {
 	--large-gap: 2rem;
@@ -24,7 +24,6 @@
 	.main {
 		flex-grow: 1;
 		max-width: 512px;
-		min-width: 336px;
 
 		display: flex;
 		flex-direction: column;
@@ -49,11 +48,11 @@
 						border-radius: 0.625rem;
 						height: 4rem;
 						width: 100%;
-						background-color: $idp-card-background-color;
-						border: $idp-card-border;
-						box-shadow: $idp-card-box-shadow;
+						background-color: variables.$idp-card-background-color;
+						border: variables.$idp-card-border;
+						box-shadow: variables.$idp-card-box-shadow;
 						text-align: left;
-						color: $idp-card-color;
+						color: variables.$idp-card-color;
 
 						display: flex;
 						flex-direction: row;
@@ -67,17 +66,16 @@
 
 						&:enabled:hover {
 							cursor: pointer;
-							background-color: $idp-card-focus-background-color;
+							background-color: variables.$idp-card-focus-background-color;
 						}
 
 						&:enabled:focus {
-							background-color: $idp-card-focus-background-color;
-							outline-color: $idp-card-focus-outline-color;
+							background-color: variables.$idp-card-focus-background-color;
+							outline: 2px solid variables.$idp-card-focus-outline-color;
 						}
 
 						&:focus-visible {
-							box-shadow: $idp-card-focus-visible-box-shadow;
-							outline: none;
+							box-shadow: variables.$idp-card-focus-visible-box-shadow;
 						}
 					}
 
@@ -90,27 +88,28 @@
 
 						padding: 10px;
 						backdrop-filter: blur(2px);
-						background: $idp-card-disabled-background-color;
+						background: variables.$idp-card-disabled-background-color;
 						display: grid;
 						grid-template-rows: 1fr 1fr;
 						grid-template-columns: 48px 1fr;
 						grid-column-gap: 1rem;
 						cursor: pointer;
 						border: 0;
-						color: $idp-card-color;
+						color: variables.$idp-card-color;
 
 						box-sizing: border-box;
 						border-radius: 0.625rem;
 
 						&:focus-visible {
-							box-shadow: $idp-card-focus-visible-box-shadow;
-							background: $idp-card-disabled-hover-background-color;
+							box-shadow: variables.$idp-card-focus-visible-box-shadow;
+							background: variables.$idp-card-disabled-hover-background-color;
 						}
 
 						p {
 							grid-column: 2;
 							align-self: center;
 							text-align: start;
+							margin-bottom: 0;
 						}
 
 						.help-icon {
@@ -122,7 +121,7 @@
 						}
 
 						&:hover {
-							background: $idp-card-disabled-hover-background-color;
+							background: variables.$idp-card-disabled-hover-background-color;
 						}
 					}
 				}

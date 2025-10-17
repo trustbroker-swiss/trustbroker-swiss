@@ -12,7 +12,7 @@
  You should have received a copy of the GNU Affero General Public License along with this program.
  If not, see <https://www.gnu.org/licenses/>.
 -->
-<div class="{{ theme.name }}">
+<aside class="{{ theme.name }}">
 	<div class="helperSidebarHeadCard">
 		<h2 class="helperSidebarTitleContainer w-100">
 			<span class="helperSidebarTitle"> {{ "trustbroker.help.title" | translate }}</span>
@@ -42,12 +42,10 @@
 		<div class="helperSidebarContent">
 			<mat-expansion-panel togglePosition="before">
 				<mat-expansion-panel-header>
-					<mat-panel-title>
-						<p [innerHTML]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title } | safeMarkup"></p>
-					</mat-panel-title>
+					<mat-panel-title [innerHTML]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title } | safeMarkup" />
 				</mat-expansion-panel-header>
 				<p role="tabpanel" [innerHTML]="'trustbroker.help.' + idpObject.name + '.text' | translate | safeMarkup"></p>
 			</mat-expansion-panel>
 		</div>
 	}
-</div>
+</aside>

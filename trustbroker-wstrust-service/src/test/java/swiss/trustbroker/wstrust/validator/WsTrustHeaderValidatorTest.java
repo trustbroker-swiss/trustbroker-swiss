@@ -19,8 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.UUID;
-
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
@@ -31,13 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.opensaml.core.xml.util.XMLObjectSupport;
-import org.opensaml.soap.wsaddressing.Action;
 import org.opensaml.soap.wsaddressing.Address;
-import org.opensaml.soap.wsaddressing.MessageID;
-import org.opensaml.soap.wsaddressing.ReplyTo;
-import org.opensaml.soap.wsaddressing.To;
-import org.opensaml.soap.wstrust.WSTrustConstants;
 import org.slf4j.LoggerFactory;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.saml.util.SamlInitializer;
@@ -45,6 +37,7 @@ import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.saml.util.AssertionValidator;
 import swiss.trustbroker.test.util.MemoryAppender;
 import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
+import swiss.trustbroker.wstrust.util.WsTrustTestUtil;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.STRICT_STUBS)
@@ -52,7 +45,6 @@ class WsTrustHeaderValidatorTest {
 
 	private static final String TEST_AUDIENCE = "http://localhost:8080";
 
-	private static final String TEST_TO = WsTrustHeaderValidatorTest.class.getName();
 
 	private MemoryAppender memoryAppender;
 
@@ -96,7 +88,7 @@ class WsTrustHeaderValidatorTest {
 
 	@Test
 	void validateHeaderElementsNoActionTest() {
-		SoapMessageHeader requestHeader = givenRequestHeader();
+		var requestHeader = WsTrustTestUtil.givenRequestHeader();
 		requestHeader.setAction(null);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
 			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "");
@@ -106,7 +98,7 @@ class WsTrustHeaderValidatorTest {
 
 	@Test
 	void validateHeaderElementsInvalidActionTest() {
-		SoapMessageHeader requestHeader = givenRequestHeader();
+		var requestHeader = WsTrustTestUtil.givenRequestHeader();
 		requestHeader.getAction().setURI("http://invalidaction");
 		var ex = assertThrows(RequestDeniedException.class, () -> {
 			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "");
@@ -115,8 +107,19 @@ class WsTrustHeaderValidatorTest {
 	}
 
 	@Test
+	void validateHeaderElementsInvalidActionSoap11Test() {
+		var requestHeader = WsTrustTestUtil.givenRequestHeader();
+		requestHeader.setAction(null);
+		requestHeader.setSoapAction("http://invalidaction");
+		var ex = assertThrows(RequestDeniedException.class, () -> {
+			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "");
+		});
+		assertException("Action missing or invalid in SOAP header", ex);
+	}
+
+	@Test
 	void validateHeaderElementsNullMessageIdTest() {
-		SoapMessageHeader requestHeader = givenRequestHeader();
+		var requestHeader = WsTrustTestUtil.givenRequestHeader();
 		requestHeader.setMessageId(null);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
 			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "validateHeaderElementsNullMessageIdTest-Issuer");
@@ -126,7 +129,7 @@ class WsTrustHeaderValidatorTest {
 
 	@Test
 	void validateHeaderElementsNoMessageIdTest() {
-		SoapMessageHeader requestHeader = givenRequestHeader();
+		var requestHeader = WsTrustTestUtil.givenRequestHeader();
 		requestHeader.setMessageId(null);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
 			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "validateHeaderElementsNoMessageIdTest-Issuer");
@@ -136,7 +139,7 @@ class WsTrustHeaderValidatorTest {
 
 	@Test
 	void validateHeaderElementsNullReplayToTest() {
-		SoapMessageHeader requestHeader = givenRequestHeader();
+		var requestHeader = WsTrustTestUtil.givenRequestHeader();
 		requestHeader.setReplyTo(null);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
 			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "validateHeaderElementsNullReplayToTest-Issuer");
@@ -146,7 +149,7 @@ class WsTrustHeaderValidatorTest {
 
 	@Test
 	void validateHeaderElementsNullAddressTest() {
-		SoapMessageHeader requestHeader = givenRequestHeader();
+		var requestHeader = WsTrustTestUtil.givenRequestHeader();
 		requestHeader.getReplyTo().setAddress(null);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
 			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "");
@@ -156,7 +159,7 @@ class WsTrustHeaderValidatorTest {
 
 	@Test
 	void validateHeaderElementsNoAddressTest() {
-		SoapMessageHeader requestHeader = givenRequestHeader();
+		var requestHeader = WsTrustTestUtil.givenRequestHeader();
 		requestHeader.getReplyTo().getAddress().setURI(Address.NONE);
 		var ex = assertThrows(RequestDeniedException.class, () -> {
 			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "");
@@ -166,7 +169,7 @@ class WsTrustHeaderValidatorTest {
 
 	@Test
 	void validateHeaderElementsInvalidAddressTest() {
-		SoapMessageHeader requestHeader = givenRequestHeader();
+		var requestHeader = WsTrustTestUtil.givenRequestHeader();
 		requestHeader.getReplyTo().getAddress().setURI("http://randomaddress");
 		var ex = assertThrows(RequestDeniedException.class, () -> {
 			WsTrustHeaderValidator.validateHeaderElements(requestHeader, "");
@@ -176,57 +179,21 @@ class WsTrustHeaderValidatorTest {
 
 	@Test
 	void validateHeaderElementsValidTest() {
-		SoapMessageHeader requestHeader = givenRequestHeader();
+		SoapMessageHeader requestHeader = WsTrustTestUtil.givenRequestHeader();
 		assertDoesNotThrow(() -> {
-			WsTrustHeaderValidator.validateHeaderElements(requestHeader, TEST_TO);
+			WsTrustHeaderValidator.validateHeaderElements(requestHeader, WsTrustTestUtil.TEST_TO);
 		});
 	}
 
-	private To givenTo(String toValue) {
-		To to = (To) XMLObjectSupport.buildXMLObject(To.ELEMENT_NAME);
-		to.setURI(toValue);
-		return to;
+	@Test
+	void validateHeaderElementsValidSoap11Test() {
+		SoapMessageHeader requestHeader = WsTrustTestUtil.givenRequestHeader();
+		requestHeader.setSoapAction(requestHeader.getAction().getURI());
+		requestHeader.setAction(null);
+		assertDoesNotThrow(() -> {
+			WsTrustHeaderValidator.validateHeaderElements(requestHeader, WsTrustTestUtil.TEST_TO);
+		});
 	}
-
-	private Address givenAddress(String addressValue) {
-		Address address = (Address) XMLObjectSupport.buildXMLObject(Address.ELEMENT_NAME);
-		address.setURI(addressValue);
-		return address;
-	}
-
-	private ReplyTo givenReplyTo() {
-		return (ReplyTo) XMLObjectSupport.buildXMLObject(ReplyTo.ELEMENT_NAME);
-	}
-
-	private MessageID givenMessageId(String messageIdValue) {
-		MessageID messageID = (MessageID) XMLObjectSupport.buildXMLObject(MessageID.ELEMENT_NAME);
-		messageID.setURI(messageIdValue);
-		return messageID;
-	}
-
-	private Action givenAction(String actionValue) {
-		Action action = (Action) XMLObjectSupport.buildXMLObject(Action.ELEMENT_NAME);
-		action.setURI(actionValue);
-		return action;
-	}
-
-	private SoapMessageHeader givenRequestHeader() {
-		SoapMessageHeader requestHeader = new SoapMessageHeader();
-		requestHeader.setAction(givenAction(WSTrustConstants.WSA_ACTION_RST_ISSUE));
-		requestHeader.setMessageId(givenMessageId(UUID.randomUUID().toString()));
-		requestHeader.setReplyTo(givenReplyToAddress(givenReplyTo(), givenAddress(Address.ANONYMOUS)));
-		requestHeader.setTo(givenTo(TEST_TO));
-		return requestHeader;
-	}
-
-	private ReplyTo givenReplyToAddress(ReplyTo replyTo, Address address) {
-		if (replyTo == null) {
-			return null;
-		}
-		replyTo.setAddress(address);
-		return replyTo;
-	}
-
 	private void assertException(String expectedString, Exception ex) {
 		assertTrue(((RequestDeniedException)ex).getInternalMessage().contains(expectedString),
 				"'" + expectedString + "' not found in: " + ex.getMessage());

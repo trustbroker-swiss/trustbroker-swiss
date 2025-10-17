@@ -22,10 +22,9 @@ import { LanguageService } from '../../services/language.service';
 import { ThemeService } from '../../services/theme-service';
 import { AnnouncementWithCookieName } from '../announcements.component';
 import { MatCheckbox, MatCheckboxChange } from '@angular/material/checkbox';
-import { ObCheckboxDirective } from '@oblique/oblique';
-import { ActivatedRoute } from '@angular/router';
 import { Configuration } from '../../model/Configuration';
 import { CookieService } from '../../services/cookie-service';
+import { ApiService } from '../../services/api.service';
 
 @Component({
 	selector: 'app-announcement',
@@ -33,7 +32,7 @@ import { CookieService } from '../../services/cookie-service';
 	styleUrls: ['./announcement.component.scss'],
 	standalone: true,
 	changeDetection: ChangeDetectionStrategy.OnPush,
-	imports: [ObCheckboxDirective, TranslatePipe, MatCheckbox]
+	imports: [TranslatePipe, MatCheckbox]
 })
 export class AnnouncementComponent implements OnInit {
 	@Input({ required: true })
@@ -47,13 +46,13 @@ export class AnnouncementComponent implements OnInit {
 	alertType: string;
 	contactUrl: string;
 
-	private readonly config: Configuration = this.route.snapshot.data['config'];
+	private readonly config: Configuration = this.apiService.getConfiguration();
 
 	constructor(
 		private readonly languageService: LanguageService,
 		private readonly translateService: TranslateService,
 		private readonly cookieService: CookieService,
-		private readonly route: ActivatedRoute
+		private readonly apiService: ApiService
 	) {}
 
 	ngOnInit(): void {

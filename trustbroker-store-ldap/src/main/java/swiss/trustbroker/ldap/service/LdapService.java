@@ -15,6 +15,8 @@
 
 package swiss.trustbroker.ldap.service;
 
+import static org.springframework.core.Ordered.LOWEST_PRECEDENCE;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -27,6 +29,7 @@ import javax.naming.directory.SearchControls;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.text.StringSubstitutor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.annotation.Order;
 import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.stereotype.Service;
 import swiss.trustbroker.api.idm.dto.IdmRequest;
@@ -46,8 +49,10 @@ import swiss.trustbroker.util.IdmAttributeUtil;
 
 @Service
 @Slf4j
+@Order(LOWEST_PRECEDENCE)
 public class LdapService implements IdmQueryService {
 
+	private static final String COLON = ":";
 	private static final String SUBJECT_NAME_ID = "subjectNameId";
 	private static final String PLACEHOLDER_PATTERN = "\\$\\{([^}]+)}";
 	private final LdapTemplate ldapTemplate;
@@ -141,13 +146,22 @@ public class LdapService implements IdmQueryService {
 	private String getPlaceholderValue(String placeholder, CpResponseData cpResponse) {
 		if (SUBJECT_NAME_ID.equals(placeholder)) {
 			return cpResponse.getNameId();
-		} else {
+		}
+		else if (isChainedQuery(placeholder)) {
+			return getUserDetail(placeholder, cpResponse);
+		}
+		else {
 			return cpResponse.getAttribute(placeholder);
 		}
 	}
 
 	private String[] getAttributesToFetch(IdmRequest idmQuery) {
-		final var attrs = idmQuery.getAttributeSelection().stream().map(AttributeName::getName).toArray(String[]::new);
+		final var attributeSelection = idmQuery.getAttributeSelection();
+		if (attributeSelection.isEmpty()){
+			log.debug("Fetching all LDAP attributes.");
+			return new String[]{"*"};
+		}
+		final var attrs = attributeSelection.stream().map(AttributeName::getName).toArray(String[]::new);
 		log.debug("LDAP Attributes to fetch={}", CollectionUtil.toLogString(attrs));
 		return attrs;
 	}
@@ -167,6 +181,18 @@ public class LdapService implements IdmQueryService {
 
 		List<AttributeName> attributeSelection = IdmAttributeUtil.getIdmAttributeSelection(relyingPartyConfig, idmQuery);
 		return IdmAttributeUtil.getAttributesForQueryResponse(aggregatedAttributes, idmQuery.getName(), attributeSelection);
+	}
+
+	private boolean isChainedQuery(String placeholder) {
+		return placeholder.lastIndexOf(COLON) != -1;
+	}
+
+	private String getUserDetail(String placeholder, CpResponseData cpResponse) {
+		// Example: placeholder in form of `IDM:<query_name>:<definition_name>`
+		final var lastColonIndex = placeholder.lastIndexOf(COLON);
+		final var claimName = placeholder.substring(lastColonIndex + 1);
+		final var source = placeholder.substring(0, lastColonIndex);
+		return cpResponse.getUserDetail(claimName, source);
 	}
 
 }

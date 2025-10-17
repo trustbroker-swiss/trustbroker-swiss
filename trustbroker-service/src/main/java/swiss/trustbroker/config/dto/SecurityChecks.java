@@ -136,6 +136,16 @@ public class SecurityChecks {
 	private boolean validateXmlSchema = true;
 
 	/**
+	 * Validate HTTP request headers. Currently <code>referer</code> and <code>origin</code> can be validated against the
+	 * AcWhitelist of an RP.
+	 * <br/>
+	 * Default: true
+	 * @since 1.12.0
+	 */
+	@Builder.Default
+	private boolean validateHttpHeaders = true;
+
+	/**
 	 * Check assertion consumer URL or HTTP Referer against configured whitelist.
 	 * <br/>
 	 * Default: true

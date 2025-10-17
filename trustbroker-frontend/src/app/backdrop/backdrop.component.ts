@@ -21,7 +21,8 @@ import { ThemeService } from '../services/theme-service';
 @Component({
 	selector: 'app-backdrop',
 	templateUrl: './backdrop.component.html',
-	styleUrls: ['./backdrop.component.scss']
+	styleUrls: ['./backdrop.component.scss'],
+	standalone: false
 })
 export class BackdropComponent {
 	@Input() theme: Theme = ThemeService.defaultTheme;

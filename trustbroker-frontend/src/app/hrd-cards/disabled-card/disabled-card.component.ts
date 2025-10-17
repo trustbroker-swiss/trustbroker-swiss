@@ -21,7 +21,8 @@ import { SafeHtml } from '@angular/platform-browser';
 @Component({
 	selector: 'app-disabled-card',
 	templateUrl: './disabled-card.component.html',
-	styleUrls: ['./disabled-card.component.scss']
+	styleUrls: ['./disabled-card.component.scss'],
+	standalone: false
 })
 export class DisabledCardComponent {
 	@Input() cardText: SafeHtml;

@@ -37,16 +37,25 @@ class SamlBindingTest {
 		return new Object[][] {
 				{ SamlBinding.ARTIFACT, null, true },
 				{ SamlBinding.ARTIFACT, SamlBinding.ARTIFACT, true },
-				{ SamlBinding.ARTIFACT, SamlBinding.POST, false },
-				{ SamlBinding.ARTIFACT, SamlBinding.REDIRECT, false },
+				{ SamlBinding.ARTIFACT, SamlBinding.POST, true }, // ARTIFACT response to POST OK
+				{ SamlBinding.ARTIFACT, SamlBinding.REDIRECT, true }, // ARTIFACT response to REDIRECT OK
+				{ SamlBinding.ARTIFACT, SamlBinding.SOAP, false },
 				{ SamlBinding.POST, null, true },
 				{ SamlBinding.POST, SamlBinding.POST, true },
 				{ SamlBinding.POST, SamlBinding.REDIRECT, true }, // special case
 				{ SamlBinding.POST, SamlBinding.ARTIFACT, false },
+				{ SamlBinding.POST, SamlBinding.SOAP, false },
 				{ SamlBinding.REDIRECT, null, true },
 				{ SamlBinding.REDIRECT, SamlBinding.REDIRECT, true },
 				{ SamlBinding.REDIRECT, SamlBinding.POST, false },
-				{ SamlBinding.REDIRECT, SamlBinding.ARTIFACT, false }
+				{ SamlBinding.REDIRECT, SamlBinding.ARTIFACT, false },
+				{ SamlBinding.REDIRECT, SamlBinding.SOAP, false },
+				// SOAP response not supported
+				{ SamlBinding.SOAP, null, true },
+				{ SamlBinding.SOAP, SamlBinding.SOAP, true },
+				{ SamlBinding.SOAP, SamlBinding.REDIRECT, false },
+				{ SamlBinding.SOAP, SamlBinding.POST, false },
+				{ SamlBinding.SOAP, SamlBinding.ARTIFACT, false },
 		};
 	}
 

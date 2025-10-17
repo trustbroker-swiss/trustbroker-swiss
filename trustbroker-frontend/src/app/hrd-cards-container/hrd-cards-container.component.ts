@@ -16,6 +16,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef } from '@angular/core';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 import { ApiService } from '../services/api.service';
+import { ValidationService } from '../services/validation-service';
 import { Observable, of, switchMap } from 'rxjs';
 import { HttpResponse } from '@angular/common/http';
 import { IdpObjects } from '../model/IdpObject';
@@ -24,7 +25,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 @Component({
 	selector: 'app-hrd-cards-container',
 	templateUrl: './hrd-cards-container.component.html',
-	changeDetection: ChangeDetectionStrategy.OnPush
+	changeDetection: ChangeDetectionStrategy.OnPush,
+	standalone: false
 })
 export class HrdCardsContainerComponent {
 	idpObjects$ = this.route.params.pipe(
@@ -35,6 +37,7 @@ export class HrdCardsContainerComponent {
 	constructor(
 		private readonly route: ActivatedRoute,
 		private readonly apiService: ApiService,
+		private readonly validation: ValidationService,
 		private readonly router: Router,
 		private readonly destroyRef: DestroyRef
 	) {}
@@ -45,7 +48,9 @@ export class HrdCardsContainerComponent {
 			// console.debug('[HrdCardsContainerComponent] missing issuer');
 			return of({});
 		}
-		return this.apiService.getIdpObjects(params['issuer'], params['authnRequestId']).pipe(
+		const issuer = this.validation.getValidParameter(params, 'issuer', ValidationService.ID, '');
+		const authnRequestId = this.validation.getValidParameter(params, 'authnRequestId', ValidationService.ID, '');
+		return this.apiService.getIdpObjects(issuer, authnRequestId).pipe(
 			switchMap(response => this.processHttpResponse(response)),
 			takeUntilDestroyed(this.destroyRef)
 		);

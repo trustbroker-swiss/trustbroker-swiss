@@ -40,6 +40,11 @@ public class IdmProvisioningRequest {
 	final String homeName;
 
 	/**
+	 * The account source from CP config
+	 */
+	final String accountSource;
+
+	/**
 	 * Used for provisioning during migration from a CP to another.
 	 * <br/>
 	 * It is used to detect data from the source CP of the migration when provisioning for the target CP.
@@ -60,6 +65,11 @@ public class IdmProvisioningRequest {
 	 * If true, provisioning changes are only logged, not applied.
 	 */
 	final boolean logOnly;
+
+	/**
+	 * Provisioning mode flags specific to implementations. All flags for all implementations are passed in.
+	 */
+	final List<String> modes;
 
 	/**
 	 * Map of attributes received from the IDM (not null, not modifiable).

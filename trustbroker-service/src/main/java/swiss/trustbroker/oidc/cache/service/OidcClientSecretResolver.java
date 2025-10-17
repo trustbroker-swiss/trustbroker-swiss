@@ -13,7 +13,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.oidc.client.service;
+package swiss.trustbroker.oidc.cache.service;
 
 import java.io.IOException;
 import java.nio.file.Files;

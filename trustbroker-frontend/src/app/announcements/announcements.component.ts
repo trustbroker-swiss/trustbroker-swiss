@@ -20,6 +20,7 @@ import { ActivatedRoute, Params, Router } from '@angular/router';
 import { AnnouncementsService } from '../services/announcements.service';
 import { AnnouncementResponse } from '../services/announcement-response';
 import { ThemeService } from '../services/theme-service';
+import { ValidationService } from '../services/validation-service';
 import { Theme } from '../model/Theme';
 import { map } from 'rxjs/operators';
 import { Md5 } from 'ts-md5';
@@ -28,6 +29,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { MatButton } from '@angular/material/button';
 import { Configuration } from '../model/Configuration';
 import { CookieService } from '../services/cookie-service';
+import { ApiService } from '../services/api.service';
 
 export type AnnouncementWithCookieName = AnnouncementResponse & { cookieName: string };
 
@@ -47,15 +49,17 @@ export default class AnnouncementsComponent implements OnInit {
 	private authnRequestId: string;
 	private issuer: string;
 	private appName: string;
-	private readonly config: Configuration = this.route.snapshot.data['config'];
+	private readonly config: Configuration = this.apiService.getConfiguration();
 
 	constructor(
 		private readonly announcementService: AnnouncementsService,
 		private readonly route: ActivatedRoute,
 		private readonly router: Router,
 		private readonly themeService: ThemeService,
+		private readonly validation: ValidationService,
 		private readonly cookieService: CookieService,
-		private readonly cd: ChangeDetectorRef
+		private readonly cd: ChangeDetectorRef,
+		private readonly apiService: ApiService
 	) {
 		this.theme = this.themeService.getTheme();
 		this.themeService.subscribe({
@@ -67,9 +71,9 @@ export default class AnnouncementsComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.route.params.subscribe((params: Params) => {
-			this.authnRequestId = params['authnRequestId'];
-			this.issuer = params['issuer'];
-			this.appName = params['appName'];
+			this.authnRequestId = this.validation.getValidParameter(params, 'authnRequestId', ValidationService.ID, '');
+			this.issuer = this.validation.getValidParameter(params, 'issuer', ValidationService.ID, '');
+			this.appName = this.validation.getValidParameter(params, 'appName', ValidationService.ID, '');
 			const navRoute = `home/${this.issuer}/${this.authnRequestId}`;
 			this.announcementService
 				.getAnnouncements(this.issuer, this.appName)

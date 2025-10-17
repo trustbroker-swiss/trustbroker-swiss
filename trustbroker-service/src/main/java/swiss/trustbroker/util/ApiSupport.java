@@ -199,11 +199,15 @@ public class ApiSupport {
 
 	public static final String ADFS_ENTRY_URL_TRAILING_SLASH = ADFS_ENTRY_URL + "/";
 
+	public static final String ADFS_WS_TRUST_ENTRY_URL = ADFS_PATH + "/services/trust";
+
+	public static final String ADFS_WS_TRUST_COMPAT_PATH = "/13/issuedtokenmixedsymmetricbasic256";
+
+	public static final String ADFS_WS_TRUST_COMPAT_URL = ADFS_WS_TRUST_ENTRY_URL + ADFS_WS_TRUST_COMPAT_PATH;
+
 	public static final String XTB_LEGACY_ADFS_PATH = "/trustbroker" + ADFS_PATH; // deprecated
 
 	public static final String XTB_LEGACY_ENTRY_URL = XTB_LEGACY_ADFS_PATH + ADFS_ENTRY_PATH; // deprecated
-
-	public static final String  ADFS_SERVICES_PATH = ADFS_PATH + "/services/trust/13/issuedtokensymmetricbasic256";
 
 	public static final String XTB_ALTERNATE_METADATA_ENDPOINT = "/FederationMetadata/2007-06/FederationMetadata.xml";
 

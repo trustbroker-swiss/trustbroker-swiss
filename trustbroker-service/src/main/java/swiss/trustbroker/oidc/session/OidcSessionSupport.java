@@ -603,8 +603,8 @@ public class OidcSessionSupport {
 	// make sure federation session tracking (OIDC session cookie) survives redirect from OIDC to SAML and back
 	public static void checkSessionOnFederationRedirect(String path, HttpServletRequest request) {
 		if (ApiSupport.isSpringFederationPath(path) && HttpExchangeSupport.getRunningHttpSession() == null) {
-			var origin = StringUtil.clean(request.getHeader(HttpHeaders.ORIGIN));
-			var referer = StringUtil.clean(request.getHeader(HttpHeaders.REFERER));
+			var origin = StringUtil.clean(WebUtil.getOrigin(request));
+			var referer = StringUtil.clean(WebUtil.getReferer(request));
 			var cookies = StringUtil.clean(request.getHeader(HttpHeaders.COOKIE));
 			var userAgent = StringUtil.clean(request.getHeader(HttpHeaders.USER_AGENT));
 			throw new TechnicalException(String.format(

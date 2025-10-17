@@ -22,7 +22,6 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
@@ -50,15 +49,12 @@ import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.RelyingPartyDefinitions;
 import swiss.trustbroker.config.dto.SecurityChecks;
 import swiss.trustbroker.federation.xmlconfig.ArtifactBinding;
-import swiss.trustbroker.federation.xmlconfig.OidcClient;
-import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.federation.xmlconfig.SecurityPolicies;
 import swiss.trustbroker.federation.xmlconfig.SsoGroup;
 import swiss.trustbroker.federation.xmlconfig.SsoGroupSetup;
 import swiss.trustbroker.homerealmdiscovery.util.OperationalUtil;
 import swiss.trustbroker.saml.test.util.ServiceSamlTestUtil;
-import swiss.trustbroker.sessioncache.dto.StateData;
 
 @SpringBootTest
 @ContextConfiguration(classes = { RelyingPartySetupService.class })
@@ -296,7 +292,7 @@ class RelyingPartySetupServiceTest {
 		mockClaimsPartyConfiguration();
 
 		// SAML response from problem CP
-		var authnResponseNoValidate = ServiceSamlTestUtil.loadPITResponse();
+		var authnResponseNoValidate = ServiceSamlTestUtil.loadSampleResponse();
 		var policies = relyingPartySetupService.getPartySecurityPolicies(authnResponseNoValidate);
 		assertThat(policies.getValidateXmlSchema(), is(false));
 
@@ -372,24 +368,6 @@ class RelyingPartySetupServiceTest {
 		assertThat(relyingPartySetupService.getSsoGroupConfig("unknown", true), is(Optional.empty()));
 		assertThrows(TechnicalException.class,
 				() -> relyingPartySetupService.getSsoGroupConfig("invalid", false));
-	}
-
-	@Test
-	void getQoaConfigurationTest() {
-		var rpId = "urn:test:TESTRP";
-		var qoaRp = "urn:test:MOCKRP-QOA";
-		mockRelyingPartyConfiguration();
-		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(rpId, null);
-		var qoaRelyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(qoaRp, null);
-		assertNull(relyingPartySetupService.getQoaConfiguration(null, relyingParty, null).config());
-		assertNotNull(relyingPartySetupService.getQoaConfiguration(null, qoaRelyingParty, null).config());
-
-		var stateData = StateData.builder().id("any").oidcClientId(qoaRp).build();
-		var qoa = Qoa.builder().build();
-		var oidcClient = OidcClient.builder().qoa(qoa).build();
-		doReturn(Optional.of(oidcClient)).when(relyingPartyDefinitions).getOidcClientConfigById(qoaRp, null);
-
-		assertEquals(qoa, relyingPartySetupService.getQoaConfiguration(stateData, qoaRelyingParty, null).config());
 	}
 
 	private void mockTokenLifeTime(long tokenLifeTime) {

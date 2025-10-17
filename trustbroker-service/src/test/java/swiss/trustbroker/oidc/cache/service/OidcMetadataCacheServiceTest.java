@@ -13,7 +13,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.oidc.client.service;
+package swiss.trustbroker.oidc.cache.service;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -60,6 +60,10 @@ import swiss.trustbroker.federation.xmlconfig.ClientAuthenticationMethods;
 import swiss.trustbroker.federation.xmlconfig.OidcClaimsSource;
 import swiss.trustbroker.federation.xmlconfig.OidcClaimsSources;
 import swiss.trustbroker.federation.xmlconfig.OidcClient;
+import swiss.trustbroker.federation.xmlconfig.RelyingParty;
+import swiss.trustbroker.federation.xmlconfig.RelyingPartySetup;
+import swiss.trustbroker.oidc.OidcHttpClientProvider;
+import swiss.trustbroker.oidc.OidcMockTestData;
 import swiss.trustbroker.oidc.client.dto.OpenIdProviderConfiguration;
 
 @SpringBootTest(classes = { OidcMetadataCacheService.class })
@@ -109,6 +113,9 @@ class OidcMetadataCacheServiceTest {
 		var cps = givenClaimsParties(cp);
 		doReturn(cps).when(relyingPartyDefinitions).getClaimsProviderSetup();
 		doReturn(new OidcProperties()).when(trustBrokerProperties).getOidc();
+
+		var rps = givenRelyingParties();
+		doReturn(rps).when(relyingPartyDefinitions).getRelyingPartySetup();
 
 		service.refreshConfigurations();
 
@@ -263,4 +270,8 @@ class OidcMetadataCacheServiceTest {
 		return ClaimsProviderSetup.builder().claimsParties(cps).build();
 	}
 
+	private RelyingPartySetup givenRelyingParties() {
+		List<RelyingParty> rps = List.of(RelyingParty.builder().id("ignored").build());
+		return RelyingPartySetup.builder().relyingParties(rps).build();
+	}
 }

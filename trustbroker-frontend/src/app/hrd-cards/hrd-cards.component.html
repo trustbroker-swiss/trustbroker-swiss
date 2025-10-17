@@ -13,10 +13,11 @@
  If not, see <https://www.gnu.org/licenses/>.
 -->
 @if (showHrd) {
-	<main class="mainContent">
+	@let theme = (themeService.theme$ | async) ?? ThemeService.defaultTheme;
+	<div class="mainContent">
 		<div class="title-container" id="titleContainer">
-			<h1 class="high-emphasis mb-2">{{ "trustbroker.hrd.main.title" | translate }}</h1>
-			<div class="body-1 medium-emphasis mb-2">
+			<h2>{{ "trustbroker.hrd.main.title" | translate }}</h2>
+			<div>
 				<div>
 					<p [innerHTML]="'trustbroker.hrd.main.subtitle' | translate | safeMarkup"></p>
 				</div>
@@ -48,10 +49,11 @@
 								}
 								<img mat-card-image [src]="getImageUrl(idpObject.image)" alt="{{ idpObject.title }}" (click)="onClickCard(idpObject)" />
 								<mat-card-title class="high-emphasis">
-									<h2
+									<p
+										class="strong"
 										[id]="idpObject.title"
 										[innerHTML]="'trustbroker.hrd.cards.' + idpObject.name + '.title' | translate: { Default: idpObject.title } | safeMarkup"
-									></h2>
+									></p>
 								</mat-card-title>
 							</mat-card>
 						} @else {
@@ -71,5 +73,5 @@
 				}
 			</div>
 		</div>
-	</main>
+	</div>
 }

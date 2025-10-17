@@ -13,7 +13,9 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-@import "variables";
+@use "src/styles/variables";
+@use "@oblique/oblique/styles/scss/core/mixins/typography";
+@use "src/styles/mixins";
 
 app-mat-header {
 
@@ -23,12 +25,12 @@ app-mat-header {
 		}
 
 		li.active {
-			background-color: $dropdown-active-color;
+			background-color: variables.$dropdown-active-color;
 		}
 
 		button:hover, button:focus {
-			border-left: 5px solid $ob-accent;
-			background-color: $focus-dropdown-background-color;
+			border-left: 5px solid variables.$ob-accent;
+			background-color: variables.$focus-dropdown-background-color;
 			outline: none;
 		}
 
@@ -37,15 +39,8 @@ app-mat-header {
 		}
 	}
 
-	button.app-header-button {
-
-		.xtb-default.ob-icon-wrapper {
-			color: $medium-emphasis-color;
-		}
-
-	}
-
-	button.xtb-default[help-icon-button] {
+	button.xtb-default[help-icon-button],
+	a.xtb-default.app-header-button {
 		padding-left: 0;
 		padding-right: 0;
 		min-width: 40px;
@@ -57,19 +52,28 @@ app-mat-header {
 	}
 
 	.xtb-default.app-help-button-text {
-		display: none;
+		@include mixins.visually-hidden;
 	}
-
 }
 
 button.xtb-default.app-header-button {
-	color: $medium-emphasis-color;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24) !important;
+	@include typography.ob-body1();
+	border: none;
+	outline: none;
 }
 
 // hide unused decorators
-.xtb-default.app-globe, img.xtb-default.app-arrow-down {
+.xtb-default.app-globe {
 	display: none;
+}
+
+.xtb-default.app-arrow-down {
+	padding-left: 0.3rem;
+	color: blue;
+}
+
+.xtb-default .app-language-selector:has(div.app-language-dropdown) .app-arrow-down {
+	transform: rotate(0.5turn) translate(-0.3rem);
 }
 
 .xtb-default .app-icon {

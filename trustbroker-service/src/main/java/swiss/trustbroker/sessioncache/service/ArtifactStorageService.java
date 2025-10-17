@@ -50,6 +50,10 @@ public class ArtifactStorageService extends AbstractStorageService {
 				var start = clock.instant();
 				log.info("Start reaping ArtifactCache...");
 				var reaped = repository.deleteAllInBatchByExpirationTimestampBefore(Timestamp.from(start));
+				if (reaped == null) {
+					log.debug("DB deleteAllInBatchByExpirationTimestampBefore returned null");
+					reaped = 0;
+				}
 				var duration = Duration.between(start, clock.instant()).toMillis();
 				metricsService.gauge(MetricsService.SESSION_LABEL + MetricsService.SAML_LABEL + "artifacts",
 						numEntries - reaped);

@@ -74,7 +74,7 @@ public class EncryptionUtil {
 		if (credentials == null || credentials.isEmpty()) {
 			throw new TechnicalException(String.format(
 					"Cannot decrypt received assertion from response=%s. Invalid or missing "
-							+ "ClaimsParty.Certificates.EncryptionKeystore for=%s : %s", responseId, issuerId,
+							+ "Certificates.EncryptionKeystore for=%s : %s", responseId, issuerId,
 					OpenSamlUtil.samlObjectToString(encryptedAssertion, true)));
 		}
 
