@@ -16,8 +16,10 @@
 package swiss.trustbroker.api.idm.dto;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -50,6 +52,17 @@ public class IdmResult {
 	private Map<AttributeName, List<String>> properties = new HashMap<>();
 
 	private int originalPropertiesCount;
+
+	/**
+	 * Returns the store(s) actually queried - including those that did not find a result.
+	 * <br/>
+	 * Currently this data is passed, to the <code>IdmProvisioningService</code> implementations.
+	 *
+	 * @since 1.12.0
+	 * @see IdmRequest#getStore()
+	 */
+	@Builder.Default
+	private Set<String> queriedStores = new HashSet<>();
 
 	/**
 	 * This is not consumed directly by the XTB core code, but may be passed to other interfaces.

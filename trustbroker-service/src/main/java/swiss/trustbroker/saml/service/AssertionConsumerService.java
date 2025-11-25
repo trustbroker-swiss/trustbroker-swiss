@@ -124,7 +124,7 @@ public class AssertionConsumerService {
 		// validation
 		var responseIssuer = OpenSamlUtil.getMessageIssuerId(responseData.getResponse());
 		var referrer = idpStateData.getReferer();
-		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(responseIssuer, referrer);
+		var claimsParty = getClaimsPartyForResponseIssuer(responseIssuer, referrer, idpStateData.getIssuer());
 		var decryptionCredentials = claimsParty.getCpDecryptionCredentials();
 		var requireEncryptedAssertion = claimsParty.requireEncryptedAssertion();
 		var responseAssertions = SamlUtil.getResponseAssertions(responseData.getResponse(), decryptionCredentials, requireEncryptedAssertion);
@@ -260,6 +260,10 @@ public class AssertionConsumerService {
 
 	private void validateResponse(boolean expectSuccess, ResponseData<Response> responseData, StateData idpStateData,
 			ClaimsParty claimsParty, List<Assertion> responseAssertions) {
+		var expectedIssuer = idpStateData.getIssuer();
+		if (claimsParty.getId().equals(expectedIssuer)) {
+			expectedIssuer = claimsParty.getResponseIssuer();
+		}
 		validateBinding(claimsParty, responseData.getBinding(), idpStateData.getRequestedResponseBinding());
 		var existingRelayState = idpStateData.getRelayState();
 		List<Credential> claimTrustCred = claimsParty.getCpTrustCredential();
@@ -269,7 +273,7 @@ public class AssertionConsumerService {
 
 		var expectedValues = AssertionValidator.ExpectedAssertionValues
 				.builder()
-				.expectedIssuer(idpStateData.getIssuer())
+				.expectedIssuer(expectedIssuer)
 				.expectedAudience(expectedAudienceId)
 				.expectSuccess(expectSuccess)
 				.expectedRelayState(existingRelayState)
@@ -922,7 +926,7 @@ public class AssertionConsumerService {
 					"referer=%s not accepted for rpIssuerId=%s not matching AcWhitelist or XTB perimeter URLs",
 					referer, relyingParty.getId()));
 		}
-		if (origin != null && !WebUtil.isAllowedOrigin(allowedUrls, origin)) {
+		if (origin != null && !WebUtil.isNullOrigin(origin) && !WebUtil.isAllowedOrigin(allowedUrls, origin)) {
 			throw new RequestDeniedException(String.format(
 					"origin=%s not accepted for rpIssuerId=%s not matching AcWhitelist or XTB perimeter URLs",
 					origin, relyingParty.getId()));
@@ -945,7 +949,7 @@ public class AssertionConsumerService {
 	private CpResponse validateAndGetCpResponse(ResponseData<Response> responseData, StateData idpStateData) {
 		var responseIssuer = OpenSamlUtil.getMessageIssuerId(responseData.getResponse());
 		var referrer = idpStateData.getReferer();
-		var claimsParty = relyingPartySetupService.getClaimsProviderSetupByIssuerId(responseIssuer, referrer);
+		var claimsParty = getClaimsPartyForResponseIssuer(responseIssuer, referrer, idpStateData.getIssuer());
 		var decryptionCredentials = claimsParty.getCpDecryptionCredentials();
 		boolean requireEncryptedAssertion = claimsParty.requireEncryptedAssertion();
 		List<Assertion> responseAssertions = SamlUtil.getResponseAssertions(responseData.getResponse(), decryptionCredentials, requireEncryptedAssertion);
@@ -959,6 +963,24 @@ public class AssertionConsumerService {
 		// session for SSO
 		idpStateData.setCpResponse(cpResponse);
 		return cpResponse;
+	}
+
+	ClaimsParty getClaimsPartyForResponseIssuer(String responseIssuer, String referrer, String expectedIssuer) {
+		// 1) pick single CP.ID or CP.responseIssuer match
+		var claimsParties = relyingPartySetupService.getClaimsProviderSetupByResponseIssuerId(responseIssuer);
+		if (claimsParties.size() == 1) {
+			return claimsParties.get(0);
+		}
+		// 2) if multiple match CP.ID or CP.responseIssuer pick the one matching the expected session issuer
+		var claimsPartyOpt = claimsParties
+				.stream()
+				.filter(claimsParty -> claimsParty.getId().equalsIgnoreCase(expectedIssuer))
+				.findFirst();
+		if (claimsPartyOpt.isPresent()) {
+			return claimsPartyOpt.get();
+		}
+		// 3) referrer only match or none of claimsParties matches expected session issuer (usually an error case)
+		return relyingPartySetupService.getClaimsProviderSetupByIssuerId(responseIssuer, referrer);
 	}
 
 }

@@ -19,8 +19,8 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.opensaml.saml.saml2.core.StatusCode;
 import swiss.trustbroker.api.idm.service.IdmStatusPolicyCallback;
-import swiss.trustbroker.common.exception.ErrorCode;
 import swiss.trustbroker.common.exception.RequestDeniedException;
+import swiss.trustbroker.common.exception.StandardErrorCode;
 import swiss.trustbroker.federation.xmlconfig.Flow;
 import swiss.trustbroker.federation.xmlconfig.StatusPolicy;
 import swiss.trustbroker.saml.dto.CpResponse;
@@ -37,7 +37,7 @@ public class DefaultIdmStatusPolicyCallback implements IdmStatusPolicyCallback {
 		switch (policy) {
 			case BLOCK:
 				throw new RequestDeniedException(
-						ErrorCode.UNKNOWN_PRINCIPAL,
+						StandardErrorCode.UNKNOWN_PRINCIPAL,
 						String.format("User with clientExtId=%s has state=%s - blocked with error page",
 								userId, userStatus));
 			case BLOCK_EXCEPTION, BLOCK_RESPONDER:

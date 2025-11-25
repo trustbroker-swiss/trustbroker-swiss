@@ -417,7 +417,7 @@ public class WebUtil {
 	// Origin is scheme://host[:port] or "null"
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin
 	public static String getValidOrigin(String origin) {
-		if ("null".equals(origin)) {
+		if (isNullOrigin(origin)) {
 			// null is not recommended - maybe needed for hybrid mobile apps?
 			// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
 			log.info("Received valid origin={}", origin);
@@ -425,6 +425,11 @@ public class WebUtil {
 		}
 		var uri = getValidatedUri(origin);
 		return getValidOrigin(uri);
+	}
+
+	// Returns true if the origin is the special "null" value
+	public static boolean isNullOrigin(String origin) {
+		return "null".equals(origin);
 	}
 
 	// Convenience method if the origin was already parsed. "null" origin is not supported.

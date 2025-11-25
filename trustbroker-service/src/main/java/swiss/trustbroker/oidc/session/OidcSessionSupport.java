@@ -1038,10 +1038,10 @@ public class OidcSessionSupport {
 		if (client.isPresent()) {
 			var policies = client.get().getOidcSecurityPolicies();
 			if (policies.getTokenTimeToLiveMin() != null) { // undefined per default
-				ttl = 60 * client.get().getOidcSecurityPolicies().getTokenTimeToLiveMin();
+				ttl = 60 * policies.getTokenTimeToLiveMin();
 			}
 			if (policies.getSessionTimeToLiveMin() != null) { // undefined per default
-				ttl = 60 * client.get().getOidcSecurityPolicies().getSessionTimeToLiveMin();
+				ttl = 60 * policies.getSessionTimeToLiveMin();
 			}
 		}
 		return ttl;

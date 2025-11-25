@@ -30,7 +30,11 @@ public class WsTrustValidationResult {
 	// trigger recomputation of assertion attributes?
 	private boolean recomputeAttributes;
 
-	private String recipientIssuerId;
+	// required issuer
+	private String issuerId;
+
+	// optional recipient restriction
+	private String recipientId;
 
 	// override response Lifetime:
 	private boolean useAssertionLifetime;

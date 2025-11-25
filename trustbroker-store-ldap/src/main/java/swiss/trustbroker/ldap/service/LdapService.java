@@ -89,6 +89,7 @@ public class LdapService implements IdmQueryService {
 				log.debug("Skipping idmService={} for idmQuery={}", ExternalStores.LDAP, idmQuery);
 				continue;
 			}
+			result.getQueriedStores().add(requestedStore);
 			log.debug("LDAP call: issuer={} nameID={} relyingPartyIssuerId={}",
 					cpResponse.getIssuerId(), cpResponse.getNameId(), relyingPartyConfig.getId());
 			final var appFilter = idmQuery.getAppFilter();

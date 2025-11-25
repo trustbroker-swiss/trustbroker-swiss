@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Properties;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.xml.XMLConstants;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerConfigurationException;
@@ -29,6 +30,7 @@ import lombok.AllArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.ApplicationContext;
@@ -47,6 +49,7 @@ import org.springframework.ws.soap.security.wss4j2.support.CryptoFactoryBean;
 import org.springframework.ws.soap.server.endpoint.SoapFaultDefinition;
 import org.springframework.ws.soap.server.endpoint.SoapFaultMappingExceptionResolver;
 import org.springframework.ws.transport.http.MessageDispatcherServlet;
+import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.saml.util.CredentialUtil;
 import swiss.trustbroker.common.util.WSSConstants;
 import swiss.trustbroker.config.TrustBrokerProperties;
@@ -84,16 +87,17 @@ public class WebServiceConfiguration extends WsConfigurerAdapter {
 		servlet.setApplicationContext(applicationContext);
 		servlet.setTransformWsdlLocations(true);
 		var wsTrustConfigPath = wsTrustConfig.getWsBasePath();
-		var paths = List.of(
-				// configured value
-				wsTrustConfigPath,
-				// XTB default
-				ApiSupport.WSTRUST_API,
-				// ADFS compatibility
-				ApiSupport.ADFS_WS_TRUST_ENTRY_URL,
-				ApiSupport.ADFS_WS_TRUST_COMPAT_URL,
-				wsTrustConfigPath + ApiSupport.ADFS_WS_TRUST_COMPAT_PATH
-		).stream().collect(Collectors.toSet()); // Set.of does not allow duplicates
+		var paths = Stream.of(
+								  // configured value
+								  wsTrustConfigPath,
+								  // XTB default
+								  ApiSupport.WSTRUST_API,
+								  // ADFS compatibility
+								  ApiSupport.ADFS_WS_TRUST_ENTRY_URL,
+								  ApiSupport.ADFS_WS_TRUST_COMPAT_URL,
+								  wsTrustConfigPath + ApiSupport.ADFS_WS_TRUST_COMPAT_PATH
+						  )
+						  .collect(Collectors.toSet()); // Set.of does not allow duplicates
 		log.info("Serving WS-Trust token requests on: {}", paths);
 		return new ServletRegistrationBean<>(servlet, paths.toArray(String[]::new));
 	}
@@ -139,12 +143,31 @@ public class WebServiceConfiguration extends WsConfigurerAdapter {
 		Wss4jSecurityInterceptor securityInterceptor = new Wss4jSecurityInterceptor();
 		securityInterceptor.setValidateResponse(true);
 		// Set response security header config
-		securityInterceptor.setSecurementActions(WSSConstants.TIMESTAMP);
+		var securementActions = WSSConstants.TIMESTAMP;
 		// 5 min
 		securityInterceptor.setSecurementTimeToLive(300);
 		// NOTE time to live set has a bug in spring ws. Workaround: https://jira.spring.io/browse/SWS-1084?redirect=false
 		securityInterceptor.setValidationTimeToLive(500000);
 		securityInterceptor.setFutureTimeToLive(50000);
+
+		var wsTrustConfig = trustBrokerProperties.getWstrust();
+		if (wsTrustConfig.isDoSignResponse()) {
+			log.info("Enabling RSTR signature");
+			securementActions += " " + WSSConstants.SIGNATURE;
+			securityInterceptor.setSecurementPassword(wsTrustConfig.getPassword());
+			securityInterceptor.setSecurementSignatureCrypto(serverKeyStoreCryptoFactoryBean().getObject());
+			securityInterceptor.setSecurementSignatureUser(wsTrustConfig.getAlias());
+			securityInterceptor.setSecurementSignatureAlgorithm(WSSConstants.RSA_SHA256);
+			securityInterceptor.setSecurementSignatureDigestAlgorithm(WSSConstants.SHA256);
+			securityInterceptor.setSecurementSignatureKeyIdentifier(WSSConstants.KEY_IDENTIFIER_ISSUER_SERIAL);
+			// body is the default - format {Element|Content}{elementNamespace}{elementName} see WSS4J JavaDoc
+			securityInterceptor.setSecurementSignatureParts("{}{}Body");
+		}
+		else {
+			log.info("RSTR signature disabled");
+		}
+
+		securityInterceptor.setSecurementActions(securementActions);
 
 		// Optionally enable signature check.
 		// Our implementation has some issue with running assertion validations multiple times.
@@ -167,14 +190,18 @@ public class WebServiceConfiguration extends WsConfigurerAdapter {
 	}
 
 	@Bean
-	@ConditionalOnProperty(value = "trustbroker.config.security.validateSecurityTokenRequest",
-			havingValue = "true", matchIfMissing = false)
+	@ConditionalOnExpression(
+			"#{${trustbroker.config.security.validateSecurityTokenRequest:true} or ${trustbroker.config.wstrust.doSignResponse:true}}")
 	public CryptoFactoryBean serverKeyStoreCryptoFactoryBean() throws IOException {
-		WsTrustConfig wsTrustConfig = trustBrokerProperties.getWstrust();
-		String absolutePath = new File(wsTrustConfig.getCert() + File.separatorChar).getAbsolutePath();
-		Resource resource = resourceLoader.getResource("file:" + absolutePath);
+		var wsTrustConfig = trustBrokerProperties.getWstrust();
+		var cert = wsTrustConfig.getCert();
+		if (cert == null) {
+			throw new TechnicalException("Missing trustbroker.config.wstrust.cert");
+		}
+		var absolutePath = new File(cert).getAbsolutePath();
+		var resource = resourceLoader.getResource("file:" + absolutePath);
 		if (!resource.exists()) {
-			throw new IllegalArgumentException(
+			throw new TechnicalException(
 					String.format("Resource for signature validation not found at %s", resource.getDescription()));
 		}
 		CryptoFactoryBean cryptoFactoryBean = new CryptoFactoryBean();

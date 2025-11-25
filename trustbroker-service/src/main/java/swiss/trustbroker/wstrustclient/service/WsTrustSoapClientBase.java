@@ -121,6 +121,7 @@ public class WsTrustSoapClientBase extends WebServiceGatewaySupport {
 			var marshallerFactory = XMLObjectProviderRegistrySupport.getMarshallerFactory();
 			var requestSecurityTokenQName = new QName(WSTrustConstants.WST_NS, RequestSecurityToken.ELEMENT_LOCAL_NAME);
 			var el = getElement(marshallerFactory, MarshallingInfo.of(requestSecToken, requestSecurityTokenQName), null);
+			SamlTracer.logSoapObject("===> Outgoing WSTrust SOAP request", el);
 
 			var xml = getElString(el);
 			var source = new StreamSource(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));

@@ -144,6 +144,17 @@ public class ClaimsParty extends CounterParty {
 	@XmlElement(name = "AuthnRequestIssuerId")
 	private String authnRequestIssuerId;
 
+	/**
+	 * Override ID as expected issuer of CP response.
+	 * <br/>
+	 * Can be set to decouple the CP response issuer from the ID. The ID of another CP is permitted here in which case the CP used for the request is picked.
+	 * <br/>
+	 * Fallback: id
+	 * @since 1.12.0
+	 */
+	@XmlElement(name = "ResponseIssuer")
+	private String responseIssuer;
+
 	// endpoints
 
 	/**
@@ -247,6 +258,10 @@ public class ClaimsParty extends CounterParty {
 
 	public String getOriginalIssuer() {
 		return originalIssuer != null ? originalIssuer : id;
+	}
+
+	public String getResponseIssuer() {
+		return responseIssuer != null ? responseIssuer : id;
 	}
 
 	public String getStrongestPossibleAuthLevelWithFallback() {

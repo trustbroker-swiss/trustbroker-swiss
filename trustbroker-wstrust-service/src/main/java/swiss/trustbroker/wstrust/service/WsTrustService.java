@@ -128,7 +128,7 @@ public class WsTrustService {
 		var lifetime = WsTrustUtil.createLifeTime(createdTime, expiresTime);
 		requestSecurityTokenResponse.getUnknownXMLObjects().add(lifetime);
 
-		var appliesTo = WsTrustUtil.createResponseAppliesTo(validationResult.getRecipientIssuerId());
+		var appliesTo = WsTrustUtil.createResponseAppliesTo(validationResult.getIssuerId());
 		requestSecurityTokenResponse.getUnknownXMLObjects().add(appliesTo);
 
 		var requestedSecurityToken = createRequestedSecurityToken(assertion, validationResult);
@@ -159,10 +159,10 @@ public class WsTrustService {
 		requestedSecurityToken.setUnknownXMLObject(assertion);
 
 		// trace
-		SamlTracer.logSamlObject("<<<<< Outgoing RSTR", assertion);
+		SamlTracer.logSamlObject("<<<<< Outgoing RSTR assertion", assertion);
 
 		// audit
-		auditRstResponseToClient(assertion, validationResult.getRecipientIssuerId());
+		auditRstResponseToClient(assertion, validationResult.getIssuerId());
 
 		return requestedSecurityToken;
 	}
@@ -173,7 +173,7 @@ public class WsTrustService {
 		var params = buildResponseParams(assertionId, validationResult);
 
 		var rp = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(params.getIssuerId(), null);
-		var constAttr = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(validationResult.getRecipientIssuerId(), null)
+		var constAttr = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(validationResult.getIssuerId(), null)
 												.getConstAttributes();
 		List<String> contextClasses = getAuthnContextClasses(validationResult.getValidatedAssertion());
 
@@ -196,22 +196,24 @@ public class WsTrustService {
 
 	private ResponseParameters buildResponseParams(String assertionId, WsTrustValidationResult validationResult) {
 		var requestNameId = getNameID(validationResult.getValidatedAssertion());
-		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(validationResult.getRecipientIssuerId(), null);
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(validationResult.getIssuerId(), null);
 		var tokenLifetime = relyingPartySetupService.getTokenLifetime(relyingParty);
+		var audienceLifetime = relyingPartySetupService.getAudienceRestrictionLifetime(relyingParty);
 		var sessionIndex = validationResult.getSessionIndex();
+		var now = Instant.now();
 		return ResponseParameters.builder()
 								 .conversationId(assertionId)
-								 .issuerInstant(Instant.now())
-								 .issuerId(validationResult.getRecipientIssuerId())
+								 .issuerId(validationResult.getIssuerId())
 								 .federationServiceIssuerId(trustBrokerProperties.getIssuer())
 								 .nameId(requestNameId.getValue())
 								 .nameIdFormat(requestNameId.getFormat())
 								 .nameIdQualifier(requestNameId.getNameQualifier())
 								 .rpAuthnRequestId(null)
-								 .recipientId(validationResult.getRecipientIssuerId())
-								 .authnStatementInstant(Instant.now())
+								 .recipientId(validationResult.getRecipientId())
+								 .issuerInstant(now)
+								 .authnStatementInstant(now)
 								 .subjectValiditySeconds(tokenLifetime)
-								 .audienceValiditySeconds(tokenLifetime)
+								 .audienceValiditySeconds(audienceLifetime)
 								 .cpAttrOriginIssuer(null)
 								 .setSessionIndex(sessionIndex != null)
 								 .sessionIndex(sessionIndex)
@@ -250,7 +252,7 @@ public class WsTrustService {
 		}
 		var headerAssertion = requestHeader.getAssertion();
 		if (headerAssertion != null) {
-			SamlTracer.logSamlObject(">>>>> Incoming RST", headerAssertion);
+			SamlTracer.logSamlObject(">>>>> Incoming RST header assertion", headerAssertion);
 		}
 
 		// accept request
@@ -265,7 +267,7 @@ public class WsTrustService {
 		log.debug("Incoming RST accepted -> send RSTR");
 
 		// audit
-		auditRstRequestFromClient(requestAssertion, validationResult.getRecipientIssuerId());
+		auditRstRequestFromClient(requestAssertion, validationResult.getIssuerId());
 
 		// processing
 		var cpResponse = createCpResponseDto(validationResult);
@@ -281,22 +283,22 @@ public class WsTrustService {
 			// Filter by CP config AttributeSelection
 			filterCpAttributes(cpResponse);
 
-			scriptService.processRpBeforeIdm(cpResponse, null, validationResult.getRecipientIssuerId(), "");
+			scriptService.processRpBeforeIdm(cpResponse, null, validationResult.getIssuerId(), "");
 
-			getResponseQueryElements(requestAssertion, validationResult.getRecipientIssuerId(), cpResponse);
+			getResponseQueryElements(requestAssertion, validationResult.getIssuerId(), cpResponse);
 
 			// Filter by RP config AttributeSelection
 			List<Definition> rpConfigAttributesDefinition =
-					relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(validationResult.getRecipientIssuerId(), null)
+					relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(validationResult.getIssuerId(), null)
 											.getAttributesDefinitions();
 			filterCpAttributesByRpConfig(rpConfigAttributesDefinition, cpResponse);
 
 			relyingPartyService.setProperties(cpResponse);
 
 			scriptService.processCpAfterIdm(cpResponse, null, cpResponse.getIssuer(), "");
-			scriptService.processRpAfterIdm(cpResponse, null, validationResult.getRecipientIssuerId(), "");
+			scriptService.processRpAfterIdm(cpResponse, null, validationResult.getIssuerId(), "");
 
-			relyingPartyService.filterPropertiesSelection(cpResponse, validationResult.getRecipientIssuerId(), "");
+			relyingPartyService.filterPropertiesSelection(cpResponse, validationResult.getIssuerId(), "");
 
 			cpAttributes = createCpAttributes(cpResponse.getAttributes(), rpConfigAttributesDefinition,
 					requestAttributeStatements, requestAssertion);
@@ -305,7 +307,7 @@ public class WsTrustService {
 
 		var response = createResponse(cpAttributes, cpResponse, validationResult);
 
-		scriptService.processWsTrustOnResponse(cpResponse, response, validationResult.getRecipientIssuerId(), "");
+		scriptService.processWsTrustOnResponse(cpResponse, response, validationResult.getIssuerId(), "");
 
 		return response;
 	}
@@ -485,7 +487,7 @@ public class WsTrustService {
 			cpResponse.setHomeName(homeName);
 		}
 
-		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(validationResult.getRecipientIssuerId(), "");
+		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(validationResult.getIssuerId(), "");
 		var idmLookUp = relyingPartySetupService.getIdmLookUp(relyingParty);
 		if (idmLookUp.isPresent()) {
 			cpResponse.setIdmLookup(idmLookUp.get().shallowClone());
@@ -499,7 +501,7 @@ public class WsTrustService {
 			cpResponse.setAuthLevel(authLevelAttribute);
 		}
 
-		cpResponse.setRpIssuer(validationResult.getRecipientIssuerId());
+		cpResponse.setRpIssuer(validationResult.getIssuerId());
 
 		Map<Definition, List<String>> originalAttributes = new HashMap<>(cpResponse.getAttributes());
 		cpResponse.setOriginalAttributes(originalAttributes);

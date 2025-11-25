@@ -24,13 +24,16 @@ package swiss.trustbroker.common.util;
 
 public class WSSConstants {
 
+	// see org.apache.wss4j.dom.handler.WSHandlerConstants
 	public static final String TIMESTAMP = "Timestamp";
 	public static final String SIGNATURE = "Signature";
+
 	public static final String SAML_TOKEN_SIGNED = "SAMLTokenSigned";
 	public static final String RSA_SHA1 = "http://www.w3.org/2000/09/xmldsig#rsa-sha1";
 	public static final String RSA_SHA256 = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
 	public static final String SHA1 = "http://www.w3.org/2000/09/xmldsig#sha1";
 	public static final String SHA256 = "http://www.w3.org/2001/04/xmlenc#sha256";
+	public static final String KEY_IDENTIFIER_ISSUER_SERIAL = "IssuerSerial";
 	public static final String WST_NS_05_12 = "http://docs.oasis-open.org/ws-sx/ws-trust/200512";
 	public static final String WSS_SAML2_KI_VALUE_TYPE = "http://docs.oasis-open.org/wss/oasis-wss-saml-token-profile-1.1#SAMLID";
 	public static final String WSS_SAML_TOKEN_TYPE = "http://docs.oasis-open.org/wss/oasis-wss-saml-token-profile-1.1#SAMLV1.1";

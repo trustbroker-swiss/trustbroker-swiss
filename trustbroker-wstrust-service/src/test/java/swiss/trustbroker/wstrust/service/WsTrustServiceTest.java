@@ -296,7 +296,8 @@ class WsTrustServiceTest {
 													  .requestType(RequestType.ISSUE)
 													  .validatedAssertion(requestHeaderAssertion)
 													  .recomputeAttributes(true)
-													  .recipientIssuerId(addressFromRequest)
+													  .issuerId(addressFromRequest)
+													  .recipientId(null)
 													  .sessionIndex(sessionId) // test , otherwise set for RENEW only
 													  .build();
 		var assertion = wsTrustService.createAssertion(cpAttributes, cpResponse, "anyId", validationResult);

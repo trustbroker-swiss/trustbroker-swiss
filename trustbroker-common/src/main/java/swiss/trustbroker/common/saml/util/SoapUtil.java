@@ -19,6 +19,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import javax.xml.crypto.dsig.XMLSignatureFactory;
+import javax.xml.crypto.dsig.dom.DOMValidateContext;
 
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +34,8 @@ import org.opensaml.core.xml.io.Unmarshaller;
 import org.opensaml.core.xml.io.UnmarshallingException;
 import org.opensaml.core.xml.util.XMLObjectSupport;
 import org.opensaml.saml.common.SAMLObject;
+import org.opensaml.security.credential.Credential;
+import org.opensaml.security.x509.BasicX509Credential;
 import org.opensaml.soap.common.SOAPObjectBuilder;
 import org.opensaml.soap.soap11.Body;
 import org.opensaml.soap.soap11.Envelope;
@@ -41,6 +47,8 @@ import swiss.trustbroker.common.exception.TechnicalException;
 
 @Slf4j
 public class SoapUtil {
+
+	private static final String MECHANISM_TYPE_DOM = "DOM";
 
 	private SoapUtil() { }
 
@@ -142,6 +150,42 @@ public class SoapUtil {
 		responseEnvelope.setBody(body);
 		body.getUnknownXMLObjects().add(samlResponse);
 		return responseEnvelope;
+	}
+
+	private static XMLSignatureFactory createSignatureFactory() {
+		return XMLSignatureFactory.getInstance(MECHANISM_TYPE_DOM);
+	}
+
+	public static boolean isSignatureValid(Element element, Node signatureNode, List<Credential> trustCredentials) {
+		try {
+			if (signatureNode == null) {
+				log.debug("No signature for element={}", element.getNodeName());
+				return false;
+			}
+			var sigFactory = createSignatureFactory();
+			List<String> failedCredentials = new ArrayList<>();
+			for (var trustCredential : trustCredentials) {
+				var credential = (BasicX509Credential) trustCredential;
+				var publicKey = credential.getPublicKey();
+
+				var valContext = new DOMValidateContext(publicKey, signatureNode);
+
+				var signature = sigFactory.unmarshalXMLSignature(valContext);
+				if (signature.validate(valContext)) {
+					log.debug("Signature validation succeeded on element={} with credential={}",
+							element.getNodeName(), credential.getEntityId());
+					return true;
+				}
+				failedCredentials.add(credential.getEntityId());
+			}
+			log.info("Signature={} not valid for element={} with credentials={}", signatureNode.getNodeName(),
+					element.getNodeName(), failedCredentials);
+			return false;
+		}
+		catch (Exception ex) {
+			log.info("Could not validate signature of element={} : {}", element.getNodeName(), ex.getMessage(), ex);
+			return false;
+		}
 	}
 
 }

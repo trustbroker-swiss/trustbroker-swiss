@@ -38,7 +38,7 @@ public class RequestDeniedException extends TrustBrokerException {
 	}
 
 	private static ErrorCode defaultErrorCode(ErrorCode errorCode) {
-		return errorCode != null ? errorCode : ErrorCode.REQUEST_DENIED;
+		return errorCode != null ? errorCode : StandardErrorCode.REQUEST_DENIED;
 	}
 
 }

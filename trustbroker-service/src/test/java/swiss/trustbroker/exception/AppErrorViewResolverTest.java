@@ -32,6 +32,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import swiss.trustbroker.common.exception.ErrorCode;
+import swiss.trustbroker.common.exception.StandardErrorCode;
 import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.WebUtil;
@@ -85,10 +86,10 @@ class AppErrorViewResolverTest {
 		var ex = new OAuth2AuthenticationException("test");
 		var exceptionResult = REDIRECT_URI + "?error=test&error_uri=" + WebUtil.urlEncodeValue(ISSUER + FAILURE_PATH);
 		return new Object[][] {
-				{ HttpStatus.NOT_FOUND, ErrorCode.REQUEST_REJECTED, null, ISSUER, FAILURE_PATH, FAILURE_PATH },
-				{ HttpStatus.FORBIDDEN, ErrorCode.REQUEST_DENIED, ex, ISSUER, FAILURE_PATH, exceptionResult
+				{ HttpStatus.NOT_FOUND, StandardErrorCode.REQUEST_REJECTED, null, ISSUER, FAILURE_PATH, FAILURE_PATH },
+				{ HttpStatus.FORBIDDEN, StandardErrorCode.REQUEST_DENIED, ex, ISSUER, FAILURE_PATH, exceptionResult
 				},
-				{ HttpStatus.FORBIDDEN, ErrorCode.REQUEST_DENIED, ex, "urn:issuer", ISSUER + FAILURE_PATH, exceptionResult }
+				{ HttpStatus.FORBIDDEN, StandardErrorCode.REQUEST_DENIED, ex, "urn:issuer", ISSUER + FAILURE_PATH, exceptionResult }
 		};
 	}
 

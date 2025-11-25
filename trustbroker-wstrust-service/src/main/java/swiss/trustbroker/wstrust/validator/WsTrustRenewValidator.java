@@ -111,6 +111,9 @@ public class WsTrustRenewValidator extends WsTrustBaseValidator {
 		log.debug("RSTR RENEW request - assertion is in RenewTarget");
 		var assertion = extractRenewTargetAssertion(childObjects);
 		var relyingParty = getRecipientRelyingParty(assertion);
+		var requireSignature = getTrustBrokerProperties().getWstrust().isRenewRequireSignedRequests();
+		validateSignature(requestHeader, requireSignature, relyingParty.getRpTrustCredentials());
+
 		var session = findValidSsoSession(assertion);
 		String expectedSessionId = null;
 		if (session.isPresent()) {
@@ -130,7 +133,8 @@ public class WsTrustRenewValidator extends WsTrustBaseValidator {
 									  .requestType(REQUEST_TYPE)
 									  .validatedAssertion(assertion)
 									  .recomputeAttributes(false)
-									  .recipientIssuerId(relyingParty.getId())
+									  .issuerId(relyingParty.getId())
+									  .recipientId(relyingParty.getId())
 									  .useAssertionLifetime(true)
 									  .createResponseCollection(false)
 									  .sessionIndex(expectedSessionId)

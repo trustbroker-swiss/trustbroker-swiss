@@ -809,6 +809,7 @@ class RelyingPartyServiceTest extends ServiceTestBase {
 												.cpAuthenticationQoa(qoa)
 												.modes(Collections.emptyList())
 												.additionalData(additionalAttributes)
+												.queriedStores(Collections.emptySet())
 												.build();
 		var provResult = IdmProvisioningResult.builder().status(IdmProvisioningStatus.CREATED).build();
 		doReturn(qoa).when(qoaService).getMaxQoaOrder(cpResponse.getContextClasses(), claimsParty.getQoaConfig());

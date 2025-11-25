@@ -21,6 +21,7 @@ import lombok.NoArgsConstructor;
 /**
  * This class describes the configuration of the provisioning for a CP.
  *
+ * @since 1.12.0
  * @see swiss.trustbroker.api.idm.service.IdmProvisioningService
  */
 @XmlRootElement(name = "Provisioning")

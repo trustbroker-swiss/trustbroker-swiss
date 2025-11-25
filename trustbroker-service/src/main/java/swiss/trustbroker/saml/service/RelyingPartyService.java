@@ -17,9 +17,11 @@ package swiss.trustbroker.saml.service;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -161,6 +163,7 @@ public class RelyingPartyService {
 		var callback = new DefaultIdmStatusPolicyCallback(cpResponse);
 		var originalUserDetailCount = 0;
 		var originalPropertiesCount = 0;
+		Set<String> lookupStores = new HashSet<>();
 		for (var idmService : idmQueryServices) {
 			log.debug("IDM call: issuer={} nameID={} requestIssuer={}", cpIssuer, cpResponse.getNameId(), requestIssuer);
 			var queryResponse = audited ?
@@ -172,10 +175,12 @@ public class RelyingPartyService {
 				DefinitionUtil.mapAttributeListIgnoringSource(queryResponse.get().getProperties(), cpResponse.getProperties());
 				originalPropertiesCount += queryResponse.get().getOriginalPropertiesCount();
 				cpResponse.getAdditionalIdmData().putAll(queryResponse.get().getAdditionalData());
+				lookupStores.addAll(queryResponse.get().getQueriedStores());
 			}
 		}
 		cpResponse.setOriginalUserDetailsCount(originalUserDetailCount);
 		cpResponse.setOriginalPropertiesCount(originalPropertiesCount);
+		cpResponse.setQueriedStores(lookupStores);
 	}
 
 	public void setProperties(CpResponse cpResponse) {
@@ -351,6 +356,7 @@ public class RelyingPartyService {
 				.logOnly(claimsProvider.getProvision().isDetectOnly())
 				.modes(modes)
 				.additionalData(cpResponse.getAdditionalIdmData())
+				.queriedStores(cpResponse.getQueriedStores())
 				.build();
 		boolean result = false;
 		for (var idmProvisioningService : idmProvisioningServices) {
@@ -577,26 +583,20 @@ public class RelyingPartyService {
 		cpResponse.getUserDetails().clear();
 		cpResponse.getProperties().clear();
 
-		// IDM data
-		var requestIssuer = spStateData.getIssuer();
-		var requestReferer = spStateData.getReferer();
-
 		// reset original attribute list
 		var notProcessedAttributes = cpResponse.getOriginalAttributes();
 		if (notProcessedAttributes != null) {
 			cpResponse.setAttributes(new HashMap<>(notProcessedAttributes));
 		}
 
-		var acsUrl = spStateData.getAssertionConsumerServiceUrl();
-		var destination = acsUrl != null ? acsUrl : requestReferer;
-		if (destination != null) {
-			cpResponse.setRpDestination(destination);
-		}
-
+		// IDM data
+		var requestIssuer = spStateData.getIssuer();
+		var requestReferer = spStateData.getReferer();
 		cpResponse.setClientName(clientName);
 		cpResponse.setRpIssuer(requestIssuer);
 		cpResponse.setRpContext(spStateData.getRpContext());
 
+		// scripts BeforeIdm CP side (called per IDM invocation i.e. for IDMLookup, JIT and AccessRequest reload)
 		scriptService.processCpBeforeIdm(cpResponse, null, cpResponse.getIssuer(), requestReferer);
 
 		// filter CP attributes
@@ -604,14 +604,13 @@ public class RelyingPartyService {
 				.getAttributesDefinitions();
 		ResponseFactory.filterCpAttributes(cpResponse, cpAttributeDefinitions, trustBrokerProperties.getSaml());
 
+		// make IDM context available RP side scripting
 		var relyingParty = relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(requestIssuer, requestReferer);
 		var idmLookUp = relyingPartySetupService.getIdmLookUp(relyingParty);
 		idmLookUp.ifPresent(idmLookup -> cpResponse.setIdmLookup(idmLookup.shallowClone()));
-
-		// set clientExtId
 		cpResponse.setClientExtId(relyingPartySetupService.getRpClientExtId(relyingParty));
 
-		// scripts BeforeIdm RP side (see test DeriveClaimProviderNameFromNameIdFormat.groovy for an example to derive HomeName)
+		// scripts BeforeIdm RP side
 		scriptService.processRpBeforeIdm(cpResponse, null, requestIssuer, requestReferer);
 	}
 

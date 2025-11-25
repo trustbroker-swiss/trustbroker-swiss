@@ -16,6 +16,7 @@
 package swiss.trustbroker.wstrust.dto;
 
 import lombok.Data;
+import org.opensaml.core.xml.XMLObject;
 import org.opensaml.saml.saml2.core.Assertion;
 import org.opensaml.soap.wsaddressing.Action;
 import org.opensaml.soap.wsaddressing.MessageID;
@@ -23,6 +24,7 @@ import org.opensaml.soap.wsaddressing.ReplyTo;
 import org.opensaml.soap.wsaddressing.To;
 import org.opensaml.soap.wssecurity.BinarySecurityToken;
 import org.opensaml.soap.wssecurity.Timestamp;
+import org.springframework.ws.soap.SoapMessage;
 
 @Data
 public class SoapMessageHeader {
@@ -43,5 +45,9 @@ public class SoapMessageHeader {
 	private Assertion assertion;
 
 	private BinarySecurityToken securityToken;
+
+	private XMLObject signature;
+
+	private SoapMessage soapMessage;
 }
 

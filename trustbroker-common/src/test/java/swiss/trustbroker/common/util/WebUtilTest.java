@@ -107,6 +107,16 @@ class WebUtilTest {
 
 	@ParameterizedTest
 	@CsvSource(value = {
+			"NULL,false",
+			"null,true",
+			"https://localhost,false"
+	}, nullValues = "NULL")
+	void isNullOrigin(String origin, boolean expected) {
+		assertThat(WebUtil.isNullOrigin(origin), is(expected));
+	}
+
+	@ParameterizedTest
+	@CsvSource(value = {
 			// missing base or other
 			"null,null,null",
 			"null,/test,/test",

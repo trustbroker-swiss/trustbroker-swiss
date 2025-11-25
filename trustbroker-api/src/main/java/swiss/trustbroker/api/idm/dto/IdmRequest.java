@@ -31,6 +31,11 @@ public interface IdmRequest {
 
 	String getName();
 
+	/**
+	 * @return The name of the IDM store this request is targeting.
+	 */
+	String getStore();
+
 	// attribute filters
 
 	AttributeName getIssuerNameIdAttribute();
@@ -52,6 +57,4 @@ public interface IdmRequest {
 	// callback
 
 	String getUserStatusPolicy();
-
-	String getStore();
 }

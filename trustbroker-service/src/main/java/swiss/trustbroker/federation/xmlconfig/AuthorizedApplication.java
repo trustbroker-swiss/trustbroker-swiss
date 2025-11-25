@@ -63,6 +63,8 @@ public class AuthorizedApplication implements Serializable {
 
 	/**
 	 * If configured the value is sent as appUrl instead of sending app=name in the INTERACTIVE AccessRequest.
+	 *
+	 * @since 1.12.0
 	 */
 	@XmlAttribute(name = "applUrl")
 	private String applUrl;

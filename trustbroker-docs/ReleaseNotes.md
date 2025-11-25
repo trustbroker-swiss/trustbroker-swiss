@@ -5,24 +5,52 @@
 
 ### Dependency upgrades
 
+- Backend:
+  - JDK 21
+  - Spring Boot 3.5.7
+  - nimbus-jose-jwt 9.47
+
 ### Features
+- Test:
+  - Support manipulations on final messages via global script - can be used e.g. to simulate invalid respones towards counter parties for security testing.
 
 ### Improvements
 - OIDC:
   - Restrict default OIDC metadata grant_types_supported, revocation_endpoint_auth_methods_supported, introspection_endpoint_auth_methods_supported to the ones officially supported in XTB.
+- SAML:
+  - SecutityPolicies.requireSignedLogoutRequest now defaults to requireSignedAuthnRequest
 - DB:
   - Improve transaction boundaries for DB state access.
 - IDM:
   - LDAP improvements and documentation.
+- SSO:
+  - Allow picking another claim than the subject from CP response to allow SSO using SubjectName with scope=SSO.
+- LDAP:
+  - Improved profile selection support.
 
 ### Bugfixes
 - SSO:
   - Fix SSO join issue with CP that responds with another ID than requested (e.g. SamlMock).
   - Fix too strict subject name check issue for CP with SubjectNameMapping.
   - Fix QoA check with OIDC using RP config QoA instead of QoA from state.
-
+  - Fix join via OIDC of session established via SAML.
+- WSTrust:
+  - Recipient in Issue RSTR was set to issuer in 1.12.0, revert to 1.11.0 behavior.
 
 # Released Versions
+
+## 1.12.0.20251125T141545Z
+
+### Bugfixes
+- SAML:
+  - The special origin value 'null' is accepted a valid origin with validateHttpHeaders=true
+
+### Improvements
+- SAML:
+  - The new ClaimsParty.ResponseIssuer can be set to decouple the CP response issuer from the ID.
+- WSTrust:
+  - Option to sign WS-Trust RSTR responses
+  - Option to validate WS-Trust RENEW request
 
 ## 1.12.0.20251003T122936Z
 

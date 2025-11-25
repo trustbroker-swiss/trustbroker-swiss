@@ -283,6 +283,12 @@ public class RelyingPartySetupService {
 		).findFirst();
 	}
 
+	public List<ClaimsParty> getClaimsProviderSetupByResponseIssuerId(String id) {
+		return relyingPartiesMapping.getClaimsProviderSetup().getClaimsParties().stream().filter(
+				claimsParty -> claimsParty.getResponseIssuer().equalsIgnoreCase(id)
+		).toList();
+	}
+
 	// debug only
 	private String getRelyingPartyIds() {
 		var sb = new StringBuilder("[");

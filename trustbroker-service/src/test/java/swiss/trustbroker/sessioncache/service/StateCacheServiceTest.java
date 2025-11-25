@@ -52,9 +52,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import swiss.trustbroker.common.exception.ErrorCode;
 import swiss.trustbroker.common.exception.ErrorMarker;
 import swiss.trustbroker.common.exception.RequestDeniedException;
+import swiss.trustbroker.common.exception.StandardErrorCode;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.config.dto.StateCacheProperties;
@@ -567,7 +567,7 @@ class StateCacheServiceTest {
 	}
 
 	private static void assertStateNotFoundException(RequestDeniedException ex) {
-		assertThat(ex.getErrorCode(), is(ErrorCode.STATE_NOT_FOUND));
+		assertThat(ex.getErrorCode(), is(StandardErrorCode.STATE_NOT_FOUND));
 		assertThat(ex.getErrorMarker(), is(ErrorMarker.STATE_NOT_FOUND));
 	}
 }

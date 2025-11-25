@@ -32,7 +32,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.cors.CorsUtils;
-import swiss.trustbroker.common.exception.ErrorCode;
+import swiss.trustbroker.common.exception.StandardErrorCode;
 import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.StringUtil;
@@ -233,7 +233,7 @@ public class OidcTxFilter implements Filter {
 			if (acl != null && UrlAcceptor.isRedirectUrlOkForAccess(redirectUri, acl.getAcNetUrls())) {
 				var state = StringUtil.clean(request.getParameter(OidcUtil.OIDC_STATE_ID));
 				var traceId = TraceSupport.getOwnTraceParent();
-				var errorPage = apiSupport.getErrorPageUrl(ErrorCode.REQUEST_DENIED.getLabel(), traceId);
+				var errorPage = apiSupport.getErrorPageUrl(StandardErrorCode.REQUEST_DENIED.getLabel(), traceId);
 				var redirectUrl = OidcExceptionHelper.getOidcErrorLocation(redirectUri,
 						"login_required", "no session on prompt=none", errorPage,
 						properties.getOidc().getIssuer(), state);

@@ -1277,13 +1277,8 @@ public class SsoService {
 			ssoStateData.setCpResponse(stateDataByAuthnReq.getCpResponse().toBuilder().build());
 		}
 
-		// update /verify match
+		// apply subject nameid of joining participant
 		updateSubjectNameIdInSession(ssoStateData);
-
-		// update rpDestination
-		if (ssoStateData.getCpResponse() != null && stateDataByAuthnReq.getSpStateData().getAssertionConsumerServiceUrl() != null) {
-			ssoStateData.getCpResponse().setRpDestination(stateDataByAuthnReq.getSpStateData().getAssertionConsumerServiceUrl());
-		}
 
 		// these fields are set on the base object in AssertionConsumerService.saveState
 		ssoStateData.setForceAuthn(stateDataByAuthnReq.getForceAuthn());
@@ -1304,7 +1299,6 @@ public class SsoService {
 	}
 
 	// SLO
-
 	List<SsoSessionParticipant> logoutSsoParticipantForLogoutRequest(String logoutRequestIssuerId,
 			List<String> logoutRequestSessionIndexes, StateData stateData) {
 		// we ignore the result of a mismatch or invalid logout - logout always succeeds from the client's perspective

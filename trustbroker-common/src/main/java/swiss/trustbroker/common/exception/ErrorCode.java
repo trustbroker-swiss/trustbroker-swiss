@@ -15,30 +15,15 @@
 
 package swiss.trustbroker.common.exception;
 
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
+import java.io.Serializable;
 
-@AllArgsConstructor(access = AccessLevel.PACKAGE)
-public enum ErrorCode {
-	REQUEST_DENIED("denied"),
-	REQUEST_REJECTED("rejected"),
-	ACCESS_REQUEST_FAILED("accessrequestfailed"),
-	UNKNOWN_PRINCIPAL("unknownprincipal"),
-	UNKNOWN_USER("unknownuser"),
+/**
+ * Error code for the UI.
+ */
+public interface ErrorCode extends Serializable {
+
 	/**
-	 * Authentication or SSO session expired.
-	 * @since 1.9.0
+	 * @return label for the error code
 	 */
-	STATE_NOT_FOUND("sessionexpired"),
-	/**
-	 * RP/CP QoA requirement not met by CP response.
-	 * @since 1.11.0
-	 */
-	NO_AUTHN_CONTEXT("noauthncontext");
-
-	private final String label;
-
-	public String getLabel() {
-		return label;
-	}
+	String getLabel();
 }

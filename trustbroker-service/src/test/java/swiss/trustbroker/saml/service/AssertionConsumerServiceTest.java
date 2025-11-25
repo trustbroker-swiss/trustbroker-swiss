@@ -517,6 +517,31 @@ class AssertionConsumerServiceTest {
 		};
 	}
 
+	@ParameterizedTest
+	@MethodSource
+	void getClaimsPartyForResponseIssuer(String responseIssuer, String referrer, String sessionIssuer,
+			List<ClaimsParty> cpsByResponseIssuer, ClaimsParty cpByReferrer, String expectedCpId) {
+		when(relyingPartySetupService.getClaimsProviderSetupByResponseIssuerId(responseIssuer)).thenReturn(cpsByResponseIssuer);
+		when(relyingPartySetupService.getClaimsProviderSetupByIssuerId(responseIssuer, referrer)).thenReturn(cpByReferrer);
+
+		var cp = assertionConsumerService.getClaimsPartyForResponseIssuer(responseIssuer, referrer, sessionIssuer);
+		assertThat(cp.getId(), is(expectedCpId));
+	}
+
+	static Object[][] getClaimsPartyForResponseIssuer() {
+		var cp1 = givenClaimsParty(TEST_CP_ID, null);
+		var cp2 = givenClaimsParty("cp2", null);
+		return new Object[][] {
+				// single matching CP by responseIssuer:
+				{ TEST_CP_ID, null, "irrelevant", List.of(cp1), null, TEST_CP_ID },
+				// pick matching CP by sessionIssuer:
+				{ TEST_CP_ID, null, TEST_CP_ID, List.of(cp2, cp1), null, TEST_CP_ID },
+				// sessionIssuer not matched:
+				{ TEST_CP_ID, REFERRER, "mismatch", List.of(), cp1, TEST_CP_ID },
+				{ TEST_CP_ID, REFERRER, "mismatch", List.of(cp2, cp1), cp1, TEST_CP_ID }
+		};
+	}
+
 	private static UiBanner givenBanner(String name, Integer order, Integer orderOverride, Boolean global) {
 		var bannerConfig = Banner.builder()
 								  .name(name)
@@ -527,15 +552,19 @@ class AssertionConsumerServiceTest {
 	}
 
 	private ClaimsParty mockCp(String cpId, ArtifactBindingMode mode) {
-		var cp = ClaimsParty.builder()
+		var cp = givenClaimsParty(cpId, mode);
+		doReturn(cp).when(relyingPartySetupService).getClaimsProviderSetupByIssuerId(cpId, null);
+		return cp;
+	}
+
+	private static ClaimsParty givenClaimsParty(String cpId, ArtifactBindingMode mode) {
+		return ClaimsParty.builder()
 				.id(cpId)
 				.saml(Saml.builder()
 						.artifactBinding(ArtifactBinding.builder().inboundMode(mode).build())
 						.build()
 				)
 				.build();
-		doReturn(cp).when(relyingPartySetupService).getClaimsProviderSetupByIssuerId(cpId, null);
-		return cp;
 	}
 
 	private static ClaimsProvider givenClaimsProvider(String cpId, Integer order) {

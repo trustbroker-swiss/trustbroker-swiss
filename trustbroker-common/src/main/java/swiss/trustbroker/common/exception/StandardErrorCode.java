@@ -13,28 +13,32 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-package swiss.trustbroker.api.idm.dto;
+package swiss.trustbroker.common.exception;
 
-import java.util.List;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 
-/**
- * Definition of the requests to perform for querying the IDM.<br/>
- * (Corresponds to the RelyingParty IdmLookup configuration.)
- * <br>
- * Potentially breaking changes:
- * <ul>
- *     <li>With 1.8.0 dropped <code>getMultiQueryPolicy</code> as <code>IdmService</code> is no longer expected to use this.</li>
- * </ul>
- */
-public interface IdmRequests {
-
+@AllArgsConstructor(access = AccessLevel.PACKAGE)
+public enum StandardErrorCode implements ErrorCode {
+	REQUEST_DENIED("denied"),
+	REQUEST_REJECTED("rejected"),
+	UNKNOWN_PRINCIPAL("unknownprincipal"),
+	UNKNOWN_USER("unknownuser"),
 	/**
-	 * Default store if not configured for the queries.
-	 *
-	 * @see IdmRequest#getStore()
+	 * Authentication or SSO session expired.
+	 * @since 1.9.0
 	 */
-	String getStore();
+	STATE_NOT_FOUND("sessionexpired"),
+	/**
+	 * RP/CP QoA requirement not met by CP response.
+	 * @since 1.11.0
+	 */
+	NO_AUTHN_CONTEXT("noauthncontext");
 
-	List<IdmRequest> getQueryList();
+	private final String label;
 
+	@Override
+	public String getLabel() {
+		return label;
+	}
 }

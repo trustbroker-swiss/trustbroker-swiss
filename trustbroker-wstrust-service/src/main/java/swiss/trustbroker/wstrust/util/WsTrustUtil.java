@@ -18,6 +18,7 @@ package swiss.trustbroker.wstrust.util;
 import java.time.Instant;
 import java.util.Objects;
 import javax.xml.namespace.QName;
+import javax.xml.transform.dom.DOMSource;
 
 import lombok.extern.slf4j.Slf4j;
 import org.opensaml.core.xml.util.XMLObjectSupport;
@@ -38,7 +39,9 @@ import org.opensaml.soap.wstrust.RequestedAttachedReference;
 import org.opensaml.soap.wstrust.RequestedUnattachedReference;
 import org.opensaml.soap.wstrust.TokenType;
 import org.opensaml.soap.wstrust.WSTrustConstants;
+import org.springframework.ws.soap.SoapElement;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 import swiss.trustbroker.common.exception.RequestDeniedException;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
 import swiss.trustbroker.common.util.WSSConstants;
@@ -208,5 +211,11 @@ public class WsTrustUtil {
 					periodType, (expires != null) ? expires.getDateTime() : null, now, notBeforeToleranceSec);
 		}
 		return createdOk && expiresOk;
+	}
+
+	public static Node getNode(SoapElement soapMessage) {
+		var source = soapMessage.getSource();
+		var domSource = (DOMSource) source;
+		return domSource.getNode();
 	}
 }

@@ -216,6 +216,8 @@ class WsTrustRenewValidatorTest {
 		if (notOnOrAfterToleranceSecs != null) {
 			securityChecks.setRenewNotOnOrAfterToleranceRenewSec(notOnOrAfterToleranceSecs);
 		}
+		// If true requires a SoapMessage signed with private key for RelyingParty.SignerTrustStore:
+		wsTrustConfig.setRenewRequireSignedRequests(false);
 		var relyingParty = givenRelyingParty();
 		when(relyingPartySetupService.getRelyingPartyByIssuerIdOrReferrer(RP_ISSUER_ID, null)).thenReturn(relyingParty);
 		var securityToken = givenSecurityToken();
@@ -237,7 +239,8 @@ class WsTrustRenewValidatorTest {
 
 			assertThat(result.getValidatedAssertion(), is(assertion));
 			assertThat(result.isRecomputeAttributes(), is(false));
-			assertThat(result.getRecipientIssuerId(), is(RP_ISSUER_ID));
+			assertThat(result.getIssuerId(), is(RP_ISSUER_ID));
+			assertThat(result.getRecipientId(), is(RP_ISSUER_ID));
 			assertThat(result.isUseAssertionLifetime(), is(true));
 			assertThat(result.getSessionIndex(), is(SSO_SESSION_ID));
 		}

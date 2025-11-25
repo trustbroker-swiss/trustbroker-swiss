@@ -84,7 +84,8 @@ public class WsTrustIssueValidator extends WsTrustBaseValidator {
 									  .requestType(REQUEST_TYPE)
 									  .validatedAssertion(headerAssertion)
 									  .recomputeAttributes(true)
-									  .recipientIssuerId(addressFromRequest)
+									  .issuerId(addressFromRequest)
+									  .recipientId(null) // not set
 									  .useAssertionLifetime(false)
 									  .createResponseCollection(true)
 									  .build();

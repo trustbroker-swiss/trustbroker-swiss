@@ -28,8 +28,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.opensaml.saml.saml2.core.AuthnContextComparisonTypeEnumeration;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
-import swiss.trustbroker.common.exception.ErrorCode;
 import swiss.trustbroker.common.exception.RequestDeniedException;
+import swiss.trustbroker.common.exception.StandardErrorCode;
 import swiss.trustbroker.federation.xmlconfig.AcClass;
 import swiss.trustbroker.federation.xmlconfig.Qoa;
 import swiss.trustbroker.federation.xmlconfig.QoaComparison;
@@ -129,7 +129,7 @@ public class QoaMappingUtil {
 				"Invalid Qoa in request actualCtxClasses=%s expectedCtxClasses=%s comparison=%s issuer=%s confIssuer=%s ",
 				actualContextClasses,expectedContextClasses, comparison, reqIssuer, qoaConfig.issuerId());
 		if (enforceQoa(qoaConfig)) {
-			throw new RequestDeniedException(ErrorCode.NO_AUTHN_CONTEXT, msg);
+			throw new RequestDeniedException(StandardErrorCode.NO_AUTHN_CONTEXT, msg);
 		}
 		else {
 			logEnforceWarn(msg);
@@ -213,7 +213,7 @@ public class QoaMappingUtil {
 			return;
 		}
 		if (configQoa.config().enforce()) {
-			throw new RequestDeniedException(ErrorCode.NO_AUTHN_CONTEXT,
+			throw new RequestDeniedException(StandardErrorCode.NO_AUTHN_CONTEXT,
 					String.format("Missing ctxClass=%s in config (HINT: check application.yaml trustbroker.config.qoa"
 							+ " or the SetupRP.xml) for rpIssuer=%s qoaConf=%s", contextClass, configQoa.issuerId(), configQoa));
 		}
@@ -236,7 +236,7 @@ public class QoaMappingUtil {
 		var msg = String.format("Missing Qoa in request cpIssuer=%s, expectedCtxClasses=%s comparison=%s rpIssuer=%S",
 				cpQoaConf.issuerId(), expectedContextClasses, comparison, rpQoaConf.issuerId());
 		if (cpEnforce || rpEnforce) {
-			throw new RequestDeniedException(ErrorCode.NO_AUTHN_CONTEXT, msg);
+			throw new RequestDeniedException(StandardErrorCode.NO_AUTHN_CONTEXT, msg);
 		}
 		else {
 			log.warn(msg);
@@ -321,7 +321,7 @@ public class QoaMappingUtil {
 							+ " (HINT: Check trustbroker.config.qoa or SetupRP.xml/SetupCP.xml defining order)",
 					classRef, configQoa.issuerId());
 			if (configQoa.config().enforce()) {
-				throw new RequestDeniedException(ErrorCode.NO_AUTHN_CONTEXT, msg);
+				throw new RequestDeniedException(StandardErrorCode.NO_AUTHN_CONTEXT, msg);
 			}
 			else {
 				logEnforceWarn(msg);
@@ -364,7 +364,7 @@ public class QoaMappingUtil {
 							+ " (HINT: Check trustbroker.config.qoa or SetupRP.xml/SetupCP.xml defining Qoa model)",
 					classRef, inboundQoaConf.issuerId(), outboundQoaConf.issuerId());
 			if (inboundQoaConf.config().enforce() || outboundQoaConf.config().enforce()) {
-				throw new RequestDeniedException(ErrorCode.NO_AUTHN_CONTEXT, msg);
+				throw new RequestDeniedException(StandardErrorCode.NO_AUTHN_CONTEXT, msg);
 			}
 			else {
 				logEnforceWarn(msg);

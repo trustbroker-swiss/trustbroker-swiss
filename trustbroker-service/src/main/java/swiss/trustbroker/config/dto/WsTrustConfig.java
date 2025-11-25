@@ -57,6 +57,13 @@ public class WsTrustConfig {
 	private String type;
 
 	/**
+	 * Keystore alias.
+	 *
+	 * @since 1.12.0
+	 */
+	private String alias;
+
+	/**
 	 * Keystore password.
 	 */
 	private String password;
@@ -102,6 +109,24 @@ public class WsTrustConfig {
 	 */
 	@Builder.Default
 	private boolean renewRequiresSecurityToken = true;
+
+	/**
+	 * Require signed SOAP requests.
+	 * <br/>
+	 * Default: true
+	 * @since 1.12.0
+	 */
+	@Builder.Default
+	private boolean renewRequireSignedRequests = true;
+
+	/**
+	 * Sign SOAP responses.
+	 * <br/>
+	 * Default: true
+	 * @since 1.12.0
+	 */
+	@Builder.Default
+	private boolean doSignResponse = true;
 
 	/**
 	 * Lifetime expiration in minutes.

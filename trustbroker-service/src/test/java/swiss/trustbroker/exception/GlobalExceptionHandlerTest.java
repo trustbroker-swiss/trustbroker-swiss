@@ -36,10 +36,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import swiss.trustbroker.common.exception.ErrorCode;
 import swiss.trustbroker.common.exception.ErrorMarker;
 import swiss.trustbroker.common.exception.ExceptionUtil;
 import swiss.trustbroker.common.exception.RequestDeniedException;
+import swiss.trustbroker.common.exception.StandardErrorCode;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.util.ApiSupport;
@@ -99,7 +99,7 @@ class GlobalExceptionHandlerTest {
 	@Test
 	void handleDeniedException() {
 		var ex = givenRequestDeniedException();
-		doReturn(REDIRECT_URL).when(apiSupport).getErrorPageUrl(eq(ErrorCode.REQUEST_DENIED.getLabel()), any());
+		doReturn(REDIRECT_URL).when(apiSupport).getErrorPageUrl(eq(StandardErrorCode.REQUEST_DENIED.getLabel()), any());
 		var result = globalExceptionHandler.handleDeniedException(ex);
 		assertThat(result.getStatusCode(), is(HttpStatus.SEE_OTHER));
 		assertThat(result.getBody(), is(""));
@@ -109,7 +109,7 @@ class GlobalExceptionHandlerTest {
 	@Test
 	void handleTechnicalException() {
 		var ex = givenTechnicalException();
-		doReturn(REDIRECT_URL).when(apiSupport).getErrorPageUrl(eq(ErrorCode.REQUEST_REJECTED.getLabel()), any());
+		doReturn(REDIRECT_URL).when(apiSupport).getErrorPageUrl(eq(StandardErrorCode.REQUEST_REJECTED.getLabel()), any());
 		var result = globalExceptionHandler.handleTechnicalException(ex);
 		assertThat(result.getStatusCode(), is(HttpStatus.SEE_OTHER));
 		assertThat(result.getBody(), is(""));
@@ -119,7 +119,7 @@ class GlobalExceptionHandlerTest {
 	@Test
 	void handleAnyException() {
 		var ex = new RuntimeException();
-		doReturn(REDIRECT_URL).when(apiSupport).getErrorPageUrl(eq(ErrorCode.REQUEST_REJECTED.getLabel()), any());
+		doReturn(REDIRECT_URL).when(apiSupport).getErrorPageUrl(eq(StandardErrorCode.REQUEST_REJECTED.getLabel()), any());
 		var response = new MockHttpServletResponse();
 		globalExceptionHandler.handleAnyException(ex, response);
 		assertThat(response.getStatus(), is(HttpStatus.FOUND.value()));
@@ -138,7 +138,7 @@ class GlobalExceptionHandlerTest {
 	private static TechnicalException givenTechnicalException() {
 		var cause = new IOException();
 		var ex = new TechnicalException(ErrorMarker.CLIENT_DISCONNECT, "message2", cause);
-		assertThat(ex.getErrorCode(), is(ErrorCode.REQUEST_REJECTED));
+		assertThat(ex.getErrorCode(), is(StandardErrorCode.REQUEST_REJECTED));
 		assertThat(ex.getErrorMarker(), is(ErrorMarker.CLIENT_DISCONNECT));
 		assertThat(ex.getCause(), is(cause));
 		assertThat(ex.getMessage(), is("Service rejected"));
@@ -148,7 +148,7 @@ class GlobalExceptionHandlerTest {
 
 	private static RequestDeniedException givenRequestDeniedException() {
 		var ex = new RequestDeniedException("message1");
-		assertThat(ex.getErrorCode(), is(ErrorCode.REQUEST_DENIED));
+		assertThat(ex.getErrorCode(), is(StandardErrorCode.REQUEST_DENIED));
 		assertThat(ex.getErrorMarker(), is(ErrorMarker.DEFAULT));
 		assertThat(ex.getMessage(), is("Access denied"));
 		assertThat(ex.getInternalMessage(), is("message1"));

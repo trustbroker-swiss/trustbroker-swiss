@@ -47,7 +47,6 @@ import org.opensaml.soap.wssecurity.WSSecurityConstants;
 import org.opensaml.soap.wstrust.WSTrustConstants;
 import org.opensaml.xmlsec.signature.Signature;
 import org.springframework.ws.context.MessageContext;
-import org.springframework.ws.soap.SoapElement;
 import org.springframework.ws.soap.SoapHeaderElement;
 import org.springframework.ws.soap.SoapMessage;
 import org.springframework.ws.soap.server.SoapEndpointInterceptor;
@@ -61,6 +60,7 @@ import swiss.trustbroker.common.saml.util.SamlTracer;
 import swiss.trustbroker.common.saml.util.SoapUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
+import swiss.trustbroker.wstrust.util.WsTrustUtil;
 
 
 /**
@@ -101,25 +101,23 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 	public boolean handleRequest(MessageContext messageContext, Object endpoint) {
 		var webServiceMessageRequest = messageContext.getRequest();
 		var soapMessage = (SoapMessage) webServiceMessageRequest;
-		var headerNode = getNode(soapMessage.getSoapHeader());
+		SamlTracer.logSoapObject(String.format(">>>>> Incoming RST SOAP message soap11action='%s'", soapMessage.getSoapAction()),
+				soapMessage.getDocument());
 
-		SamlTracer.logSoapObject(">>>>> Incoming SOAP header", headerNode);
+		var headerNode = WsTrustUtil.getNode(soapMessage.getSoapHeader());
 
-		var bodyNode = getNode(soapMessage.getSoapBody());
+		SamlTracer.logSoapObject(">>>>> Incoming RST SOAP header", headerNode);
 
-		SamlTracer.logSoapObject(">>>>> Incoming SOAP body", bodyNode);
+		var bodyNode = WsTrustUtil.getNode(soapMessage.getSoapBody());
 
-		SoapMessageHeader requestHeader = getRequestHeaderElements(headerNode);
+		SamlTracer.logSoapObject(">>>>> Incoming RST SOAP body", bodyNode);
+
+		var requestHeader = getRequestHeaderElements(headerNode);
 		requestHeader.setSoapAction(soapMessage.getSoapAction());
+		requestHeader.setSoapMessage(soapMessage);
 		RequestLocalContextHolder.setRequestContext(requestHeader);
 
 		return true;
-	}
-
-	private static Node getNode(SoapElement soapMessage) {
-		var source = soapMessage.getSource();
-		var domSource = (DOMSource) source;
-		return domSource.getNode();
 	}
 
 	private SoapMessageHeader getRequestHeaderElements(Node headerNode) {
@@ -142,8 +140,8 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 			else if (xmlObject instanceof To to) {
 				requestHeader.setTo(to);
 			}
-			else if (xmlObject instanceof Security) {
-				processSecurityHeader(xmlObject, requestHeader);
+			else if (xmlObject instanceof Security security) {
+				processSecurityHeader(security, requestHeader);
 			}
 			else if (log.isErrorEnabled()) {
 				log.error("Unknown header xml object with namespace={}: {}",
@@ -153,7 +151,7 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 		return requestHeader;
 	}
 
-	private static void processSecurityHeader(XMLObject securityHeader, SoapMessageHeader requestHeader) {
+	private static void processSecurityHeader(Security securityHeader, SoapMessageHeader requestHeader) {
 		log.info("Incoming Security header with namespace uri={}", securityHeader.getElementQName());
 
 		List<XMLObject> orderedChildren = securityHeader.getOrderedChildren();
@@ -173,12 +171,13 @@ public class CustomEndpointInterceptor implements SoapEndpointInterceptor {
 				requestHeader.setRequestTimestamp(timestamp);
 			}
 			else if (xmlObject instanceof BinarySecurityToken binarySecurityToken) {
-				log.debug("BinarySecurityToken is present in the request");
+				log.debug("BinarySecurityToken is present in the request header");
 				requestHeader.setSecurityToken(binarySecurityToken);
 			}
 			else if (xmlObject instanceof Signature) {
-				// The Signature header is handled by SpringWS
-				log.debug("Signature header is present in the request");
+				// The Signature header is handled by SpringWS if configured
+				log.debug("Signature object is present in the request header");
+				requestHeader.setSignature(xmlObject);
 			}
 			else if (xmlObject != null) {
 				log.error("Unknown security header xml object with namespace={}: {}",

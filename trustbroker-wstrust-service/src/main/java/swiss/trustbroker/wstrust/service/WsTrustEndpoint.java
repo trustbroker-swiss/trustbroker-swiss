@@ -34,6 +34,7 @@ import org.w3c.dom.Element;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.exception.TrustBrokerException;
 import swiss.trustbroker.common.saml.util.OpenSamlUtil;
+import swiss.trustbroker.common.saml.util.SamlTracer;
 import swiss.trustbroker.common.saml.util.SoapUtil;
 import swiss.trustbroker.common.util.WSSConstants;
 import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
@@ -65,7 +66,9 @@ public class WsTrustEndpoint {
 			// service entry point
 			var response = wsTrustService.processSecurityTokenRequest(requestSecurityToken, soapContext);
 
-			return marshalResponse(response);
+			var soapResponse = marshalResponse(response);
+			SamlTracer.logSoapObject("<<<<< Outgoing RSTR SOAP message", soapResponse);
+			return soapResponse;
 		}
 		catch (TrustBrokerException e) {
 			throw e;

@@ -27,11 +27,16 @@ import org.opensaml.saml.saml2.core.Assertion;
 import org.opensaml.saml.saml2.core.Audience;
 import org.opensaml.security.credential.Credential;
 import org.springframework.util.CollectionUtils;
+import org.w3c.dom.Element;
 import swiss.trustbroker.common.exception.RequestDeniedException;
+import swiss.trustbroker.common.exception.TechnicalException;
+import swiss.trustbroker.common.saml.util.SoapUtil;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.federation.xmlconfig.RelyingParty;
 import swiss.trustbroker.homerealmdiscovery.service.RelyingPartySetupService;
 import swiss.trustbroker.saml.util.AssertionValidator;
+import swiss.trustbroker.wstrust.dto.SoapMessageHeader;
+import swiss.trustbroker.wstrust.util.WsTrustUtil;
 
 /**
  * Base class for WS-Trust request validators.
@@ -89,5 +94,30 @@ public abstract class WsTrustBaseValidator implements WsTrustValidator {
 		log.debug("Assertion in RSTR with assertionID='{}' has audience rpIssuerId='{}'", assertion.getID(), relyingParty.getId());
 		return relyingParty;
 	}
+
+	protected void validateSignature(SoapMessageHeader soapMessageHeader, boolean requireSignature,
+			List<Credential> trustCredentials) {
+		if (!requireSignature && soapMessageHeader.getSoapMessage() == null) {
+			log.warn("Missing SOAP message"); // occurs in tests only
+			return;
+		}
+		log.info("Validating SOAP signature");
+		var node = WsTrustUtil.getNode(soapMessageHeader.getSoapMessage().getEnvelope());
+		if (!(node instanceof Element element)) {
+			throw new TechnicalException(String.format("XML node=%s is not an Element", node.getNodeName()));
+		}
+		var signature = soapMessageHeader.getSignature();
+		var signatureElement = signature != null ? signature.getDOM() : null;
+		if (!SoapUtil.isSignatureValid(element, signatureElement, trustCredentials)) {
+			if (requireSignature) {
+				throw new RequestDeniedException(
+						String.format("Signature validation failed for element=%s", element.getNodeName()));
+			}
+			else if (signature != null) {
+				log.warn("Accepting invalid signature={} on element={}", signatureElement.getNodeName(), element.getNodeName());
+			}
+		}
+	}
+
 
 }

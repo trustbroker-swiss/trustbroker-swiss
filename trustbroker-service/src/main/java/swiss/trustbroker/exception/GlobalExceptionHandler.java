@@ -31,6 +31,7 @@ import swiss.trustbroker.common.exception.ErrorCode;
 import swiss.trustbroker.common.exception.ErrorMarker;
 import swiss.trustbroker.common.exception.ExceptionUtil;
 import swiss.trustbroker.common.exception.RequestDeniedException;
+import swiss.trustbroker.common.exception.StandardErrorCode;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.exception.TrustBrokerException;
 import swiss.trustbroker.common.tracing.TraceSupport;
@@ -105,7 +106,7 @@ public class GlobalExceptionHandler {
 		if (ex instanceof TrustBrokerException tex) {
 			return getErrorPageUrl(tex.getErrorCode());
 		}
-		return getErrorPageUrl(ErrorCode.REQUEST_REJECTED);
+		return getErrorPageUrl(StandardErrorCode.REQUEST_REJECTED);
 	}
 
 	private String getErrorPageUrl(ErrorCode errorCode) {

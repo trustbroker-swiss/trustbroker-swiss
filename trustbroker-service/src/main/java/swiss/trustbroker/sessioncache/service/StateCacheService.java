@@ -33,9 +33,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import swiss.trustbroker.common.exception.ErrorCode;
+import org.springframework.transaction.annotation.Transactional;
 import swiss.trustbroker.common.exception.ErrorMarker;
 import swiss.trustbroker.common.exception.RequestDeniedException;
+import swiss.trustbroker.common.exception.StandardErrorCode;
 import swiss.trustbroker.common.exception.TechnicalException;
 import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.ProcessUtil;
@@ -265,7 +266,7 @@ public class StateCacheService {
 	public StateData find(String id, String actor) {
 		var stateData = findOptionalResilient(id, actor);
 		if (stateData.isEmpty()) {
-			throw new RequestDeniedException(ErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
+			throw new RequestDeniedException(StandardErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
 					String.format("State not found. Details: stateId=%s", StringUtil.clean(id)), null);
 		}
 		return stateData.get();
@@ -277,7 +278,7 @@ public class StateCacheService {
 		}
 		var stateEntity = stateCacheRepository.findById(id); // not need for resilience here
 		if (stateEntity.isEmpty()) {
-			throw new RequestDeniedException(ErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
+			throw new RequestDeniedException(StandardErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
 					String.format("State not found. Details: stateId=%s", StringUtil.clean(id)), null);
 		}
 		return stateEntity.get();
@@ -319,7 +320,7 @@ public class StateCacheService {
 	public StateData findRequiredBySpId(String id, String actor) {
 		Optional<StateData> stateDataOpt = findBySpIdResilient(id, actor);
 		if (stateDataOpt.isEmpty()) {
-			throw new RequestDeniedException(ErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
+			throw new RequestDeniedException(StandardErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
 					String.format("State not found. Details: spStateId=%s", StringUtil.clean(id)), null);
 		}
 		return stateDataOpt.get();
@@ -445,7 +446,7 @@ public class StateCacheService {
 	// Exception if not found so no parameter required to back-track to session actor
 	public StateData findMandatoryValidState(String id, String actor) {
 		return findValidState(id, actor)
-				.orElseThrow(() -> new RequestDeniedException(ErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
+				.orElseThrow(() -> new RequestDeniedException(StandardErrorCode.STATE_NOT_FOUND, ErrorMarker.STATE_NOT_FOUND,
 						String.format("State not valid in call from actor=%s - Details: stateId=%s", actor, id), null));
 	}
 

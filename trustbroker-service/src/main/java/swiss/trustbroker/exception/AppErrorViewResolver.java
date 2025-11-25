@@ -25,7 +25,7 @@ import org.springframework.boot.autoconfigure.web.servlet.error.ErrorViewResolve
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.ModelAndView;
-import swiss.trustbroker.common.exception.ErrorCode;
+import swiss.trustbroker.common.exception.StandardErrorCode;
 import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.config.TrustBrokerProperties;
 import swiss.trustbroker.oidc.OidcExceptionHelper;
@@ -61,8 +61,8 @@ public class AppErrorViewResolver implements ErrorViewResolver {
 
 	private String resolveErrorPage(HttpStatus status, String traceId) {
 		return switch (status) {
-			case FORBIDDEN -> apiSupport.getErrorPageUrl(ErrorCode.REQUEST_DENIED.getLabel(), traceId);
-			default -> apiSupport.getErrorPageUrl(ErrorCode.REQUEST_REJECTED.getLabel(), traceId);
+			case FORBIDDEN -> apiSupport.getErrorPageUrl(StandardErrorCode.REQUEST_DENIED.getLabel(), traceId);
+			default -> apiSupport.getErrorPageUrl(StandardErrorCode.REQUEST_REJECTED.getLabel(), traceId);
 		};
 	}
 

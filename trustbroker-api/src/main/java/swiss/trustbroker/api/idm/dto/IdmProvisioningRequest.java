@@ -17,6 +17,7 @@ package swiss.trustbroker.api.idm.dto;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import lombok.Builder;
 import lombok.Data;
@@ -32,61 +33,61 @@ public class IdmProvisioningRequest {
 	/**
 	 * Claim to address the user in the IDM (not null).
 	 */
-	final AttributeName identifyingClaim;
+	private final AttributeName identifyingClaim;
 
 	/**
 	 * The name in the IDM as filtering parameter for the IDM.
 	 */
-	final String homeName;
+	private final String homeName;
 
 	/**
 	 * The account source from CP config
 	 */
-	final String accountSource;
+	private final String accountSource;
 
 	/**
 	 * Used for provisioning during migration from a CP to another.
 	 * <br/>
 	 * It is used to detect data from the source CP of the migration when provisioning for the target CP.
 	 */
-	final String homeNameMigrationAlias;
+	private final String homeNameMigrationAlias;
 
 	/**
 	 * The subject name ID returned by the CP.
 	 */
-	final String cpSubjectNameId;
+	private final String cpSubjectNameId;
 
 	/**
 	 * Quality of authentication provided by CP, mapped to the XTB order model.
 	 */
-	final Integer cpAuthenticationQoa;
+	private final Integer cpAuthenticationQoa;
 
 	/**
 	 * If true, provisioning changes are only logged, not applied.
 	 */
-	final boolean logOnly;
+	private final boolean logOnly;
 
 	/**
 	 * Provisioning mode flags specific to implementations. All flags for all implementations are passed in.
 	 */
-	final List<String> modes;
+	private final List<String> modes;
 
 	/**
 	 * Map of attributes received from the IDM (not null, not modifiable).
 	 * <br/>
 	 * Empty list if the user was not found by the <code>IdmQueryService</code>.
 	 */
-	final Map<? extends AttributeName, List<String>> idmAttributes;
+	private final Map<? extends AttributeName, List<String>> idmAttributes;
 
 	/**
 	 * Map of attributes received from the CP, to be provisioned in the IDM (not null, not modifiable).
 	 */
-	final Map<? extends AttributeName, List<String>> cpAttributes;
+	private final Map<? extends AttributeName, List<String>> cpAttributes;
 
 	/**
 	 * List of attributes to provision.
 	 */
-	final List<? extends AttributeName> provisioningAttributes;
+	private final List<? extends AttributeName> provisioningAttributes;
 
 	/**
 	 * This is not provided directly by the XTB core code, but is resulting from other custom interface implementations.
@@ -98,5 +99,17 @@ public class IdmProvisioningRequest {
 	 *
 	 * @see IdmResult#getAdditionalData()
 	 */
-	final Map<Object, Object> additionalData;
+	private final Map<Object, Object> additionalData;
+
+	/**
+	 * Returns the <code>IdmLookup</code> store(s) that were queried for the <code>additionalData</code>
+	 * - including those that did not find a result.
+	 * <br/>
+	 * Currently the data returned by the <code>IdmQueryService</code> interface implementations is passed here.
+	 *
+	 * @since 1.12.0
+	 * @see IdmResult#getQueriedStores()
+	 */
+	private final Set<String> queriedStores;
+
 }

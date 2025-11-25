@@ -265,7 +265,7 @@ public class SamlFactory {
 		}
 		var conditions = OpenSamlUtil.buildSamlObject(Conditions.class);
 		conditions.setNotBefore(now);
-		conditions.setNotOnOrAfter(now.plusSeconds((int)validitySeconds));
+		conditions.setNotOnOrAfter(now.plusSeconds(validitySeconds));
 		conditions.getAudienceRestrictions().add(createAudienceRestriction(audience));
 		return conditions;
 	}
@@ -305,9 +305,10 @@ public class SamlFactory {
 		if (authnRequest != null) {
 			subjectConfirmationData.setInResponseTo(authnRequest);
 		}
-		var newNotOnOrAfter = now != null ? now : Instant.now();
-		var dateTime = newNotOnOrAfter.plusSeconds((int)validitySeconds);
-		subjectConfirmationData.setNotOnOrAfter(dateTime);
+		if (now == null) {
+			now = Instant.now();
+		}
+		subjectConfirmationData.setNotOnOrAfter(now.plusSeconds(validitySeconds));
 		if (recipient != null) {
 			subjectConfirmationData.setRecipient(recipient);
 		}

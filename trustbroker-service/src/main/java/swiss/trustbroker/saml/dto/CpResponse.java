@@ -219,7 +219,7 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	private Map<Definition, List<String>> originalAttributes = new HashMap<>();
 
 	/**
-	 * Contains the idmLookup for the corresponding RP The Query list can be from Groovy scripts
+	 * Contains the <code>IdmLookup</code> for the corresponding RP. The query list can originate from Groovy scripts.
 	 */
 	private IdmLookup idmLookup;
 
@@ -276,7 +276,6 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	@Builder.Default
 	private transient Map<String, Object> claims = new HashMap<>();
 
-
 	/**
 	 * Additional exchanged between related API implementations.
 	 * <br/>
@@ -290,6 +289,16 @@ public class CpResponse extends ResponseStatus implements CpResponseData {
 	@Builder.Default
 	@JsonIgnore
 	private transient Map<Object, Object> additionalIdmData = new HashMap<>();
+
+	/**
+	 * Contains the stores of IDM lookups actually executed by the available <code>IdmQueryService</code> implementations
+	 * - including those that did not find a result.
+	 *
+	 * @see IdmResult#getQueriedStores() ()
+	 * @see IdmProvisioningRequest#getQueriedStores()
+	 * @since 1.12.0
+	 */
+	private Set<String> queriedStores;
 
 	// better API for groovy scripts
 

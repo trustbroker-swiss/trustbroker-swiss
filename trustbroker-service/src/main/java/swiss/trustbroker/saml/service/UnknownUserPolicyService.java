@@ -18,7 +18,7 @@ package swiss.trustbroker.saml.service;
 import lombok.extern.slf4j.Slf4j;
 import org.opensaml.saml.saml2.core.StatusCode;
 import org.springframework.stereotype.Service;
-import swiss.trustbroker.common.exception.ErrorCode;
+import swiss.trustbroker.common.exception.StandardErrorCode;
 import swiss.trustbroker.federation.xmlconfig.ClaimsParty;
 import swiss.trustbroker.federation.xmlconfig.Flow;
 import swiss.trustbroker.federation.xmlconfig.IdmQuery;
@@ -59,7 +59,7 @@ public class UnknownUserPolicyService {
 		}
 		log.info("User with statusPolicy={} not found in IDM", StatusPolicy.BLOCK_UNKNOWN_USER);
 		var flowPolicy = Flow.builder()
-				.id(ErrorCode.UNKNOWN_USER.getLabel())
+				.id(StandardErrorCode.UNKNOWN_USER.getLabel())
 				.supportInfo(true)
 				.appContinue(false)
 				.build();

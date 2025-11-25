@@ -38,6 +38,6 @@ public class TechnicalException extends TrustBrokerException {
 	}
 
 	private static ErrorCode defaultErrorCode(ErrorCode errorCode) {
-		return errorCode != null ? errorCode : ErrorCode.REQUEST_REJECTED;
+		return errorCode != null ? errorCode : StandardErrorCode.REQUEST_REJECTED;
 	}
 }

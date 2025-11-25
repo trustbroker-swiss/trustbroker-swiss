@@ -31,7 +31,7 @@ import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
 import org.springframework.security.oauth2.core.http.converter.OAuth2ErrorHttpMessageConverter;
 import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticationException;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
-import swiss.trustbroker.common.exception.ErrorCode;
+import swiss.trustbroker.common.exception.StandardErrorCode;
 import swiss.trustbroker.common.tracing.TraceSupport;
 import swiss.trustbroker.common.util.OidcUtil;
 import swiss.trustbroker.common.util.WebUtil;
@@ -103,7 +103,7 @@ public class CustomFailureHandler implements AuthenticationFailureHandler {
 
 		// construct redirect to OIDC client or service with service context
 		var traceId = TraceSupport.getOwnTraceParent();
-		var errorPage = apiSupport.getErrorPageUrl(ErrorCode.REQUEST_DENIED.getLabel(), traceId);
+		var errorPage = apiSupport.getErrorPageUrl(StandardErrorCode.REQUEST_DENIED.getLabel(), traceId);
 		var location = OidcExceptionHelper.buildLocationForAuthenticationException(request, exception, errorPage,
 				trustBrokerProperties.getOidc().getIssuer(), "spring-security",
 				uri -> validateRedirectUri(uri, oidcClient));
